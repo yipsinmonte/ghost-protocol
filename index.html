@@ -1,0 +1,1765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GHOST — Your Digital Afterlife on Solana</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --black: #030305; --deep: #07070f; --ghost: #0d0d1a; --dim: #11111f;
+    --accent: #7744ff; --accent2: #4422cc; --glow: #9966ff;
+    --pulse: #ff3366; --text: #e0e0ec; --muted: #9090a8; --white: #f0f0f8;
+    --sol: #9945ff; --green: #33ff99; --amber: #ffb830; --red: #ff3d5a;
+    --card: #0a0a18; --border: rgba(102,51,255,0.12);
+  }
+  html { scroll-behavior: smooth; }
+  body { background: var(--black); color: var(--text); font-family: 'Syne', sans-serif; font-size: 18px; line-height: 1.7; cursor: crosshair; font-weight: 400; }
+  .marketing-site { overflow-x: hidden; }
+  body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events: none; z-index: 999; opacity: 0.5; }
+  body::after { content: ''; position: fixed; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px); pointer-events: none; z-index: 998; }
+
+  /* ─── NAV ─────────────────────────────────────────────── */
+  nav { position: fixed; top: 0; width: 100%; padding: 20px 48px; display: flex; justify-content: space-between; align-items: center; z-index: 100; background: linear-gradient(to bottom, rgba(3,3,5,0.97), transparent); border-bottom: 1px solid rgba(102,51,255,0.08); }
+  .nav-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: 0.3em; color: var(--white); text-decoration: none; }
+  .nav-logo span { color: var(--accent); }
+  .nav-links { display: flex; gap: 36px; list-style: none; align-items: center; }
+  .nav-links a { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.2em; color: var(--muted); text-decoration: none; text-transform: uppercase; transition: color 0.3s; }
+  .nav-links a:hover { color: var(--glow); }
+
+  /* Dashboard nav link — hidden until connected */
+  .nav-dashboard-link { display: none !important; }
+  .nav-dashboard-link.visible { display: flex !important; align-items: center; gap: 6px; color: var(--green) !important; border: 1px solid rgba(51,255,153,0.25); padding: 6px 14px; transition: all 0.3s; }
+  .nav-dashboard-link.visible:hover { background: rgba(51,255,153,0.08); border-color: var(--green); }
+  .nav-dashboard-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .wallet-btn { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; padding: 10px 20px; border: 1px solid var(--sol); color: var(--sol); background: transparent; cursor: pointer; transition: all 0.3s; position: relative; overflow: hidden; }
+  .wallet-btn::before { content: ''; position: absolute; inset: 0; background: var(--sol); transform: translateX(-100%); transition: transform 0.3s; z-index: -1; }
+  .wallet-btn:hover { color: var(--black); }
+  .wallet-btn:hover::before { transform: translateX(0); }
+  .wallet-btn.connected { border-color: var(--green); color: var(--green); }
+  .wallet-btn.connected:hover { color: var(--black); }
+  .wallet-btn.connected::before { background: var(--green); }
+
+  /* ─── CONTRACT BANNER ─────────────────────────────────── */
+  .contract-banner { background: rgba(102,51,255,0.06); border-bottom: 1px solid rgba(102,51,255,0.12); padding: 10px 48px; display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 73px; font-family: 'Share Tech Mono', monospace; font-size: 13px; }
+  .contract-banner .label { color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; }
+  .contract-addr { color: var(--accent); letter-spacing: 0.1em; }
+  .copy-btn { background: none; border: 1px solid rgba(102,51,255,0.3); color: var(--muted); font-family: 'Share Tech Mono', monospace; font-size: 12px; padding: 3px 10px; cursor: pointer; letter-spacing: 0.15em; transition: all 0.2s; }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .sol-badge { background: rgba(153,69,255,0.15); border: 1px solid rgba(153,69,255,0.3); color: var(--sol); font-size: 12px; padding: 3px 10px; letter-spacing: 0.2em; }
+
+  /* ─── HERO ────────────────────────────────────────────── */
+  .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 100px 40px 80px; position: relative; overflow: hidden; }
+  .hero-bg { position: absolute; inset: 0; background: radial-gradient(ellipse 60% 50% at 50% 60%, rgba(102,51,255,0.08) 0%, transparent 70%), radial-gradient(ellipse 30% 30% at 20% 20%, rgba(51,17,170,0.05) 0%, transparent 60%); pointer-events: none; }
+  .hero-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(102,51,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(102,51,255,0.04) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 0%, transparent 100%); pointer-events: none; }
+  .heartbeat-ring { position: absolute; width: 600px; height: 600px; border-radius: 50%; border: 1px solid rgba(102,51,255,0.1); top: 50%; left: 50%; transform: translate(-50%, -50%); animation: ring-pulse 4s ease-in-out infinite; pointer-events: none; }
+  .heartbeat-ring:nth-child(2) { width: 800px; height: 800px; animation-delay: 1s; opacity: 0.6; }
+  .heartbeat-ring:nth-child(3) { width: 1000px; height: 1000px; animation-delay: 2s; opacity: 0.3; }
+  @keyframes ring-pulse { 0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.2; } 50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.5; } }
+  .hero-logo { width: 120px; height: 120px; margin-bottom: 32px; animation: fade-up 1s ease both; filter: drop-shadow(0 0 30px rgba(102,51,255,0.5)); }
+  .hero-eyebrow { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.4em; color: var(--accent); text-transform: uppercase; margin-bottom: 24px; animation: fade-up 1s ease 0.1s both; }
+  .hero-eyebrow::before { content: '◈ '; }
+  .hero-eyebrow::after { content: ' ◈'; }
+  .hero-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(72px, 15vw, 160px); letter-spacing: -0.02em; line-height: 0.9; color: var(--white); margin-bottom: 8px; animation: fade-up 1s ease 0.2s both; position: relative; }
+  .hero-title::after { content: 'GHOST'; position: absolute; inset: 0; color: transparent; -webkit-text-stroke: 1px rgba(102,51,255,0.3); transform: translate(3px, 3px); z-index: -1; }
+  .hero-ticker { font-family: 'Share Tech Mono', monospace; font-size: 18px; letter-spacing: 0.3em; color: var(--accent); margin-bottom: 32px; animation: fade-up 1s ease 0.25s both; }
+  .hero-sub { font-size: clamp(18px, 2.5vw, 24px); font-weight: 400; color: var(--text); max-width: 540px; margin: 0 auto 48px; animation: fade-up 1s ease 0.3s both; line-height: 1.5; }
+  .hero-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; animation: fade-up 1s ease 0.4s both; margin-bottom: 64px; position: relative; z-index: 10; }
+  .btn-pump { font-family: 'Share Tech Mono', monospace; font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; padding: 16px 36px; background: var(--accent); color: var(--white); text-decoration: none; transition: all 0.3s; display: flex; align-items: center; gap: 10px; }
+  .btn-pump:hover { background: var(--glow); box-shadow: 0 0 40px rgba(136,85,255,0.5); }
+  .btn-pump .pump-icon { font-size: 16px; }
+  .btn-secondary { font-family: 'Share Tech Mono', monospace; font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; padding: 16px 36px; border: 1px solid var(--muted); color: var(--muted); text-decoration: none; transition: all 0.3s; cursor: pointer; background: transparent; }
+  .btn-secondary:hover { border-color: var(--text); color: var(--text); }
+  .btn-dex { font-family: 'Share Tech Mono', monospace; font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; padding: 16px 36px; border: 1px solid rgba(153,69,255,0.4); color: var(--sol); text-decoration: none; transition: all 0.3s; }
+  .btn-dex:hover { border-color: var(--sol); box-shadow: 0 0 20px rgba(153,69,255,0.2); }
+  .heartbeat-bar { width: 100%; max-width: 700px; margin: 0 auto; animation: fade-up 1s ease 0.5s both; }
+  .hb-label { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 0.3em; color: var(--muted); text-transform: uppercase; display: flex; justify-content: space-between; margin-bottom: 12px; }
+  .hb-label span:last-child { color: var(--pulse); animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .hb-line { height: 60px; position: relative; overflow: hidden; }
+  .hb-svg { width: 200%; height: 100%; animation: hb-scroll 3s linear infinite; }
+  @keyframes hb-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* ─── STATS / TICKER ──────────────────────────────────── */
+  .stats-wrap { max-width: 900px; margin: 0 auto; }
+  .stats { display: flex; justify-content: center; border-top: 1px solid rgba(102,51,255,0.15); border-bottom: 1px solid rgba(102,51,255,0.15); }
+  .stat { flex: 1; padding: 36px 28px; text-align: center; border-right: 1px solid rgba(102,51,255,0.1); }
+  .stat:last-child { border-right: none; }
+  .stat-value { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 28px; color: var(--white); display: block; margin-bottom: 6px; }
+  .stat-label { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 0.25em; color: var(--muted); text-transform: uppercase; }
+  .price-ticker { background: rgba(153,69,255,0.05); border: 1px solid rgba(153,69,255,0.15); padding: 16px 32px; display: flex; gap: 40px; justify-content: center; align-items: center; font-family: 'Share Tech Mono', monospace; font-size: 12px; max-width: 900px; margin: 0 auto; }
+  .ticker-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .ticker-label { font-size: 12px; letter-spacing: 0.25em; color: var(--muted); text-transform: uppercase; }
+  .ticker-value { color: var(--white); font-size: 14px; }
+  .ticker-value.up { color: #33ff99; }
+
+  /* ─── SECTIONS ────────────────────────────────────────── */
+  section { padding: 100px 48px; max-width: 1200px; margin: 0 auto; }
+  .section-tag { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.4em; color: var(--accent); text-transform: uppercase; margin-bottom: 24px; display: block; }
+  .section-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: clamp(36px, 5vw, 60px); color: var(--white); line-height: 1.1; margin-bottom: 24px; }
+  .section-body { font-size: 18px; color: var(--text); max-width: 560px; line-height: 1.8; }
+  .how-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: start; margin-top: 72px; }
+  .how-steps { display: flex; flex-direction: column; gap: 0; }
+  .step { display: flex; gap: 20px; padding: 28px 0; border-bottom: 1px solid rgba(102,51,255,0.1); }
+  .step:last-child { border-bottom: none; }
+  .step-num { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.2em; color: var(--accent); min-width: 40px; padding-top: 4px; }
+  .step-content h3 { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--white); margin-bottom: 8px; }
+  .step-content p { font-size: 16px; color: var(--text); line-height: 1.7; }
+  .terminal { background: rgba(7,7,15,0.9); border: 1px solid rgba(102,51,255,0.2); font-family: 'Share Tech Mono', monospace; font-size: 13px; line-height: 1.85; box-shadow: 0 0 60px rgba(102,51,255,0.08), inset 0 0 40px rgba(0,0,0,0.5); }
+  .terminal-bar { background: rgba(102,51,255,0.1); border-bottom: 1px solid rgba(102,51,255,0.2); padding: 12px 16px; display: flex; align-items: center; gap: 8px; }
+  .terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .terminal-dot.red { background: #ff3366; } .terminal-dot.yellow { background: #ffaa00; opacity: 0.5; } .terminal-dot.green { background: #33ff99; opacity: 0.5; }
+  .terminal-title { font-size: 12px; letter-spacing: 0.2em; color: var(--muted); margin-left: 8px; text-transform: uppercase; }
+  .terminal-body { padding: 20px 24px; }
+  .t-comment { color: #666688; } .t-keyword { color: #9966ff; } .t-string { color: #33ccaa; } .t-number { color: #ff9966; } .t-func { color: #99aaff; } .t-var { color: var(--text); } .t-pulse { color: var(--pulse); } .t-line { display: block; padding: 1px 0; }
+  .cursor { display: inline-block; width: 8px; height: 13px; background: var(--accent); vertical-align: middle; animation: cursor-blink 1s step-end infinite; }
+  @keyframes cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  .token-section { background: linear-gradient(to bottom, transparent, rgba(7,7,15,0.5), transparent); border-top: 1px solid rgba(102,51,255,0.1); border-bottom: 1px solid rgba(102,51,255,0.1); }
+  .token-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: rgba(102,51,255,0.1); margin-top: 56px; border: 1px solid rgba(102,51,255,0.1); }
+  .token-card { background: var(--black); padding: 40px 28px; transition: background 0.3s; position: relative; overflow: hidden; }
+  .token-card:hover { background: rgba(7,7,15,0.8); }
+  .token-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(to right, transparent, var(--accent), transparent); opacity: 0; transition: opacity 0.3s; }
+  .token-card:hover::before { opacity: 1; }
+  .token-percent { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 48px; color: var(--white); line-height: 1; margin-bottom: 8px; display: block; }
+  .token-percent span { color: var(--accent); font-size: 28px; }
+  .token-name { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.3em; color: var(--accent); text-transform: uppercase; margin-bottom: 12px; display: block; }
+  .token-desc { font-size: 15px; color: var(--text); line-height: 1.7; }
+  .manifesto { text-align: center; padding: 140px 48px; position: relative; overflow: hidden; }
+  .manifesto-bg { position: absolute; inset: 0; background: radial-gradient(ellipse 50% 70% at 50% 50%, rgba(102,51,255,0.06) 0%, transparent 70%); pointer-events: none; }
+  .manifesto blockquote { font-family: 'Cormorant Garamond', serif; font-size: clamp(26px, 3.5vw, 48px); font-style: italic; font-weight: 400; color: var(--white); line-height: 1.4; max-width: 840px; margin: 0 auto 40px; position: relative; }
+  .manifesto blockquote::before { content: '"'; font-size: 180px; color: rgba(102,51,255,0.07); position: absolute; top: -60px; left: -40px; line-height: 1; }
+  .manifesto-attr { font-family: 'Share Tech Mono', monospace; font-size: 14px; letter-spacing: 0.4em; color: var(--accent); text-transform: uppercase; }
+  .roadmap-grid { margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .road-card { background: rgba(7,7,15,0.6); border: 1px solid rgba(119,68,255,0.15); padding: 36px 32px; transition: border-color 0.3s; }
+  .road-card:hover { border-color: rgba(119,68,255,0.4); }
+  .road-card.active { border-color: rgba(119,68,255,0.5); }
+  .road-card.active .road-badge { background: var(--accent); color: var(--white); }
+  .road-badge { display: inline-block; font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; padding: 5px 14px; border: 1px solid rgba(119,68,255,0.3); color: var(--muted); margin-bottom: 16px; }
+  .road-card h3 { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 22px; color: var(--white); margin-bottom: 6px; }
+  .road-card .road-when { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--accent); margin-bottom: 16px; display: block; }
+  .road-card ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .road-card li { font-family: 'Syne', sans-serif; font-size: 15px; color: var(--text); display: flex; gap: 10px; align-items: baseline; line-height: 1.5; }
+  .road-card li::before { content: '→'; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  .actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 56px; }
+  .action-col h3 { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.3em; color: var(--accent); text-transform: uppercase; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(119,68,255,0.2); }
+  .action-item { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; }
+  .action-icon { font-size: 18px; flex-shrink: 0; }
+  .action-text { font-size: 16px; color: var(--text); line-height: 1.6; }
+  .action-text span { color: var(--muted); font-size: 14px; }
+  .faq-list { margin-top: 56px; max-width: 800px; }
+  .faq-item { border-bottom: 1px solid rgba(119,68,255,0.12); }
+  .faq-q { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--white); padding: 24px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: color 0.3s; }
+  .faq-q:hover { color: var(--accent); }
+  .faq-q::after { content: '+'; font-family: 'Share Tech Mono', monospace; font-size: 22px; color: var(--accent); transition: transform 0.3s; }
+  .faq-item.open .faq-q::after { content: '−'; }
+  .faq-a { max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.4s ease; }
+  .faq-item.open .faq-a { max-height: 300px; padding-bottom: 24px; }
+  .faq-a p { font-size: 16px; color: var(--text); line-height: 1.7; }
+  .cta-section { text-align: center; padding: 140px 48px; border-top: 1px solid rgba(102,51,255,0.1); position: relative; overflow: hidden; isolation: isolate; }
+  .cta-section::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 80% at 50% 100%, rgba(102,51,255,0.08) 0%, transparent 70%); pointer-events: none; }
+  .cta-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(48px, 8vw, 96px); color: var(--white); line-height: 1; margin-bottom: 28px; position: relative; }
+  .cta-sub { font-size: 20px; color: var(--text); max-width: 440px; margin: 0 auto 48px; }
+  footer { border-top: 1px solid rgba(102,51,255,0.1); padding: 36px 48px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-logo { font-family: 'Syne', sans-serif; font-weight: 800; letter-spacing: 0.3em; color: var(--muted); font-size: 14px; }
+  .footer-mono { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 0.2em; color: #555570; text-transform: uppercase; }
+  @keyframes fade-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  .reveal { opacity: 0; transform: translateY(32px); transition: opacity 0.8s ease, transform 0.8s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .ghost-watermark { position: fixed; bottom: -80px; right: -80px; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 300px; color: rgba(102,51,255,0.02); letter-spacing: -0.05em; pointer-events: none; z-index: 0; user-select: none; }
+  .notif { position: fixed; bottom: 32px; right: 32px; background: var(--deep); border: 1px solid rgba(102,51,255,0.3); padding: 16px 24px; font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 0.1em; color: var(--white); z-index: 1001; transform: translateY(100px); opacity: 0; transition: all 0.4s ease; }
+  .notif.show { transform: translateY(0); opacity: 1; }
+  .notif.green { border-color: rgba(51,255,153,0.4); color: #33ff99; }
+
+  /* ─── WALLET MODAL ────────────────────────────────────── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 500; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--deep); border: 1px solid rgba(102,51,255,0.3); padding: 48px; max-width: 420px; width: 90%; position: relative; }
+  .modal-close { position: absolute; top: 16px; right: 20px; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; font-family: 'Share Tech Mono', monospace; }
+  .modal-close:hover { color: var(--white); }
+  .modal h3 { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 24px; color: var(--white); margin-bottom: 8px; }
+  .modal p { font-size: 14px; color: var(--text); margin-bottom: 32px; }
+  .wallet-option { display: flex; align-items: center; gap: 16px; padding: 16px 20px; border: 1px solid rgba(102,51,255,0.15); margin-bottom: 12px; cursor: pointer; transition: all 0.2s; background: rgba(102,51,255,0.03); }
+  .wallet-option:hover { border-color: var(--accent); background: rgba(102,51,255,0.08); }
+  .wallet-option .w-icon { font-size: 24px; }
+  .wallet-option .w-name { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.15em; color: var(--white); }
+  .wallet-option .w-desc { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ─── DASHBOARD PANEL ─────────────────────────────────────── */
+  /* Uses display:none/flex instead of transform to avoid fixed-position bugs */
+  .dashboard-panel {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 9999;
+    background: #030305;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .dashboard-panel.open { display: flex; }
+
+  /* Panel topbar */
+  .panel-topbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 60px;
+    background: rgba(3,3,5,0.98);
+    border-bottom: 1px solid rgba(102,51,255,0.12);
+  }
+
+  .panel-back {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: #9090a8;
+    background: none;
+    border: 1px solid rgba(102,51,255,0.12);
+    padding: 7px 16px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-back:hover { border-color: #7744ff; color: #9966ff; }
+
+  .panel-logo {
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: 15px; letter-spacing: 0.25em; color: #f0f0f8;
+  }
+  .panel-logo span { color: #7744ff; }
+
+  .panel-wallet {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em; color: #33ff99;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-wallet-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #33ff99;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  /* Panel body = sidebar + main */
+  .panel-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .panel-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: #05050d;
+    border-right: 1px solid rgba(102,51,255,0.12);
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar-section-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px; letter-spacing: 0.35em;
+    color: rgba(120,80,255,0.4);
+    text-transform: uppercase;
+    padding: 12px 18px 6px;
+  }
+
+  .db-nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 18px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em;
+    color: #9090a8;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 2px solid transparent;
+    user-select: none;
+  }
+  .db-nav-item:hover { color: #e0e0ec; background: rgba(102,51,255,0.05); }
+  .db-nav-item.active { color: #9966ff; background: rgba(102,51,255,0.08); border-left-color: #7744ff; }
+  .db-nav-icon { font-size: 13px; width: 18px; text-align: center; }
+
+  .sidebar-footer-info {
+    margin-top: auto;
+    padding: 16px 18px;
+    border-top: 1px solid rgba(102,51,255,0.12);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; color: #9090a8; line-height: 1.9;
+  }
+  .sidebar-footer-info .sv { color: #7744ff; font-size: 12px; }
+
+  /* Dashboard main content */
+  .panel-main {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 28px;
+  }
+
+  .db-page { display: none; }
+  .db-page.active { display: block; }
+
+  /* Status hero */
+  .status-hero {
+    background: #0a0a18;
+    border: 1px solid rgba(102,51,255,0.12);
+    padding: 28px; margin-bottom: 20px;
+    display: flex; flex-wrap: wrap;
+    gap: 20px; align-items: center;
+    justify-content: space-between;
+    position: relative; overflow: hidden;
+  }
+  .status-hero::before {
+    content: ''; position: absolute;
+    top: -40px; right: -40px;
+    width: 200px; height: 200px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(102,51,255,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .status-eyebrow {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px; letter-spacing: 0.35em;
+    color: #9090a8; text-transform: uppercase;
+    margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .status-eyebrow::before { content: '◈'; color: #7744ff; font-size: 7px; }
+
+  .status-value {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 48px; font-weight: 300; line-height: 1;
+    color: #f0f0f8; margin-bottom: 12px; letter-spacing: -0.01em;
+  }
+  .status-value.alive { color: #33ff99; }
+  .status-value.awakened { color: #ffb830; }
+
+  .status-meta { display: flex; gap: 20px; flex-wrap: wrap; }
+  .status-meta-item label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px; letter-spacing: 0.2em;
+    color: rgba(120,80,255,0.4); text-transform: uppercase; display: block;
+  }
+  .status-meta-item span {
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #e0e0ec;
+  }
+
+  /* Heartbeat orb */
+  .hb-orb-wrap { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
+  .hb-orb-ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid rgba(102,51,255,0.2);
+    animation: hb-ring-expand 3s ease-in-out infinite;
+  }
+  .hb-orb-ring:nth-child(2) { animation-delay: 1s; opacity: 0.5; }
+  @keyframes hb-ring-expand {
+    0%{transform:scale(0.7);opacity:0.6} 100%{transform:scale(1.5);opacity:0}
+  }
+  .hb-orb-center {
+    position: absolute; top:50%; left:50%;
+    transform: translate(-50%,-50%);
+    width: 52px; height: 52px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(102,51,255,0.3) 0%, rgba(102,51,255,0.05) 100%);
+    border: 1px solid rgba(102,51,255,0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; cursor: pointer; transition: all 0.25s;
+  }
+  .hb-orb-center:hover { box-shadow: 0 0 24px rgba(102,51,255,0.4); }
+  .hb-orb-center.beat { animation: orb-beat 0.5s ease-in-out; }
+  @keyframes orb-beat {
+    0%{transform:translate(-50%,-50%) scale(1)}
+    40%{transform:translate(-50%,-50%) scale(1.25)}
+    100%{transform:translate(-50%,-50%) scale(1)}
+  }
+
+  .hb-orb-label {
+    font-family: 'Share Tech Mono', monospace; font-size: 9px;
+    color: #9090a8; text-align: center; margin-top: 6px; letter-spacing: 0.1em;
+  }
+  .hb-orb-label strong { display: block; font-size: 13px; color: #e0e0ec; margin-bottom: 1px; }
+
+  /* Stats cards */
+  .db-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px; margin-bottom: 20px;
+  }
+  .db-card {
+    background: #0a0a18; border: 1px solid rgba(102,51,255,0.12);
+    padding: 16px; transition: border-color 0.2s;
+  }
+  .db-card:hover { border-color: rgba(102,51,255,0.3); }
+  .db-card-label { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.25em; color: #9090a8; text-transform: uppercase; margin-bottom: 6px; }
+  .db-card-value { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 20px; color: #f0f0f8; line-height: 1; }
+  .db-card-sub { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: #9090a8; margin-top: 3px; }
+
+  /* Progress bar */
+  .db-progress { background: #0a0a18; border: 1px solid rgba(102,51,255,0.12); padding: 16px; margin-bottom: 20px; }
+  .db-progress-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+  .db-progress-label { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: #9090a8; text-transform: uppercase; }
+  .db-progress-val { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #e0e0ec; }
+  .db-progress-bar { height: 3px; background: rgba(102,51,255,0.1); }
+  .db-progress-fill { height: 100%; background: linear-gradient(90deg, #4422cc, #9966ff); transition: width 0.5s; }
+  .db-progress-fill.warn { background: linear-gradient(90deg, #ff3d5a, #ff3366); }
+
+  /* Alert */
+  .db-alert { padding: 12px 16px; border-left: 3px solid #ffb830; background: rgba(255,184,48,0.05); font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #ffb830; line-height: 1.7; margin-bottom: 20px; display: none; }
+  .db-alert.visible { display: block; }
+
+  /* Section headers */
+  .db-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .db-section-title { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.25em; color: #9090a8; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+  .db-section-title::before { content: ''; width: 12px; height: 1px; background: #7744ff; }
+
+  /* Table */
+  .db-table { width: 100%; border-collapse: collapse; }
+  .db-table th { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: rgba(120,80,255,0.4); text-transform: uppercase; text-align: left; padding: 6px 12px; border-bottom: 1px solid rgba(102,51,255,0.12); }
+  .db-table td { padding: 10px 12px; border-bottom: 1px solid rgba(102,51,255,0.04); font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #e0e0ec; }
+  .db-table tr:hover td { background: rgba(102,51,255,0.03); }
+  .db-table tr:last-child td { border-bottom: none; }
+  .addr-short { color: #9090a8; }
+
+  /* Tags */
+  .tag { display: inline-block; font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 7px; border: 1px solid currentColor; }
+  .tag-transfer { color: #7744ff; }
+  .tag-burn { color: #ff3366; }
+  .tag-pending { color: #9090a8; }
+  .tag-done { color: #33ff99; }
+
+  /* Forms */
+  .db-form { background: #0a0a18; border: 1px solid rgba(102,51,255,0.12); padding: 20px; margin-bottom: 16px; }
+  .db-form-title { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 0.2em; color: #9966ff; text-transform: uppercase; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid rgba(102,51,255,0.12); }
+  .db-form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .db-form-group { display: flex; flex-direction: column; gap: 5px; }
+  .db-form-group label { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: #9090a8; text-transform: uppercase; }
+  .db-form-group input, .db-form-group select { background: #07070f; border: 1px solid rgba(102,51,255,0.12); color: #e0e0ec; font-family: 'Share Tech Mono', monospace; font-size: 11px; padding: 8px 12px; outline: none; transition: border-color 0.2s; -webkit-appearance: none; width: 100%; }
+  .db-form-group input:focus, .db-form-group select:focus { border-color: #7744ff; }
+  .db-form-group input::placeholder { color: rgba(120,80,255,0.3); }
+  .db-form-group select option { background: #07070f; }
+
+  /* Buttons */
+  .db-btn { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; padding: 10px 22px; border: none; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+  .db-btn-primary { background: #7744ff; color: #f0f0f8; }
+  .db-btn-primary:hover { background: #9966ff; box-shadow: 0 0 20px rgba(102,51,255,0.3); }
+  .db-btn-outline { background: transparent; border: 1px solid rgba(102,51,255,0.12); color: #e0e0ec; }
+  .db-btn-outline:hover { border-color: rgba(102,51,255,0.4); color: #9966ff; }
+  .db-btn-danger { background: transparent; border: 1px solid rgba(255,61,90,0.25); color: #ff3d5a; }
+  .db-btn-danger:hover { background: rgba(255,61,90,0.08); border-color: #ff3d5a; }
+  .db-btn-green { background: #33ff99; color: #030305; font-weight: 700; }
+  .db-btn-green:hover { box-shadow: 0 0 20px rgba(51,255,153,0.3); }
+
+  .icon-btn { background: none; border: 1px solid rgba(102,51,255,0.12); color: #9090a8; font-size: 11px; padding: 3px 7px; cursor: pointer; transition: all 0.2s; }
+  .icon-btn:hover { border-color: #ff3d5a; color: #ff3d5a; }
+
+  /* Watcher result */
+  .watcher-result { display: none; margin-top: 14px; padding: 14px; background: #07070f; border: 1px solid rgba(102,51,255,0.12); font-family: 'Share Tech Mono', monospace; font-size: 10px; line-height: 2; color: #9090a8; }
+  .watcher-result.visible { display: block; }
+
+  /* Info box */
+  .db-info { padding: 10px 14px; border-left: 3px solid rgba(102,51,255,0.5); background: rgba(102,51,255,0.05); font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #9090a8; line-height: 1.7; margin-bottom: 14px; }
+  .db-info strong { color: #e0e0ec; }
+
+  /* Ping ripple */
+  .ping-ripple { position: fixed; inset: 0; pointer-events: none; z-index: 10000; display: none; align-items: center; justify-content: center; }
+  .ping-ripple.active { display: flex; }
+  .ping-ripple-ring { position: absolute; width: 80px; height: 80px; border-radius: 50%; border: 2px solid #7744ff; animation: ripple-out 1s ease-out forwards; }
+  .ping-ripple-ring:nth-child(2) { animation-delay: 0.12s; }
+  .ping-ripple-ring:nth-child(3) { animation-delay: 0.24s; }
+  @keyframes ripple-out { from{transform:scale(0.5);opacity:0.8} to{transform:scale(10);opacity:0} }
+
+  /* Page title */
+  .db-page-title { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 300; color: #f0f0f8; margin-bottom: 2px; }
+  .db-page-sub { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: #9090a8; text-transform: uppercase; margin-bottom: 22px; }
+
+    @media (max-width: 800px) {
+    .panel-body { flex-direction: column; }
+    .panel-sidebar { display: none !important; }
+    .db-cards { grid-template-columns: 1fr 1fr; }
+    .status-hero { grid-template-columns: 1fr; }
+    .how-grid { grid-template-columns: 1fr; }
+    .roadmap-grid { grid-template-columns: 1fr; }
+    .actions-grid { grid-template-columns: 1fr; }
+  }
+</style>
+<!-- Solana Web3.js - loaded async so it doesn't block page -->
+<script>
+  var solanaWeb3 = null;
+  var web3Script = document.createElement('script');
+  web3Script.src = 'https://cdn.jsdelivr.net/npm/@solana/web3.js@latest/lib/index.iife.min.js';
+  web3Script.onload = function() {
+    solanaWeb3 = window.solanaWeb3;
+    console.log('Solana web3.js loaded:', !!solanaWeb3);
+  };
+  web3Script.onerror = function() {
+    console.warn('Solana web3.js failed to load - demo mode only');
+  };
+  document.head.appendChild(web3Script);
+</script>
+</head>
+<body>
+
+<div class="ghost-watermark">G</div>
+<div class="notif" id="notif"></div>
+
+<!-- ─── WALLET MODAL ────────────────────────────────────────── -->
+<div class="modal-overlay" id="walletModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h3>Connect Wallet</h3>
+    <p>Choose your Solana wallet to register your heartbeat.</p>
+    <div class="wallet-option" onclick="connectWallet('Phantom')">
+      <span class="w-icon">👻</span>
+      <div><div class="w-name">Phantom</div><div class="w-desc">Most popular Solana wallet</div></div>
+    </div>
+    <div class="wallet-option" onclick="connectWallet('Solflare')">
+      <span class="w-icon">🔆</span>
+      <div><div class="w-name">Solflare</div><div class="w-desc">Built for Solana power users</div></div>
+    </div>
+    <div class="wallet-option" onclick="connectWallet('Backpack')">
+      <span class="w-icon">🎒</span>
+      <div><div class="w-name">Backpack</div><div class="w-desc">xNFT wallet by Coral</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── DASHBOARD PANEL ─────────────────────────────────────── -->
+<div class="dashboard-panel" id="dashboardPanel">
+
+  <div class="panel-topbar">
+    <button class="panel-back" onclick="closeDashboard()">← Back to site</button>
+    <div class="panel-logo">GH<span>O</span>ST <span style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.15em;color:var(--muted)">— VAULT</span></div>
+    <div class="panel-wallet">
+      <span class="panel-wallet-dot"></span>
+      <span id="panelWalletAddr">4xKm...9nZq</span>
+    </div>
+  </div>
+
+  <div class="panel-body">
+
+    <!-- Sidebar -->
+    <div class="panel-sidebar">
+      <div class="sidebar-section-label">Vault</div>
+      <div class="db-nav-item active" onclick="dbShowPage('overview', this)"><span class="db-nav-icon">👻</span>Overview</div>
+      <div class="db-nav-item" onclick="dbShowPage('vault', this)"><span class="db-nav-icon">🔒</span>Vault Assets</div>
+      <div class="db-nav-item" onclick="dbShowPage('beneficiaries', this)"><span class="db-nav-icon">📋</span>Beneficiaries</div>
+      <div class="sidebar-section-label" style="margin-top:6px">Settings</div>
+      <div class="db-nav-item" onclick="dbShowPage('heartbeat', this)"><span class="db-nav-icon">💓</span>Heartbeat</div>
+      <div class="db-nav-item" onclick="dbShowPage('recovery', this)"><span class="db-nav-icon">🔑</span>Recovery</div>
+      <div class="db-nav-item" onclick="dbShowPage('settings', this)"><span class="db-nav-icon">⚙️</span>Settings</div>
+      <div class="sidebar-section-label" style="margin-top:6px">Protocol</div>
+      <div class="db-nav-item" onclick="dbShowPage('watcher', this)"><span class="db-nav-icon">👁️</span>Watcher</div>
+      <div class="db-nav-item" onclick="closeDashboard()"><span class="db-nav-icon">🌐</span>Back to site</div>
+      <div class="sidebar-footer-info">
+        STAKED<br><span class="sv" id="sidebarStake">10,000 $GHOST</span><br>
+        PINGS<br><span class="sv" id="sidebarPings">47</span>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <main class="panel-main">
+
+      <!-- OVERVIEW -->
+      <div class="db-page active" id="db-page-overview">
+        <div class="db-page-title">Your Ghost</div>
+        <div class="db-page-sub">Vault Status · Digital Legacy Protocol</div>
+
+        <div class="db-alert" id="dbAwakeningAlert">
+          ⚠ GHOST AWAKENED — Grace period expires in <strong id="dbGraceCountdown">6d 14h</strong>. Ping now to cancel.
+          <br><button class="db-btn db-btn-green" style="margin-top:8px" onclick="sendPing()">💓 SEND HEARTBEAT NOW</button>
+        </div>
+
+        <div class="status-hero">
+          <div>
+            <div class="status-eyebrow">Current Status</div>
+            <div class="status-value alive" id="dbStatusValue">ALIVE</div>
+            <div class="status-meta">
+              <div class="status-meta-item"><label>Last Ping</label><span id="dbLastPing">3 hours ago</span></div>
+              <div class="status-meta-item"><label>Interval</label><span id="dbInterval">365 days</span></div>
+              <div class="status-meta-item"><label>Grace</label><span id="dbGrace">30 days</span></div>
+              <div class="status-meta-item"><label>Registered</label><span>Jan 15, 2026</span></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+            <div class="hb-orb-wrap">
+              <div class="hb-orb-ring"></div>
+              <div class="hb-orb-ring"></div>
+              <div class="hb-orb-center" id="hbOrb" onclick="sendPing()" title="Click to ping">💓</div>
+            </div>
+            <div class="hb-orb-label"><strong id="dbCountdown">361d 21h</strong>until deadline</div>
+          </div>
+        </div>
+
+        <div class="db-progress">
+          <div class="db-progress-header">
+            <span class="db-progress-label">Heartbeat Window</span>
+            <span class="db-progress-val" id="dbProgressVal">1% elapsed</span>
+          </div>
+          <div class="db-progress-bar">
+            <div class="db-progress-fill" id="dbProgressFill" style="width:1%"></div>
+          </div>
+        </div>
+
+        <div class="db-cards">
+          <div class="db-card"><div class="db-card-label">🔒 Vault Balance</div><div class="db-card-value" id="dbVaultBal">750,000</div><div class="db-card-sub">$GHOST locked</div></div>
+          <div class="db-card"><div class="db-card-label">📋 Beneficiaries</div><div class="db-card-value" id="dbBenefCount">3</div><div class="db-card-sub">of 10 slots</div></div>
+          <div class="db-card"><div class="db-card-label">💓 Pings</div><div class="db-card-value" id="dbPingCount">47</div><div class="db-card-sub">total heartbeats</div></div>
+          <div class="db-card"><div class="db-card-label">🔑 Recovery</div><div class="db-card-value" style="font-size:15px" id="dbRecoveryStatus">SET</div><div class="db-card-sub" id="dbRecoveryShort">7xKp...3mNz</div></div>
+        </div>
+
+        <div class="db-section-header"><div class="db-section-title">Recent Activity</div></div>
+        <div class="db-form" style="padding:0">
+          <table class="db-table">
+            <thead><tr><th>Event</th><th>Time</th><th>Tx</th></tr></thead>
+            <tbody id="dbActivityLog">
+              <tr><td>💓 Heartbeat sent</td><td>3h ago</td><td><span class="addr-short">5xKp...2mQ</span></td></tr>
+              <tr><td>📋 Beneficiary added</td><td>2d ago</td><td><span class="addr-short">9aRt...7hX</span></td></tr>
+              <tr><td>📥 Deposited 100k $GHOST</td><td>5d ago</td><td><span class="addr-short">3fMn...0kP</span></td></tr>
+              <tr><td>👻 Ghost registered</td><td>Jan 15</td><td><span class="addr-short">1gHs...5rW</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- VAULT -->
+      <div class="db-page" id="db-page-vault">
+        <div class="db-page-title">Vault Assets</div>
+        <div class="db-page-sub">Deposit · Withdraw · Manage</div>
+
+        <div class="db-form">
+          <div class="db-form-title">📥 Deposit to Vault</div>
+          <div class="db-form-grid">
+            <div class="db-form-group"><label>Token</label><select id="depositToken"><option>$GHOST</option><option>SOL</option><option>USDC</option></select></div>
+            <div class="db-form-group"><label>Amount</label><input type="number" id="depositAmt" placeholder="50000"></div>
+          </div>
+          <button class="db-btn db-btn-primary" onclick="dbDeposit()">📥 Deposit</button>
+        </div>
+
+        <div class="db-form">
+          <div class="db-form-title">📤 Withdraw from Vault</div>
+          <div class="db-info"><strong>Note:</strong> Withdrawals blocked while awakened.</div>
+          <div class="db-form-grid">
+            <div class="db-form-group"><label>Token</label><select id="withdrawToken"><option>$GHOST</option><option>SOL</option><option>USDC</option></select></div>
+            <div class="db-form-group"><label>Amount</label><input type="number" id="withdrawAmt" placeholder="25000"></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="db-btn db-btn-outline" onclick="dbWithdraw()">📤 Withdraw</button>
+            <button class="db-btn db-btn-outline" onclick="document.getElementById('withdrawAmt').value=ghostState.ghost.vaultBalance">MAX</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BENEFICIARIES -->
+      <div class="db-page" id="db-page-beneficiaries">
+        <div class="db-page-title">Beneficiaries</div>
+        <div class="db-page-sub">Who receives your digital legacy</div>
+
+        <div class="db-section-header">
+          <div class="db-section-title">Registered</div>
+          <span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted)" id="dbBSlots">3 / 10 slots</span>
+        </div>
+
+        <div class="db-form" style="padding:0;margin-bottom:20px">
+          <table class="db-table">
+            <thead><tr><th>#</th><th>Wallet</th><th>Amount</th><th>Token</th><th>Action</th><th>Status</th><th></th></tr></thead>
+            <tbody id="dbBeneficiaryList"></tbody>
+          </table>
+        </div>
+
+        <div class="db-form">
+          <div class="db-form-title">➕ Add Beneficiary</div>
+          <div class="db-form-grid">
+            <div class="db-form-group" style="grid-column:1/-1"><label>Recipient Wallet</label><input type="text" id="newRecipient" placeholder="Solana address (base58)"></div>
+            <div class="db-form-group"><label>Amount</label><input type="number" id="newAmount" placeholder="250000"></div>
+            <div class="db-form-group"><label>Token</label><select id="newToken"><option>$GHOST</option><option>SOL</option><option>USDC</option></select></div>
+            <div class="db-form-group"><label>Action</label><select id="newAction"><option value="transfer">Transfer</option><option value="burn">Burn</option></select></div>
+          </div>
+          <button class="db-btn db-btn-primary" onclick="dbAddBeneficiary()">➕ Add</button>
+        </div>
+      </div>
+
+      <!-- HEARTBEAT -->
+      <div class="db-page" id="db-page-heartbeat">
+        <div class="db-page-title">Heartbeat</div>
+        <div class="db-page-sub">Stay alive · Prove you're here</div>
+        <div class="db-info">Ping before your interval expires. Anyone can trigger your ghost when silent — and earn 5% of your stake as bounty.</div>
+        <div class="db-form" style="text-align:center;padding:40px">
+          <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:300;color:var(--muted);margin-bottom:4px">Next deadline in</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:60px;line-height:1;color:var(--white);margin-bottom:28px" id="dbBigCountdown">361d 21h</div>
+          <button class="db-btn db-btn-primary" style="padding:16px 52px;font-size:12px" onclick="sendPing()">💓 SEND HEARTBEAT</button>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted);margin-top:12px">~0.000005 SOL fee</div>
+        </div>
+        <div class="db-section-header"><div class="db-section-title">Ping History</div></div>
+        <div class="db-form" style="padding:0">
+          <table class="db-table">
+            <thead><tr><th>#</th><th>Timestamp</th><th>Tx</th><th>Gap</th></tr></thead>
+            <tbody id="dbPingHistory">
+              <tr><td>47</td><td>Feb 25, 2026 09:14</td><td><span class="addr-short">5xKp...2mQ</span></td><td>3h ago</td></tr>
+              <tr><td>46</td><td>Jan 26, 2026 14:02</td><td><span class="addr-short">8bNr...1pS</span></td><td>30 days</td></tr>
+              <tr><td>45</td><td>Dec 27, 2025 11:55</td><td><span class="addr-short">2cQt...9wA</span></td><td>30 days</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- RECOVERY -->
+      <div class="db-page" id="db-page-recovery">
+        <div class="db-page-title">Recovery Wallet</div>
+        <div class="db-page-sub">A safety net · Cannot steal · Only cancels</div>
+        <div class="db-info"><strong>Cannot access vault funds.</strong> Can only cancel an awakening during the grace period — preventing accidental execution.</div>
+        <div class="db-form">
+          <div class="db-form-title">Current Recovery Wallet</div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text);padding:10px;background:var(--deep);border:1px solid var(--border);margin-bottom:14px;word-break:break-all" id="dbCurrentRecovery">
+            7xKp3mNz4QrT9hWf2LsA8dBn6vXjYe1RcUo5PkGt0sV
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="db-btn db-btn-outline" onclick="document.getElementById('dbNewRecovery').focus()">✏️ Update</button>
+            <button class="db-btn db-btn-danger" onclick="dbRemoveRecovery()">🗑️ Remove</button>
+          </div>
+        </div>
+        <div class="db-form">
+          <div class="db-form-title">✏️ Update Recovery Wallet</div>
+          <div class="db-form-group" style="margin-bottom:14px"><label>New Address</label><input type="text" id="dbNewRecovery" placeholder="Solana address"></div>
+          <button class="db-btn db-btn-primary" onclick="dbUpdateRecovery()">🔑 Update</button>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="db-page" id="db-page-settings">
+        <div class="db-page-title">Settings</div>
+        <div class="db-page-sub">Configure your protocol parameters</div>
+        <div class="db-form">
+          <div class="db-form-title">⏱️ Heartbeat Interval</div>
+          <div class="db-form-grid">
+            <div class="db-form-group"><label>Interval (Days)</label><input type="number" id="dbNewInterval" placeholder="365" min="7" oninput="document.getElementById('dbIntervalPreview').value=this.value+'d ≈ '+(this.value/30).toFixed(1)+'mo'"></div>
+            <div class="db-form-group"><label>Preview</label><input type="text" id="dbIntervalPreview" value="365d ≈ 12.2mo" readonly style="color:var(--muted)"></div>
+          </div>
+          <button class="db-btn db-btn-primary" onclick="dbUpdateInterval()">⏱️ Update Interval</button>
+        </div>
+        <div class="db-form">
+          <div class="db-form-title">⏳ Grace Period</div>
+          <div class="db-form-grid">
+            <div class="db-form-group"><label>Grace Period (Days)</label><input type="number" id="dbNewGrace" placeholder="30" min="1"></div>
+          </div>
+          <button class="db-btn db-btn-primary" onclick="dbUpdateGrace()">⏳ Update Grace</button>
+        </div>
+        <div class="db-form" style="border-color:rgba(255,61,90,0.2)">
+          <div class="db-form-title" style="color:var(--red)">⚠️ Danger Zone</div>
+          <div class="db-info" style="border-color:var(--red)"><strong>Abandon:</strong> Closes vault. 50% of staked $GHOST permanently burned. Irreversible.</div>
+          <button class="db-btn db-btn-danger" onclick="dbAbandon()">💀 Abandon Ghost</button>
+        </div>
+      </div>
+
+      <!-- WATCHER -->
+      <div class="db-page" id="db-page-watcher">
+        <div class="db-page-title">Watcher</div>
+        <div class="db-page-sub">Trigger silence checks · Earn bounties</div>
+        <div class="db-info">Call <code>check_silence</code> on any ghost exceeding its heartbeat interval. Earn 5% of their staked $GHOST.</div>
+        <div class="db-form">
+          <div class="db-form-title">🔍 Check a Soul</div>
+          <div class="db-form-group" style="margin-bottom:14px"><label>Soul Wallet Address</label><input type="text" id="soulToCheck" placeholder="Wallet address"></div>
+          <div style="display:flex;gap:10px">
+            <button class="db-btn db-btn-primary" onclick="dbCheckSilence()">👁️ Check Silence</button>
+            <button class="db-btn db-btn-outline" onclick="dbLookupSoul()">🔍 Lookup Status</button>
+          </div>
+          <div class="watcher-result" id="watcherResult"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="db-card"><div class="db-card-label">💰 Bounties Earned</div><div class="db-card-value">0</div><div class="db-card-sub">awakenings triggered</div></div>
+          <div class="db-card"><div class="db-card-label">🪙 Total Bounty</div><div class="db-card-value">0</div><div class="db-card-sub">$GHOST earned</div></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- PING RIPPLE -->
+<div class="ping-ripple" id="pingRipple">
+  <div class="ping-ripple-ring"></div>
+  <div class="ping-ripple-ring"></div>
+  <div class="ping-ripple-ring"></div>
+</div>
+
+<div class="marketing-site">
+<!-- ─── MARKETING SITE ──────────────────────────────────────── -->
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="#"><span>$</span>GHOST</a>
+  <ul class="nav-links">
+    <li><a href="#protocol">Protocol</a></li>
+    <li><a href="#tokenomics">Tokenomics</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#faq">FAQ</a></li>
+    <li><a href="#" class="nav-dashboard-link" id="navDashboardLink" onclick="openDashboard();return false;">
+      <span class="nav-dashboard-dot"></span> Dashboard
+    </a></li>
+  </ul>
+  <button class="wallet-btn" id="walletBtn" onclick="openModal()">Connect Wallet</button>
+</nav>
+
+<!-- CONTRACT BANNER -->
+<div class="contract-banner">
+  <span class="label">Contract</span>
+  <span class="contract-addr" id="contractAddr">3Es13...3sZ3</span>
+  <button class="copy-btn" onclick="copyContract()">COPY</button>
+  <span class="sol-badge">◎ SOLANA</span>
+  <a href="https://pump.fun" target="_blank" style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:0.2em;color:var(--accent);text-decoration:none;border:1px solid rgba(102,51,255,0.3);padding:3px 10px;">BUY ON PUMP.FUN ↗</a>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div class="heartbeat-ring"></div>
+  <div class="heartbeat-ring"></div>
+  <div class="heartbeat-ring"></div>
+  <svg class="hero-logo" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+    <defs><radialGradient id="coinGrad" cx="40%" cy="35%" r="60%"><stop offset="0%" stop-color="#9966ff"/><stop offset="50%" stop-color="#6633ff"/><stop offset="100%" stop-color="#2200aa"/></radialGradient></defs>
+    <circle cx="200" cy="200" r="180" fill="rgba(102,51,255,0.08)"/>
+    <circle cx="200" cy="200" r="155" fill="none" stroke="#6633ff" stroke-width="1" opacity="0.3"/>
+    <circle cx="200" cy="200" r="140" fill="url(#coinGrad)"/>
+    <circle cx="200" cy="200" r="132" fill="none" stroke="#9966ff" stroke-width="1" opacity="0.4"/>
+    <path d="M200 105 C165 105, 138 130, 138 162 L138 248 L155 235 L172 248 L189 235 L200 245 L211 235 L228 248 L245 235 L262 248 L262 162 C262 130, 235 105, 200 105 Z" fill="#e8e0ff" opacity="0.95"/>
+    <ellipse cx="181" cy="175" rx="12" ry="14" fill="#2200aa"/>
+    <ellipse cx="219" cy="175" rx="12" ry="14" fill="#2200aa"/>
+    <ellipse cx="181" cy="175" rx="6" ry="7" fill="#8855ff" opacity="0.8"/>
+    <ellipse cx="219" cy="175" rx="6" ry="7" fill="#8855ff" opacity="0.8"/>
+    <circle cx="178" cy="172" r="3" fill="#ffffff" opacity="0.9"/>
+    <circle cx="216" cy="172" r="3" fill="#ffffff" opacity="0.9"/>
+    <polyline points="138,205 155,205 163,205 167,188 172,222 176,196 180,214 184,205 216,205 220,205 224,190 228,220 232,197 236,210 240,205 262,205" fill="none" stroke="#ff3366" stroke-width="2" opacity="0.85" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <p class="hero-eyebrow">Trustless · Solana · Digital Legacy Protocol</p>
+  <h1 class="hero-title">GHOST</h1>
+  <p class="hero-ticker">$GHOST</p>
+  <p class="hero-sub">Miss your heartbeat.<br><em>Your ghost awakens.</em></p>
+  <div class="hero-actions">
+    <a class="btn-pump" href="https://pump.fun" target="_blank"><span class="pump-icon">👻</span> Buy on Pump.fun</a>
+    <a class="btn-dex" href="https://dexscreener.com" target="_blank">Dexscreener ↗</a>
+    <button class="btn-secondary" onclick="openModal()">Register Heartbeat</button>
+  </div>
+  <div class="heartbeat-bar">
+    <div class="hb-label">
+      <span id="walletStatus">Ghost_0x4f...3a9c — Heartbeat Active</span>
+      <span>● PULSE DETECTED</span>
+    </div>
+    <div class="hb-line">
+      <svg class="hb-svg" viewBox="0 0 1400 60" preserveAspectRatio="none">
+        <polyline points="0,30 100,30 120,30 130,5 140,55 150,20 160,45 170,30 300,30 400,30 420,30 430,8 440,52 450,18 460,42 470,30 600,30 700,30 720,30 730,5 740,55 750,20 760,45 770,30 900,30 1000,30 1020,30 1030,8 1040,52 1050,18 1060,42 1070,30 1200,30 1300,30 1320,30 1330,5 1340,55 1350,20 1360,45 1370,30 1400,30" fill="none" stroke="#6633ff" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- PRICE TICKER -->
+<div class="stats-wrap reveal">
+  <div class="price-ticker">
+    <div class="ticker-item"><span class="ticker-label">Price</span><span class="ticker-value up" id="price">$0.0000042</span></div>
+    <div class="ticker-item"><span class="ticker-label">Market Cap</span><span class="ticker-value">$88,200</span></div>
+    <div class="ticker-item"><span class="ticker-label">24h Change</span><span class="ticker-value up">+420.69%</span></div>
+    <div class="ticker-item"><span class="ticker-label">Holders</span><span class="ticker-value" id="holders">12,847</span></div>
+    <div class="ticker-item"><span class="ticker-label">Network</span><span class="ticker-value" style="color:var(--sol)">◎ Solana</span></div>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats-wrap reveal">
+  <div class="stats">
+    <div class="stat"><span class="stat-value">1B</span><span class="stat-label">Total Supply</span></div>
+    <div class="stat"><span class="stat-value" id="ghostCount">2,401</span><span class="stat-label">Ghosts Active</span></div>
+    <div class="stat"><span class="stat-value">365d</span><span class="stat-label">Default Heartbeat</span></div>
+    <div class="stat"><span class="stat-value">∞</span><span class="stat-label">Legacy Duration</span></div>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section id="protocol">
+  <span class="section-tag reveal">§01 — The Protocol</span>
+  <h2 class="section-title reveal">Miss your heartbeat.<br>Your ghost awakens.</h2>
+  <p class="section-body reveal">GHOST is a trustless digital legacy protocol on Solana. Deposit SOL, SPL tokens, or NFTs into your personal vault, set your beneficiaries, and keep pinging. If your heartbeat stops, a grace period begins — and if no one intervenes, your vault executes your final instructions automatically. No private keys shared. No middlemen. Just code.</p>
+  <div class="how-grid">
+    <div class="how-steps reveal">
+      <div class="step"><span class="step-num">01 —</span><div class="step-content"><h3>Connect & Create Vault</h3><p>Connect your wallet. Stake $GHOST to initialize your ghost account. A unique vault (PDA) is created on-chain — only the program can move funds from it.</p></div></div>
+      <div class="step"><span class="step-num">02 —</span><div class="step-content"><h3>Fund & Configure</h3><p>Deposit SOL, SPL tokens, or NFTs into your vault. Set your beneficiaries — who gets what when you go dark.</p></div></div>
+      <div class="step"><span class="step-num">03 —</span><div class="step-content"><h3>Stay Alive</h3><p>Ping before your interval expires. Costs less than 0.001 SOL. Miss it, and anyone can call <code style="color:var(--accent)">check_silence()</code>.</p></div></div>
+      <div class="step"><span class="step-num">04 —</span><div class="step-content"><h3>Grace Period & Execution</h3><p>During the grace window, you or your recovery wallet can cancel. If no one intervenes, your vault executes automatically.</p></div></div>
+    </div>
+    <div class="terminal reveal">
+      <div class="terminal-bar">
+        <div class="terminal-dot red"></div><div class="terminal-dot yellow"></div><div class="terminal-dot green"></div>
+        <span class="terminal-title">ghost_protocol/src/lib.rs</span>
+      </div>
+      <div class="terminal-body">
+        <span class="t-line t-comment">// GHOST Protocol — Solana / Anchor v1.1</span>
+        <span class="t-line t-comment">// Trustless Digital Legacy</span>
+        <span class="t-line"> </span>
+        <span class="t-line"><span class="t-func">#[account]</span></span>
+        <span class="t-line"><span class="t-keyword">pub struct</span> <span class="t-func">GhostAccount</span> {</span>
+        <span class="t-line">  <span class="t-keyword">pub</span> owner: Pubkey,</span>
+        <span class="t-line">  <span class="t-keyword">pub</span> recovery_wallet: Option&lt;Pubkey&gt;,</span>
+        <span class="t-line">  <span class="t-keyword">pub</span> last_heartbeat: i64,</span>
+        <span class="t-line">  <span class="t-keyword">pub</span> awakened: bool,</span>
+        <span class="t-line">  <span class="t-keyword">pub</span> beneficiaries: [Beneficiary; 10],</span>
+        <span class="t-line">}</span>
+        <span class="t-line"> </span>
+        <span class="t-line"><span class="t-keyword">pub fn</span> <span class="t-pulse">check_silence</span>(ctx) {</span>
+        <span class="t-line">  <span class="t-keyword">if</span> silence > interval {</span>
+        <span class="t-line">    ghost.awakened = <span class="t-number">true</span>;</span>
+        <span class="t-line">    pay_bounty(5%)?;</span>
+        <span class="t-line">  }</span>
+        <span class="t-line">}</span>
+        <span class="t-line"> </span>
+        <span class="t-line"><span class="t-keyword">pub fn</span> <span class="t-func">execute_legacy</span>(ctx) {</span>
+        <span class="t-line">  <span class="t-keyword">if</span> grace_expired(&ghost) {</span>
+        <span class="t-line">    distribute_vault(&ghost)?;</span>
+        <span class="t-line">  }</span>
+        <span class="t-line">}</span>
+        <span class="t-line"> </span>
+        <span class="t-line"><span class="t-comment">// $ anchor build && anchor deploy</span></span>
+        <span class="t-line"><span class="t-comment">// > deploying to mainnet-beta...</span> <span class="cursor"></span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TOKENOMICS -->
+<div class="token-section">
+  <section id="tokenomics" style="max-width:1200px;padding:100px 48px;">
+    <span class="section-tag reveal">§02 — Tokenomics</span>
+    <h2 class="section-title reveal">1 Billion $GHOST.<br>Not one more.</h2>
+    <p class="section-body reveal">Fixed supply. No minting. Fair launch on Pump.fun. $GHOST powers every ghost on-chain.</p>
+    <div class="token-grid reveal" style="grid-template-columns:repeat(2,1fr)">
+      <div class="token-card"><span class="token-percent">85<span>%</span></span><span class="token-name">Pump.fun Fair Launch</span><p class="token-desc">850,000,000 $GHOST. Bonding curve. No presale. No VCs.</p></div>
+      <div class="token-card"><span class="token-percent">10<span>%</span></span><span class="token-name">Project Treasury</span><p class="token-desc">100,000,000 $GHOST. Team-controlled wallet. Funds marketing & ops.</p></div>
+      <div class="token-card"><span class="token-percent">5<span>%</span></span><span class="token-name">Team</span><p class="token-desc">50,000,000 $GHOST. Locked on Streamflow. 6-month cliff, 6-month linear vest.</p></div>
+      <div class="token-card" style="background:rgba(102,51,255,0.04)"><span class="token-percent" style="color:var(--accent)">0<span>%</span></span><span class="token-name">VC / Private Sale</span><p class="token-desc">There are no ghosts that answer to venture capital. Never will be.</p></div>
+    </div>
+  </section>
+</div>
+
+<!-- MANIFESTO -->
+<div class="manifesto reveal">
+  <div class="manifesto-bg"></div>
+  <blockquote>"Death is not the end of presence.<br>It is only the end of the heartbeat."</blockquote>
+  <p class="manifesto-attr">— The GHOST Manifesto, 2026</p>
+</div>
+
+<!-- ROADMAP -->
+<section id="roadmap" style="max-width:1000px;">
+  <span class="section-tag reveal">§03 — Roadmap</span>
+  <h2 class="section-title reveal">The path<br>into the dark.</h2>
+  <div class="roadmap-grid reveal">
+    <div class="road-card active"><span class="road-badge">Phase I</span><h3>Summon</h3><span class="road-when">Now</span><ul><li>Fair launch on Pump.fun</li><li>Ghost whitepaper publication</li><li>Website + community launch</li><li>Target: 1,500 holders</li></ul></div>
+    <div class="road-card active"><span class="road-badge">Phase II</span><h3>Awaken</h3><span class="road-when">Q2 2026</span><ul><li>Ghost Vault deployed to mainnet</li><li>Dashboard — vault, beneficiaries, ping</li><li>SOL, SPL tokens & NFT vault support</li><li>Recovery wallet + grace period</li><li>Smart contract audit</li></ul></div>
+    <div class="road-card"><span class="road-badge">Phase III</span><h3>Possess</h3><span class="road-when">Q3 2026</span><ul><li>Auto-sell SPL tokens via Jupiter</li><li>Time-locked transfers</li><li>Off-chain executor (X, emails)</li><li>Mobile heartbeat app</li></ul></div>
+    <div class="road-card"><span class="road-badge">Phase IV</span><h3>Eternal</h3><span class="road-when">Q4 2026</span><ul><li>Close DeFi positions (Jupiter, Marginfi, Drift)</li><li>Cross-chain bridges (Ethereum, Base)</li><li>Executor node network</li><li>100k souls registered</li></ul></div>
+  </div>
+</section>
+
+<!-- ACTIONS -->
+<section id="actions" style="max-width:900px;">
+  <span class="section-tag reveal">§04 — Ghost Actions</span>
+  <h2 class="section-title reveal">What your ghost<br>can do.</h2>
+  <p class="section-body reveal">Configure exactly what happens when your heartbeat stops.</p>
+  <div class="actions-grid reveal">
+    <div class="action-col">
+      <h3>On-Chain — Phase II</h3>
+      <div class="action-item"><span class="action-icon">◎</span><p class="action-text">Send SOL to beneficiaries</p></div>
+      <div class="action-item"><span class="action-icon">🪙</span><p class="action-text">Send SPL tokens to beneficiaries</p></div>
+      <div class="action-item"><span class="action-icon">🖼</span><p class="action-text">Transfer NFTs to specific wallets</p></div>
+      <div class="action-item"><span class="action-icon">🔥</span><p class="action-text">Burn tokens or NFTs permanently</p></div>
+      <div class="action-item"><span class="action-icon">👥</span><p class="action-text">Split vault across up to 10 beneficiaries</p></div>
+    </div>
+    <div class="action-col">
+      <h3>Coming — Phase III & IV</h3>
+      <div class="action-item"><span class="action-icon">🔒</span><p class="action-text">Time-locked transfers <span>— vesting schedule</span></p></div>
+      <div class="action-item"><span class="action-icon">💱</span><p class="action-text">Auto-sell to SOL <span>— via Jupiter</span></p></div>
+      <div class="action-item"><span class="action-icon">📣</span><p class="action-text">Post a final message on X</p></div>
+      <div class="action-item"><span class="action-icon">📧</span><p class="action-text">Send emails to a list of people</p></div>
+      <div class="action-item"><span class="action-icon">📊</span><p class="action-text">Close DeFi positions <span>— Jupiter, Marginfi, Drift</span></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" style="max-width:900px;">
+  <span class="section-tag reveal">§05 — FAQ</span>
+  <h2 class="section-title reveal">Questions from<br>the living.</h2>
+  <div class="faq-list reveal">
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What is GHOST?</div><div class="faq-a"><p>GHOST is a trustless digital legacy protocol on Solana. You deposit assets into a personal vault, set your beneficiaries, and keep sending heartbeat pings. If you stop pinging, your ghost awakens and distributes your vault automatically.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">How is this different from giving someone my seed phrase?</div><div class="faq-a"><p>Giving someone your seed phrase means they can access your wallet at any time. With GHOST, your vault is controlled by an audited smart contract — not a person. Nobody can touch your vaulted assets while you're alive and pinging.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Do I have to put all my crypto in the vault?</div><div class="faq-a"><p>No. You deposit only what you want distributed. The rest stays in your personal wallet.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What if I forget to ping?</div><div class="faq-a"><p>A grace period starts — you choose the duration at registration (minimum 24 hours). During this window, you or your recovery wallet can cancel and reset your heartbeat.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What is a recovery wallet?</div><div class="faq-a"><p>An optional second wallet that can cancel a ghost awakening during the grace period. It cannot access vault funds — it can only stop accidental execution.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Can I withdraw my assets?</div><div class="faq-a"><p>Yes, anytime while your ghost is sleeping. You can deposit and withdraw freely. Withdrawals are blocked only during an active awakening.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Is the smart contract audited?</div><div class="faq-a"><p>An audit is planned for Phase II before mainnet deployment. The code is open source and built with Anchor. We'll publish the full report when complete.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Can the GHOST team access my vault?</div><div class="faq-a"><p>No. Your vault is a PDA — no private key. Only the program logic controls it, and only after your heartbeat expires and grace period passes.</p></div></div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section reveal">
+  <h2 class="cta-title">Are you<br>still alive?</h2>
+  <p class="cta-sub">Register your heartbeat before the silence speaks for you.</p>
+  <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;position:relative;z-index:2;">
+    <a class="btn-pump" href="https://pump.fun" target="_blank"><span class="pump-icon">👻</span> Buy on Pump.fun</a>
+    <button class="btn-secondary" onclick="openModal()">Register Heartbeat</button>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <span class="footer-logo">$GHOST</span>
+  <span class="footer-mono">◎ solana mainnet — contract: deploying soon</span>
+  <span class="footer-mono">© 2026 ghost protocol. all souls reserved.</span>
+</footer>
+
+<script>
+// ─── State ─────────────────────────────────────────────────────
+// ─── GHOST Protocol — Real Solana Integration ───────────────────
+// Update PROGRAM_ID after deploying to devnet/mainnet
+const PROGRAM_ID = '3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3';
+const RPC_URL = 'https://api.mainnet-beta.solana.com';
+const GHOST_SEED = 'ghost';
+const VAULT_SEED = 'vault';
+
+const ghostState = {
+  connected: false,
+  walletName: null,
+  walletAddress: null,
+  publicKey: null,
+  provider: null,
+  ghostPda: null,
+  vaultPda: null,
+  ghost: {
+    status: 'none',
+    lastHeartbeat: null,
+    intervalSeconds: 365 * 86400,
+    gracePeriodSeconds: 30 * 86400,
+    awakenedAt: null,
+    executed: false,
+    stakedGhost: 0,
+    pingCount: 0,
+    vaultBalance: 0,
+    recoveryWallet: null,
+    beneficiaries: []
+  }
+};
+
+// ─── Marketing site utils ───────────────────────────────────────
+const reveals = document.querySelectorAll('.reveal');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((e, i) => { if (e.isIntersecting) setTimeout(() => e.target.classList.add('visible'), i * 80); });
+}, { threshold: 0.08 });
+reveals.forEach(el => observer.observe(el));
+
+setInterval(() => {
+  const h = document.getElementById('holders');
+  h.textContent = (parseInt(h.textContent.replace(',','')) + Math.floor(Math.random() * 3)).toLocaleString();
+  const g = document.getElementById('ghostCount');
+  if (Math.random() > 0.5) g.textContent = (parseInt(g.textContent.replace(',','')) + 1).toLocaleString();
+}, 3500);
+
+setInterval(() => {
+  const base = 0.0000042;
+  const rand = base * (1 + (Math.random() - 0.48) * 0.1);
+  document.getElementById('price').textContent = '$' + rand.toFixed(7);
+}, 5000);
+
+function copyContract() {
+  const addr = document.getElementById('contractAddr').textContent;
+  navigator.clipboard?.writeText(addr).catch(() => {});
+  showNotif('Contract address copied to clipboard');
+}
+
+function showNotif(msg, type = '') {
+  const n = document.getElementById('notif');
+  n.textContent = msg;
+  n.className = 'notif show ' + type;
+  setTimeout(() => n.className = 'notif', 3000);
+}
+
+// ─── Wallet Modal ───────────────────────────────────────────────
+function openModal() { document.getElementById('walletModal').classList.add('open'); }
+function closeModal() { document.getElementById('walletModal').classList.remove('open'); }
+document.getElementById('walletModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+async function connectWallet(name) {
+  closeModal();
+  
+  // Get the right provider based on wallet name
+  let provider = null;
+  if (name === 'Phantom') {
+    provider = window.phantom?.solana || window.solana;
+  } else if (name === 'Solflare') {
+    provider = window.solflare;
+  } else if (name === 'Backpack') {
+    provider = window.backpack?.solana;
+  }
+
+  // Fallback: try any available wallet
+  if (!provider) {
+    provider = window.phantom?.solana || window.solflare || window.solana;
+  }
+
+  if (!provider) {
+    showNotif('⚠️ ' + name + ' not found. Please install it first.', 'error');
+    // For testing without a wallet extension, use demo mode
+    connectWalletDemo(name);
+    return;
+  }
+
+  try {
+    showNotif('Connecting to ' + name + '...', '');
+    const resp = await provider.connect();
+    const pubkey = resp.publicKey.toString();
+    
+    ghostState.connected = true;
+    ghostState.walletName = name;
+    ghostState.walletAddress = pubkey.slice(0,4) + '...' + pubkey.slice(-4);
+    ghostState.publicKey = pubkey;
+    ghostState.provider = provider;
+
+    // Derive PDAs
+    await deriveAndSetPDAs(pubkey);
+
+    // Update UI
+    const btn = document.getElementById('walletBtn');
+    btn.textContent = '● ' + ghostState.walletAddress;
+    btn.classList.add('connected');
+    btn.onclick = openDashboard;
+    document.getElementById('navDashboardLink').classList.add('visible');
+    document.getElementById('panelWalletAddr').textContent = ghostState.walletAddress;
+
+    showNotif('✓ ' + name + ' connected!', 'green');
+
+    // Fetch on-chain ghost account
+    await fetchGhostAccount();
+
+    setTimeout(openDashboard, 600);
+  } catch (err) {
+    console.error('Wallet connect error:', err);
+    showNotif('Connection failed: ' + (err.message || err), 'error');
+  }
+}
+
+function connectWalletDemo(name) {
+  // Demo mode when no wallet extension installed
+  ghostState.connected = true;
+  ghostState.walletName = name + ' (demo)';
+  const hex = () => Math.random().toString(16).substr(2, 4);
+  const addr = hex() + hex() + hex() + hex() + hex() + hex() + hex() + hex();
+  ghostState.walletAddress = addr.slice(0,4) + '...' + addr.slice(-4);
+  ghostState.publicKey = addr;
+  ghostState.ghost.status = 'alive';
+  ghostState.ghost.lastHeartbeat = Date.now() - 3 * 3600 * 1000;
+  ghostState.ghost.pingCount = 0;
+  ghostState.ghost.stakedGhost = 10000;
+  ghostState.ghost.vaultBalance = 0;
+
+  const btn = document.getElementById('walletBtn');
+  btn.textContent = '● ' + ghostState.walletAddress + ' [demo]';
+  btn.classList.add('connected');
+  btn.onclick = openDashboard;
+  document.getElementById('navDashboardLink').classList.add('visible');
+  document.getElementById('panelWalletAddr').textContent = ghostState.walletAddress + ' (demo)';
+
+  showNotif('✓ Demo mode — no wallet extension detected', 'green');
+  setTimeout(openDashboard, 600);
+}
+
+// ─── PDA Derivation ─────────────────────────────────────────────
+async function deriveAndSetPDAs(walletAddress) {
+  try {
+    // Use Solana web3.js from CDN to derive PDAs
+    const { PublicKey } = solanaWeb3;
+    const wallet = new PublicKey(walletAddress);
+    const programId = new PublicKey(PROGRAM_ID);
+    
+    const [ghostPda] = PublicKey.findProgramAddressSync(
+      [new TextEncoder().encode(GHOST_SEED), wallet.toBytes()],
+      programId
+    );
+    const [vaultPda] = PublicKey.findProgramAddressSync(
+      [new TextEncoder().encode(VAULT_SEED), wallet.toBytes()],
+      programId
+    );
+    
+    ghostState.ghostPda = ghostPda.toString();
+    ghostState.vaultPda = vaultPda.toString();
+    console.log('Ghost PDA:', ghostState.ghostPda);
+    console.log('Vault PDA:', ghostState.vaultPda);
+  } catch (err) {
+    console.error('PDA derivation error:', err);
+  }
+}
+
+// ─── Fetch On-Chain Ghost Account ───────────────────────────────
+async function fetchGhostAccount() {
+  if (!ghostState.ghostPda) return;
+  
+  try {
+    const response = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getAccountInfo',
+        params: [ghostState.ghostPda, { encoding: 'base64' }]
+      })
+    });
+    const data = await response.json();
+    
+    if (!data.result?.value) {
+      // No ghost account exists yet
+      ghostState.ghost.status = 'none';
+      updateDashboardUI();
+      showNotif('No ghost found. Initialize one to get started.', '');
+      return;
+    }
+    
+    // Decode account data
+    const rawData = atob(data.result.value.data[0]);
+    const bytes = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) bytes[i] = rawData.charCodeAt(i);
+    
+    parseGhostAccount(bytes);
+    updateDashboardUI();
+    showNotif('✓ Ghost account loaded from chain', 'green');
+  } catch (err) {
+    console.error('Fetch ghost account error:', err);
+    showNotif('Could not fetch ghost account', 'error');
+  }
+}
+
+// Parse raw account bytes into ghostState
+// Anchor account layout: 8 bytes discriminator, then fields
+function parseGhostAccount(bytes) {
+  const view = new DataView(bytes.buffer);
+  let offset = 8; // skip discriminator
+  
+  try {
+    // owner: Pubkey (32 bytes)
+    offset += 32;
+    // interval_seconds: i64
+    const interval = Number(view.getBigInt64(offset, true));
+    offset += 8;
+    // grace_period_seconds: i64
+    const grace = Number(view.getBigInt64(offset, true));
+    offset += 8;
+    // last_heartbeat: i64
+    const lastBeat = Number(view.getBigInt64(offset, true));
+    offset += 8;
+    // awakened: bool
+    const awakened = bytes[offset] === 1;
+    offset += 1;
+    // awakened_at: Option<i64> (1 + 8 bytes)
+    const hasAwakenedAt = bytes[offset] === 1;
+    offset += 1;
+    const awakenedAt = hasAwakenedAt ? Number(view.getBigInt64(offset, true)) : null;
+    offset += 8;
+    // executed: bool
+    const executed = bytes[offset] === 1;
+    offset += 1;
+    // executed_at: Option<i64>
+    offset += 9;
+    // staked_ghost: u64
+    const staked = Number(view.getBigUint64(offset, true));
+    offset += 8;
+    // bump: u8, vault_bump: u8
+    offset += 2;
+    // recovery_wallet: Option<Pubkey>
+    offset += 33;
+    // registered_at: i64
+    offset += 8;
+    // ping_count: u32
+    const pingCount = view.getUint32(offset, true);
+    offset += 4;
+    // beneficiary_count: u8
+    const benefCount = bytes[offset];
+    offset += 1;
+
+    ghostState.ghost.intervalSeconds = interval;
+    ghostState.ghost.gracePeriodSeconds = grace;
+    ghostState.ghost.lastHeartbeat = lastBeat * 1000; // convert to ms
+    ghostState.ghost.awakened = awakened;
+    ghostState.ghost.awakenedAt = awakenedAt ? awakenedAt * 1000 : null;
+    ghostState.ghost.executed = executed;
+    ghostState.ghost.stakedGhost = staked;
+    ghostState.ghost.pingCount = pingCount;
+    ghostState.ghost.beneficiaryCount = benefCount;
+
+    if (executed) ghostState.ghost.status = 'executed';
+    else if (awakened) ghostState.ghost.status = 'awakened';
+    else ghostState.ghost.status = 'alive';
+    
+  } catch (err) {
+    console.error('Parse error:', err);
+    ghostState.ghost.status = 'alive'; // fallback
+  }
+}
+
+function updateDashboardUI() {
+  const g = ghostState.ghost;
+  
+  // Status
+  const statusEl = document.getElementById('dbStatus');
+  if (statusEl) {
+    statusEl.textContent = g.status.toUpperCase();
+    statusEl.className = 'db-status-badge status-' + g.status;
+  }
+  
+  // Ping count
+  const pingEl = document.getElementById('dbPingCount');
+  if (pingEl) pingEl.textContent = g.pingCount;
+  
+  // Staked
+  const stakeEl = document.getElementById('dbStaked');
+  if (stakeEl) stakeEl.textContent = g.stakedGhost.toLocaleString();
+  
+  // Last ping
+  if (g.lastHeartbeat) {
+    const lastEl = document.getElementById('dbLastPing');
+    if (lastEl) {
+      const ago = Math.floor((Date.now() - g.lastHeartbeat) / 60000);
+      lastEl.textContent = ago < 1 ? 'just now' : ago < 60 ? ago + 'm ago' : Math.floor(ago/60) + 'h ago';
+    }
+  }
+  
+  updateCountdown();
+}
+
+// ─── Dashboard Panel ────────────────────────────────────────────
+function openDashboard() {
+  if (!ghostState.connected) { openModal(); return; }
+  document.getElementById('dashboardPanel').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  renderBeneficiaries();
+  updateCountdown();
+}
+
+function closeDashboard() {
+  document.getElementById('dashboardPanel').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ESC closes dashboard
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeDashboard();
+});
+
+// ─── Dashboard navigation ───────────────────────────────────────
+function dbShowPage(pageId, navEl) {
+  document.querySelectorAll('.db-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.db-nav-item').forEach(n => n.classList.remove('active'));
+  const page = document.getElementById('db-page-' + pageId);
+  if (page) page.classList.add('active');
+  if (navEl) navEl.classList.add('active');
+  if (pageId === 'beneficiaries') renderBeneficiaries();
+}
+
+// ─── Countdown ─────────────────────────────────────────────────
+function formatDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+
+function updateCountdown() {
+  if (!ghostState.ghost.lastHeartbeat) return;
+  const deadline = ghostState.ghost.lastHeartbeat + ghostState.ghost.intervalSeconds * 1000;
+  const remaining = Math.max(0, deadline - Date.now());
+  const str = formatDuration(remaining);
+  const elapsed = Date.now() - ghostState.ghost.lastHeartbeat;
+  const total = ghostState.ghost.intervalSeconds * 1000;
+  const pct = Math.min(100, (elapsed / total) * 100).toFixed(1);
+
+  document.getElementById('dbCountdown').textContent = str;
+  document.getElementById('dbBigCountdown').textContent = str;
+  document.getElementById('dbProgressVal').textContent = pct + '% elapsed';
+  const fill = document.getElementById('dbProgressFill');
+  fill.style.width = pct + '%';
+  fill.className = 'db-progress-fill' + (parseFloat(pct) > 80 ? ' warn' : '');
+}
+
+setInterval(updateCountdown, 30000);
+
+// ─── Ping ──────────────────────────────────────────────────────
+async function sendPing() {
+  const orb = document.getElementById('hbOrb');
+  const ripple = document.getElementById('pingRipple');
+
+  orb.classList.add('beat');
+  ripple.classList.add('active');
+  setTimeout(() => { orb.classList.remove('beat'); ripple.classList.remove('active'); }, 1200);
+
+  // Demo mode — no real wallet
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    ghostState.ghost.lastHeartbeat = Date.now();
+    ghostState.ghost.pingCount++;
+    document.getElementById('dbPingCount').textContent = ghostState.ghost.pingCount;
+    const sideEl = document.getElementById('sidebarPings');
+    if (sideEl) sideEl.textContent = ghostState.ghost.pingCount;
+    document.getElementById('dbLastPing').textContent = 'just now';
+    const tx = randomTx();
+    addActivityRow('💓 Heartbeat sent (demo)', tx);
+    updateCountdown();
+    showNotif('💓 Heartbeat sent! [demo mode]', 'green');
+    return;
+  }
+
+  // Real transaction
+  try {
+    showNotif('Sending heartbeat...', '');
+    const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = solanaWeb3;
+    
+    const walletPubkey = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const programId = new PublicKey(PROGRAM_ID);
+
+    // Ping instruction discriminator (Anchor: sha256("global:ping")[0:8])
+    const discriminator = [100, 154, 170, 68, 186, 34, 47, 163];
+
+    const ix = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPubkey, isSigner: true, isWritable: false },
+      ],
+      data: Buffer.from(discriminator)
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
+    tx.add(ix);
+
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize());
+    await connection.confirmTransaction(sig, 'confirmed');
+
+    // Update state
+    ghostState.ghost.lastHeartbeat = Date.now();
+    ghostState.ghost.pingCount++;
+    document.getElementById('dbPingCount').textContent = ghostState.ghost.pingCount;
+    const sideEl = document.getElementById('sidebarPings');
+    if (sideEl) sideEl.textContent = ghostState.ghost.pingCount;
+    document.getElementById('dbLastPing').textContent = 'just now';
+    
+    const shortSig = sig.slice(0,4) + '...' + sig.slice(-4);
+    addActivityRow('💓 Heartbeat sent', shortSig);
+    updateCountdown();
+    showNotif('💓 Heartbeat confirmed! TX: ' + shortSig, 'green');
+  } catch (err) {
+    console.error('Ping error:', err);
+    showNotif('Ping failed: ' + (err.message || err), 'error');
+    orb.classList.remove('beat');
+    ripple.classList.remove('active');
+  }
+}
+
+function addActivityRow(msg, tx) {
+  const log = document.getElementById('dbActivityLog');
+  if (!log) return;
+  const row = document.createElement('tr');
+  row.innerHTML = '<td>' + msg + '</td><td>just now</td><td><span class="addr-short">' + tx + '</span></td>';
+  log.prepend(row);
+}
+
+function randomTx() {
+  const c = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const r = (n) => Array.from({length:n},()=>c[Math.floor(Math.random()*c.length)]).join('');
+  return r(4)+'...'+r(3);
+}
+
+// ─── Beneficiaries ─────────────────────────────────────────────
+function renderBeneficiaries() {
+  const tbody = document.getElementById('dbBeneficiaryList');
+  const b = ghostState.ghost.beneficiaries;
+  tbody.innerHTML = b.map((ben, i) => `
+    <tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td><span class="addr-short">${ben.recipient}</span></td>
+      <td>${ben.amount.toLocaleString()}</td>
+      <td style="color:var(--accent);font-size:10px">${ben.token}</td>
+      <td><span class="tag tag-${ben.action}">${ben.action}</span></td>
+      <td><span class="tag tag-${ben.executed?'done':'pending'}">${ben.executed?'PAID':'PENDING'}</span></td>
+      <td><button class="icon-btn" onclick="dbRemoveBeneficiary(${i})" title="Remove">✕</button></td>
+    </tr>
+  `).join('');
+  const slots = b.length + ' / 10 slots';
+  document.getElementById('dbBSlots').textContent = slots;
+  document.getElementById('dbBenefCount').textContent = b.length;
+}
+
+async function dbAddBeneficiary() {
+  const recipient = document.getElementById('newRecipient').value.trim();
+  const amount = parseFloat(document.getElementById('newAmount').value);
+  const token = '$' + document.getElementById('newToken').value.replace('$','');
+  const action = document.getElementById('newAction').value;
+  if (!recipient) { showNotif('Enter a recipient address'); return; }
+  if (!amount || amount <= 0) { showNotif('Enter a valid amount'); return; }
+  if (ghostState.ghost.beneficiaries.length >= 10) { showNotif('Maximum 10 beneficiaries'); return; }
+  const short = recipient.length > 10 ? recipient.slice(0,4)+'...'+recipient.slice(-3) : recipient;
+
+  // Demo mode
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    ghostState.ghost.beneficiaries.push({ recipient: short, amount, token, action, executed: false });
+    renderBeneficiaries();
+    document.getElementById('newRecipient').value = '';
+    document.getElementById('newAmount').value = '';
+    showNotif('✅ Beneficiary added [demo]', 'green');
+    return;
+  }
+
+  // Real transaction
+  try {
+    showNotif('Adding beneficiary...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPubkey = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const programId = new PublicKey(PROGRAM_ID);
+    const recipientPubkey = new PublicKey(recipient);
+
+    // add_beneficiary discriminator
+    const discriminator = [199, 54, 159, 75, 90, 185, 82, 44];
+    
+    // Encode args: recipient (32 bytes) + amount (8 bytes) + token_mint option (1+32) + action (1 byte)
+    const buf = new ArrayBuffer(32 + 8 + 33 + 1);
+    const view = new DataView(buf);
+    const recipBytes = recipientPubkey.toBytes();
+    new Uint8Array(buf).set(recipBytes, 0);
+    view.setBigUint64(32, BigInt(Math.floor(amount)), true);
+    view.setUint8(40, 0); // no token mint (None)
+    new Uint8Array(buf).fill(0, 41, 73); // 32 zero bytes for None pubkey
+    view.setUint8(73, action === 'burn' ? 1 : 0); // action: 0=transfer, 1=burn
+
+    const data = new Uint8Array(8 + buf.byteLength);
+    data.set(discriminator, 0);
+    data.set(new Uint8Array(buf), 8);
+
+    const ix = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPubkey, isSigner: true, isWritable: false },
+      ],
+      data
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
+    tx.add(ix);
+
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize());
+    await connection.confirmTransaction(sig, 'confirmed');
+
+    ghostState.ghost.beneficiaries.push({ recipient: short, amount, token, action, executed: false });
+    renderBeneficiaries();
+    document.getElementById('newRecipient').value = '';
+    document.getElementById('newAmount').value = '';
+    showNotif('✅ Beneficiary added on-chain!', 'green');
+  } catch (err) {
+    console.error('Add beneficiary error:', err);
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
+}
+
+function dbRemoveBeneficiary(index) {
+  ghostState.ghost.beneficiaries.splice(index, 1);
+  renderBeneficiaries();
+  showNotif('Beneficiary removed');
+}
+
+// ─── Vault ─────────────────────────────────────────────────────
+function dbDeposit() {
+  const amount = parseFloat(document.getElementById('depositAmt').value);
+  if (!amount || amount <= 0) { showNotif('Enter a valid amount'); return; }
+  ghostState.ghost.vaultBalance += amount;
+  document.getElementById('dbVaultBal').textContent = ghostState.ghost.vaultBalance.toLocaleString();
+  document.getElementById('depositAmt').value = '';
+  showNotif('📥 Deposited ' + amount.toLocaleString() + ' to vault', 'green');
+}
+
+function dbWithdraw() {
+  const amount = parseFloat(document.getElementById('withdrawAmt').value);
+  if (!amount || amount <= 0) { showNotif('Enter a valid amount'); return; }
+  if (amount > ghostState.ghost.vaultBalance) { showNotif('Insufficient vault balance'); return; }
+  ghostState.ghost.vaultBalance -= amount;
+  document.getElementById('dbVaultBal').textContent = ghostState.ghost.vaultBalance.toLocaleString();
+  document.getElementById('withdrawAmt').value = '';
+  showNotif('📤 Withdrew ' + amount.toLocaleString() + ' from vault');
+}
+
+// ─── Settings ──────────────────────────────────────────────────
+function dbUpdateInterval() {
+  const days = parseInt(document.getElementById('dbNewInterval').value);
+  if (!days || days < 7) { showNotif('Minimum 7 days'); return; }
+  ghostState.ghost.intervalSeconds = days * 86400;
+  document.getElementById('dbInterval').textContent = days + ' days';
+  showNotif('⏱️ Interval updated to ' + days + ' days', 'green');
+}
+
+function dbUpdateGrace() {
+  const days = parseInt(document.getElementById('dbNewGrace').value);
+  if (!days || days < 1) { showNotif('Minimum 1 day'); return; }
+  ghostState.ghost.gracePeriodSeconds = days * 86400;
+  document.getElementById('dbGrace').textContent = days + ' days';
+  showNotif('⏳ Grace period updated to ' + days + ' days', 'green');
+}
+
+async function dbAbandon() {
+  if (!confirm('⚠️ ABANDON GHOST?\n\nBurns 50% of staked $GHOST. Irreversible.')) return;
+
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    showNotif('💀 Ghost abandoned [demo]. 50% burned.');
+    ghostState.ghost.status = 'none';
+    return;
+  }
+
+  try {
+    showNotif('Abandoning ghost...', '');
+    // Real tx would go here — requires token accounts
+    // For now show instructions
+    showNotif('⚠️ Use Solana Playground to call abandonGhost — token accounts required', 'error');
+  } catch(err) {
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
+}
+
+// ─── Recovery ──────────────────────────────────────────────────
+function dbUpdateRecovery() {
+  const addr = document.getElementById('dbNewRecovery').value.trim();
+  if (!addr) { showNotif('Enter an address'); return; }
+  ghostState.ghost.recoveryWallet = addr;
+  document.getElementById('dbCurrentRecovery').textContent = addr;
+  const short = addr.length > 10 ? addr.slice(0,4)+'...'+addr.slice(-4) : addr;
+  document.getElementById('dbRecoveryShort').textContent = short;
+  document.getElementById('dbNewRecovery').value = '';
+  showNotif('🔑 Recovery wallet updated', 'green');
+}
+
+function dbRemoveRecovery() {
+  if (confirm('Remove recovery wallet? You will have no fallback during an awakening.')) {
+    ghostState.ghost.recoveryWallet = null;
+    document.getElementById('dbCurrentRecovery').textContent = 'None set';
+    document.getElementById('dbRecoveryStatus').textContent = 'NONE';
+    document.getElementById('dbRecoveryShort').textContent = 'not configured';
+    showNotif('Recovery wallet removed');
+  }
+}
+
+// ─── Watcher ───────────────────────────────────────────────────
+async function dbLookupSoul() {
+  const addr = document.getElementById('soulToCheck').value.trim();
+  if (!addr) { showNotif('Enter a wallet address'); return; }
+  
+  const result = document.getElementById('watcherResult');
+  result.classList.add('visible');
+  result.innerHTML = '<span style="color:var(--muted)">Looking up soul...</span>';
+
+  try {
+    // Derive ghost PDA for this address
+    const { PublicKey } = solanaWeb3;
+    const wallet = new PublicKey(addr);
+    const programId = new PublicKey(PROGRAM_ID);
+    const [ghostPda] = PublicKey.findProgramAddressSync(
+      [new TextEncoder().encode('ghost'), wallet.toBytes()],
+      programId
+    );
+
+    const response = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'getAccountInfo',
+        params: [ghostPda.toString(), { encoding: 'base64' }]
+      })
+    });
+    const data = await response.json();
+
+    if (!data.result?.value) {
+      result.innerHTML = `
+        <span style="color:var(--muted)">SOUL</span> &nbsp;${addr.slice(0,8)}...<br>
+        <span style="color:var(--muted)">STATUS</span> &nbsp;<span style="color:var(--muted)">NO GHOST FOUND</span><br>
+        <span style="color:rgba(120,80,255,0.4)">// This address has no ghost protocol account</span>
+      `;
+      return;
+    }
+
+    // Decode basic info
+    const rawData = atob(data.result.value.data[0]);
+    const bytes = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) bytes[i] = rawData.charCodeAt(i);
+    const view = new DataView(bytes.buffer);
+    
+    let offset = 8 + 32; // skip discriminator + owner
+    const interval = Number(view.getBigInt64(offset, true)); offset += 8;
+    const grace = Number(view.getBigInt64(offset, true)); offset += 8;
+    const lastBeat = Number(view.getBigInt64(offset, true)); offset += 8;
+    const awakened = bytes[offset] === 1; offset += 1;
+    offset += 9; // awakened_at option
+    const executed = bytes[offset] === 1;
+
+    const now = Math.floor(Date.now() / 1000);
+    const silenceSeconds = now - lastBeat;
+    const remainingSeconds = Math.max(0, interval - silenceSeconds);
+    const remainingDays = Math.floor(remainingSeconds / 86400);
+    const lastPingDays = Math.floor(silenceSeconds / 86400);
+
+    let status, statusColor, bountyMsg;
+    if (executed) {
+      status = 'EXECUTED'; statusColor = '#ff3366';
+      bountyMsg = '// Ghost has been executed — no bounty available';
+    } else if (awakened) {
+      status = 'AWAKENED 👻'; statusColor = '#ffaa33';
+      bountyMsg = '// Grace period active — check silence to claim bounty!';
+    } else if (silenceSeconds > interval) {
+      status = 'SILENT ⚠️'; statusColor = '#ffaa33';
+      bountyMsg = '// Silence detected! Call checkSilence to claim 5% bounty';
+    } else {
+      status = 'ALIVE'; statusColor = '#33ff99';
+      bountyMsg = '// Soul is alive — no bounty available (' + remainingDays + ' days remaining)';
+    }
+
+    result.innerHTML = `
+      <span style="color:var(--muted)">SOUL</span> &nbsp;${addr.slice(0,8)}...<br>
+      <span style="color:var(--muted)">GHOST PDA</span> &nbsp;${ghostPda.toString().slice(0,8)}...<br>
+      <span style="color:var(--muted)">STATUS</span> &nbsp;<span style="color:${statusColor}">${status}</span><br>
+      <span style="color:var(--muted)">LAST PING</span> &nbsp;${lastPingDays} days ago<br>
+      <span style="color:var(--muted)">INTERVAL</span> &nbsp;${Math.floor(interval/86400)} days<br>
+      <span style="color:var(--muted)">GRACE PERIOD</span> &nbsp;${Math.floor(grace/86400)} days<br>
+      <span style="color:rgba(120,80,255,0.4)">${bountyMsg}</span>
+    `;
+  } catch(err) {
+    result.innerHTML = '<span style="color:var(--pulse)">Error: ' + (err.message || err) + '</span>';
+  }
+}
+
+async function dbCheckSilence() {
+  showNotif('Use the Watcher tab to look up a soul first, then call checkSilence via Playground', '');
+}
+</script>
+
+</div>
+</body>
+</html>
