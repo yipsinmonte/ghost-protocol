@@ -4260,9 +4260,10 @@ async function findATA(ownerPk, mintPk) {
   return ata;
 }
 
-// Build idempotent create-ATA instruction (no-op if ATA already exists)
+// Build create-ATA instruction (with rent sysvar for compatibility)
 function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk) {
   const { PublicKey, TransactionInstruction, SystemProgram } = solanaWeb3;
+  const RENT_SYSVAR = new PublicKey('SysvarRent111111111111111111111111111111111');
   return new TransactionInstruction({
     programId: new PublicKey(ASSOC_TOKEN_PROG_STR),
     keys: [
@@ -4272,8 +4273,9 @@ function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk) {
       { pubkey: mintPk,                              isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId,             isSigner: false, isWritable: false },
       { pubkey: new PublicKey(TOKEN_PROGRAM_STR),    isSigner: false, isWritable: false },
+      { pubkey: RENT_SYSVAR,                         isSigner: false, isWritable: false },
     ],
-    data: new Uint8Array([1]) // idempotent variant
+    data: new Uint8Array([0]) // standard create
   });
 }
 
