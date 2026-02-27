@@ -22,7 +22,7 @@ const bs58 = require('bs58');
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const RPC_URL    = process.env.RPC_URL    || 'https://api.mainnet-beta.solana.com';
-const PROGRAM_ID = process.env.PROGRAM_ID || '69CthivgcVfvMbEJLtUcpbnztNzJ26VCfjAwMj5jdMnZ';
+const PROGRAM_ID = process.env.PROGRAM_ID || '3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3';
 const BOT_KEYPAIR_B58 = process.env.BOT_KEYPAIR; // base58 private key set in Railway env vars
 
 // How often to scan all ghost accounts (ms). 5 minutes is plenty.

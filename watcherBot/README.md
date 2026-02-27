@@ -66,7 +66,7 @@ git push -u origin main
 | Variable | Value |
 |----------|-------|
 | `RPC_URL` | `https://mainnet.helius-rpc.com/?api-key=YOUR_KEY` |
-| `PROGRAM_ID` | `69CthivgcVfvMbEJLtUcpbnztNzJ26VCfjAwMj5jdMnZ` |
+| `PROGRAM_ID` | `3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3` |
 | `BOT_KEYPAIR` | Your base58 private key from step 1 |
 
 4. Railway auto-deploys. Check the **Logs** tab — you should see the bot start scanning.
@@ -76,7 +76,7 @@ git push -u origin main
 Logs should look like:
 ```
 👻 GHOST Executor Bot starting...
-   Program: 69CthivgcVfvMbEJLtUcpbnztNzJ26VCfjAwMj5jdMnZ
+   Program: 3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3
    Bot wallet: <your bot wallet>
    Polling every 5 minutes
 
