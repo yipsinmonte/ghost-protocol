@@ -1601,7 +1601,7 @@ async function fetchAllPrices() {
     // then fallback to DexScreener SOL price + hardcode
     let solFetched = false;
     try {
-      const r = await fetch(`https://lite-api.jup.ag/price/v2?ids=${allMints.join(',')}`);
+      const r = await fetch(`https://price.jup.ag/v6/price?ids=${allMints.join(',')}`);
       if (r.ok) {
         const data = await r.json();
         for (const [id, info] of Object.entries(data.data || {})) {
@@ -1707,7 +1707,7 @@ async function quickPriceRefresh() {
   ])];
 
   try {
-    const r = await fetch(`https://lite-api.jup.ag/price/v2?ids=${allMints.join(',')}`);
+    const r = await fetch(`https://price.jup.ag/v6/price?ids=${allMints.join(',')}`);
     if (r.ok) {
       const data = await r.json();
       for (const [id, info] of Object.entries(data.data || {})) {
@@ -2030,7 +2030,7 @@ window.diagToken = async function(mint) {
   const dex = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`).then(r=>r.json()).catch(e=>({error:e.message}));
   console.log('DexScreener pairs:', dex?.pairs?.length, dex?.pairs?.[0] ? {priceUsd: dex.pairs[0].priceUsd, priceNative: dex.pairs[0].priceNative, liq: dex.pairs[0].liquidity?.usd, dex: dex.pairs[0].dexId, imageUrl: dex.pairs[0]?.info?.imageUrl} : 'none');
 
-  const jup = await fetch(`https://lite-api.jup.ag/price/v2?ids=${mint}`).then(r=>r.json()).catch(e=>({error:e.message}));
+  const jup = await fetch(`https://price.jup.ag/v6/price?ids=${mint}`).then(r=>r.json()).catch(e=>({error:e.message}));
   console.log('Jupiter v2:', jup?.data?.[mint]);
 
   const helius = await fetch(HELIUS_API, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:'diag',method:'getAsset',params:{id:mint}})}).then(r=>r.json()).catch(e=>({error:e.message}));
@@ -2156,7 +2156,7 @@ async function fetchPumpFunData() {
     // ── Source 4: Jupiter v2 price ──
     if (getTokenPrice(token) === 0) {
       try {
-        const r = await fetch(`https://lite-api.jup.ag/price/v2?ids=${token.mint}`);
+        const r = await fetch(`https://price.jup.ag/v6/price?ids=${token.mint}`);
         if (r.ok) {
           const d = await r.json();
           const price = parseFloat(d?.data?.[token.mint]?.price || 0);
@@ -2520,13 +2520,34 @@ async function initializeGhost() {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
 
     // Create ghostStakeVault ATA if it doesn't exist yet
-    // This is the ATA owned by the ghost PDA that holds staked $GHOST
     const stakeVaultInfo = await connection.getAccountInfo(ghostStakeVault);
+    console.log('[Ghost] stakeVaultInfo:', stakeVaultInfo);
+    console.log('[Ghost] ghostPda:', ghostPda.toBase58());
+    console.log('[Ghost] vaultPda:', vaultPda.toBase58());
+    console.log('[Ghost] ghostStakeVault:', ghostStakeVault.toBase58());
+    console.log('[Ghost] signerGhostAta:', signerGhostAta.toBase58());
+    console.log('[Ghost] walletPubkey:', walletPubkey.toBase58());
+    console.log('[Ghost] ghostMint:', ghostMint.toBase58());
+    console.log('[Ghost] programId:', programId.toBase58());
     if (!stakeVaultInfo) {
+      console.log('[Ghost] Creating stakeVault ATA...');
       tx.add(buildCreateATAIx(walletPubkey, ghostStakeVault, ghostPda, ghostMint));
     }
 
     tx.add(ix);
+    console.log('[Ghost] TX instructions:', tx.instructions.length);
+    tx.instructions.forEach((ix, i) => {
+      console.log('[Ghost] IX', i, 'programId:', ix.programId.toBase58(), 'keys:', ix.keys.map(k => k.pubkey.toBase58()));
+    });
+
+    // Simulate first to get logs
+    try {
+      const sim = await connection.simulateTransaction(tx, []);
+      console.log('[Ghost] Simulation logs:', sim.value.logs);
+      console.log('[Ghost] Simulation err:', sim.value.err);
+    } catch(simErr) {
+      console.log('[Ghost] Simulation threw:', simErr);
+    }
 
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize());
