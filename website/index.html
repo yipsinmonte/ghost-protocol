@@ -2581,8 +2581,11 @@ async function initializeGhost() {
     }
 
     const signed = await ghostState.provider.signTransaction(tx);
-    const sig = await connection.sendRawTransaction(signed.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+    console.log('[Ghost] TX sent:', sig);
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    console.log('[Ghost] TX confirmed:', conf);
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
     ghostState.ghost.status = 'alive';
     ghostState.ghost.intervalSeconds = intervalDays * 86400;
@@ -2813,8 +2816,11 @@ async function sendPing() {
     tx.add(ix);
 
     const signed = await ghostState.provider.signTransaction(tx);
-    const sig = await connection.sendRawTransaction(signed.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+    console.log('[Ghost] TX sent:', sig);
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    console.log('[Ghost] TX confirmed:', conf);
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
     // Update state
     ghostState.ghost.lastHeartbeat = Date.now();
@@ -3186,8 +3192,11 @@ async function dbAddBeneficiary(action) {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
     const signed = await ghostState.provider.signTransaction(tx);
-    const sig = await connection.sendRawTransaction(signed.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+    console.log('[Ghost] TX sent:', sig);
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    console.log('[Ghost] TX confirmed:', conf);
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
     const shortSig = sig.slice(0,4)+'...'+sig.slice(-4);
 
     ghostState.ghost.beneficiaries.push({ recipient: short, fullAddr: isBurn ? null : recipient, amount, token: t.symbol, action, executed: false });
@@ -4681,8 +4690,11 @@ async function dbUpdateInterval() {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
     const signed = await ghostState.provider.signTransaction(tx);
-    const sig = await connection.sendRawTransaction(signed.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+    console.log('[Ghost] TX sent:', sig);
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    console.log('[Ghost] TX confirmed:', conf);
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
     ghostState.ghost.intervalSeconds = seconds;
     document.getElementById('dbInterval').textContent = days + ' days';
     document.getElementById('dbNewInterval').value = '';
@@ -4724,8 +4736,11 @@ async function dbUpdateGrace() {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
     const signed = await ghostState.provider.signTransaction(tx);
-    const sig = await connection.sendRawTransaction(signed.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+    console.log('[Ghost] TX sent:', sig);
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    console.log('[Ghost] TX confirmed:', conf);
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
     ghostState.ghost.gracePeriodSeconds = seconds;
     document.getElementById('dbGrace').textContent = days + ' days';
     document.getElementById('dbNewGrace').value = '';
