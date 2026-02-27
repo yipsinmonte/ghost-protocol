@@ -2547,38 +2547,28 @@ async function initializeGhost() {
     });
 
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+
+    // Check if ghostStakeVault ATA exists — if not, create it in a separate TX first
+    const stakeVaultInfo = await connection.getAccountInfo(ghostStakeVault);
+    console.log('[Ghost] ghostStakeVault exists:', !!stakeVaultInfo);
+
+    if (!stakeVaultInfo) {
+      console.log('[Ghost] Creating stakeVault ATA in separate TX...');
+      showNotif('Step 1/2: Creating stake vault...', '');
+      const { blockhash: bh1 } = await connection.getLatestBlockhash();
+      const ataTx = new Transaction({ recentBlockhash: bh1, feePayer: walletPubkey });
+      ataTx.add(buildCreateATAIx(walletPubkey, ghostStakeVault, ghostPda, ghostMint));
+      const signedAta = await ghostState.provider.signTransaction(ataTx);
+      const ataSig = await connection.sendRawTransaction(signedAta.serialize(), { skipPreflight: false });
+      console.log('[Ghost] ATA TX sent:', ataSig);
+      await connection.confirmTransaction(ataSig, 'confirmed');
+      console.log('[Ghost] ATA created');
+      showNotif('Step 2/2: Initializing ghost...', '');
+    }
+
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
-
-    // Create ghostStakeVault ATA if it doesn't exist yet
-    const stakeVaultInfo = await connection.getAccountInfo(ghostStakeVault);
-    console.log('[Ghost] stakeVaultInfo:', stakeVaultInfo);
-    console.log('[Ghost] ghostPda:', ghostPda.toBase58());
-    console.log('[Ghost] vaultPda:', vaultPda.toBase58());
-    console.log('[Ghost] ghostStakeVault:', ghostStakeVault.toBase58());
-    console.log('[Ghost] signerGhostAta:', signerGhostAta.toBase58());
-    console.log('[Ghost] walletPubkey:', walletPubkey.toBase58());
-    console.log('[Ghost] ghostMint:', ghostMint.toBase58());
-    console.log('[Ghost] programId:', programId.toBase58());
-    if (!stakeVaultInfo) {
-      console.log('[Ghost] Creating stakeVault ATA...');
-      tx.add(buildCreateATAIx(walletPubkey, ghostStakeVault, ghostPda, ghostMint));
-    }
-
     tx.add(ix);
-    console.log('[Ghost] TX instructions:', tx.instructions.length);
-    tx.instructions.forEach((ix, i) => {
-      console.log('[Ghost] IX', i, 'programId:', ix.programId.toBase58(), 'keys:', ix.keys.map(k => k.pubkey.toBase58()));
-    });
-
-    // Simulate first to get logs
-    try {
-      const sim = await connection.simulateTransaction(tx, []);
-      console.log('[Ghost] Simulation logs:', sim.value.logs);
-      console.log('[Ghost] Simulation err:', sim.value.err);
-    } catch(simErr) {
-      console.log('[Ghost] Simulation threw:', simErr);
-    }
 
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
