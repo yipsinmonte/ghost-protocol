@@ -2525,11 +2525,16 @@ async function initializeGhost() {
     const ghostMint = new PublicKey(GHOST_MINT);
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 
-    // Detect which token program owns the ghost mint (Token vs Token-2022)
+    // Detect which token program owns the ghost mint
+    // Check by fetching the signer's known ATA and seeing which program owns it
+    // Classic Token ATA = 165 bytes, Token-2022 ATA = 170+ bytes
     const ghostMintInfo = await connection.getAccountInfo(ghostMint);
-    const ghostTokenProgramId = ghostMintInfo?.owner?.toBase58() === 'TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB'
-      ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
-    console.log('[Ghost] Ghost mint token program:', ghostTokenProgramId.toBase58());
+    const mintOwner = ghostMintInfo?.owner?.toBase58() || '';
+    // Also check a known ATA for this mint - Pump.fun sometimes uses Token-2022 under the hood
+    const isToken2022 = mintOwner === 'TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB' ||
+                        (ghostMintInfo?.data?.length || 0) > 165;
+    const ghostTokenProgramId = isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    console.log('[Ghost] Ghost mint owner:', mintOwner, 'data len:', ghostMintInfo?.data?.length, '→ Token-2022:', isToken2022);
 
     // ATA = findProgramAddress([wallet, TOKEN_PROGRAM, mint], ASSOCIATED_TOKEN_PROGRAM)
     const [signerGhostAta] = await PublicKey.findProgramAddress(
