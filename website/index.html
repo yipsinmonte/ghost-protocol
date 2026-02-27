@@ -2477,7 +2477,12 @@ async function initializeGhost() {
   // Real transaction — call initialize_ghost on-chain
   try {
     showNotif('Initializing ghost account...', '');
-    console.log('[Ghost] initializeGhost START - provider:', !!ghostState.provider, 'pubkey:', ghostState.publicKey);
+    console.log('[Ghost] initializeGhost START - provider:', !!ghostState.provider, 'pubkey:', ghostState.publicKey, 'ghostPda:', ghostState.ghostPda);
+    // Re-derive PDAs if missing (can happen after page reload)
+    if (!ghostState.ghostPda && ghostState.publicKey) {
+      await deriveAndSetPDAs(ghostState.publicKey);
+    }
+    if (!ghostState.ghostPda) { showNotif('⚠️ Wallet not connected properly. Please reconnect.', 'error'); return; }
     const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = solanaWeb3;
     const walletPubkey = new PublicKey(ghostState.publicKey);
     const programId = new PublicKey(PROGRAM_ID);
