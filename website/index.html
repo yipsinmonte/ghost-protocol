@@ -1601,7 +1601,7 @@ async function fetchAllPrices() {
     // then fallback to DexScreener SOL price + hardcode
     let solFetched = false;
     try {
-      const r = await fetch(`https://api.jup.ag/price/v2?ids=${allMints.join(',')}`);
+      const r = await fetch(`https://lite-api.jup.ag/price/v2?ids=${allMints.join(',')}`);
       if (r.ok) {
         const data = await r.json();
         for (const [id, info] of Object.entries(data.data || {})) {
@@ -1707,7 +1707,7 @@ async function quickPriceRefresh() {
   ])];
 
   try {
-    const r = await fetch(`https://api.jup.ag/price/v2?ids=${allMints.join(',')}`);
+    const r = await fetch(`https://lite-api.jup.ag/price/v2?ids=${allMints.join(',')}`);
     if (r.ok) {
       const data = await r.json();
       for (const [id, info] of Object.entries(data.data || {})) {
@@ -2030,7 +2030,7 @@ window.diagToken = async function(mint) {
   const dex = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`).then(r=>r.json()).catch(e=>({error:e.message}));
   console.log('DexScreener pairs:', dex?.pairs?.length, dex?.pairs?.[0] ? {priceUsd: dex.pairs[0].priceUsd, priceNative: dex.pairs[0].priceNative, liq: dex.pairs[0].liquidity?.usd, dex: dex.pairs[0].dexId, imageUrl: dex.pairs[0]?.info?.imageUrl} : 'none');
 
-  const jup = await fetch(`https://api.jup.ag/price/v2?ids=${mint}`).then(r=>r.json()).catch(e=>({error:e.message}));
+  const jup = await fetch(`https://lite-api.jup.ag/price/v2?ids=${mint}`).then(r=>r.json()).catch(e=>({error:e.message}));
   console.log('Jupiter v2:', jup?.data?.[mint]);
 
   const helius = await fetch(HELIUS_API, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:'diag',method:'getAsset',params:{id:mint}})}).then(r=>r.json()).catch(e=>({error:e.message}));
@@ -2156,7 +2156,7 @@ async function fetchPumpFunData() {
     // ── Source 4: Jupiter v2 price ──
     if (getTokenPrice(token) === 0) {
       try {
-        const r = await fetch(`https://api.jup.ag/price/v2?ids=${token.mint}`);
+        const r = await fetch(`https://lite-api.jup.ag/price/v2?ids=${token.mint}`);
         if (r.ok) {
           const d = await r.json();
           const price = parseFloat(d?.data?.[token.mint]?.price || 0);
@@ -2752,7 +2752,7 @@ async function sendPing() {
         { pubkey: ghostPda, isSigner: false, isWritable: true },
         { pubkey: walletPubkey, isSigner: true, isWritable: false },
       ],
-      data: Buffer.from(discriminator)
+      data: new Uint8Array(discriminator)
     });
 
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
@@ -3547,7 +3547,7 @@ function createATAInstruction(payer, ata, owner, mint) {
   return new solanaWeb3.TransactionInstruction({
     programId: ASSOC_TOKEN_PROGRAM_ID_PK(),
     keys,
-    data: Buffer.from([1]) // idempotent create
+    data: new Uint8Array([1]) // idempotent create
   });
 }
 
@@ -3573,7 +3573,7 @@ async function buildWrapSOLInstructions(walletPubkey, lamports) {
   instructions.push(new solanaWeb3.TransactionInstruction({
     programId: TOKEN_PROGRAM_ID_PK(),
     keys: [{ pubkey: wsolAta, isSigner: false, isWritable: true }],
-    data: Buffer.from([17]) // SyncNative opcode
+    data: new Uint8Array([17]) // SyncNative opcode
   }));
 
   return { instructions, wsolAta };
@@ -3584,7 +3584,7 @@ async function buildWrapSOLInstructions(walletPubkey, lamports) {
 async function buildUnwrapSOLInstructions(walletPubkey, wsolAta) {
   // CloseAccount instruction: opcode 9
   // Accounts: [account(mut), destination(mut), authority]
-  const data = Buffer.from([9]);
+  const data = new Uint8Array([9]);
   return [new solanaWeb3.TransactionInstruction({
     programId: TOKEN_PROGRAM_ID_PK(),
     keys: [
@@ -4273,7 +4273,7 @@ function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk) {
       { pubkey: SystemProgram.programId,             isSigner: false, isWritable: false },
       { pubkey: new PublicKey(TOKEN_PROGRAM_STR),    isSigner: false, isWritable: false },
     ],
-    data: Buffer.from([1]) // idempotent variant
+    data: new Uint8Array([1]) // idempotent variant
   });
 }
 
@@ -4292,7 +4292,7 @@ async function buildWrapIxs(walletPk, lamports) {
     new TransactionInstruction({
       programId: new PublicKey(TOKEN_PROGRAM_STR),
       keys: [{ pubkey: wsolAta, isSigner: false, isWritable: true }],
-      data: Buffer.from([17])
+      data: new Uint8Array([17])
     }),
   ];
   return { preIxs, wsolAta };
@@ -4309,7 +4309,7 @@ function buildUnwrapIx(walletPk, wsolAta) {
       { pubkey: walletPk,  isSigner: false, isWritable: true  }, // destination (gets lamports)
       { pubkey: walletPk,  isSigner: true,  isWritable: false }, // authority
     ],
-    data: Buffer.from([9])
+    data: new Uint8Array([9])
   });
 }
 
