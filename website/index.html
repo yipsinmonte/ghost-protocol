@@ -2536,11 +2536,32 @@ async function initializeGhost() {
     const ghostTokenProgramId = isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
     console.log('[Ghost] Ghost mint owner:', mintOwner, 'data len:', ghostMintInfo?.data?.length, '→ Token-2022:', isToken2022);
 
-    // ATA = findProgramAddress([wallet, TOKEN_PROGRAM, mint], ASSOCIATED_TOKEN_PROGRAM)
-    const [signerGhostAta] = await PublicKey.findProgramAddress(
-      [walletPubkey.toBytes(), ghostTokenProgramId.toBytes(), ghostMint.toBytes()],
-      ASSOCIATED_TOKEN_PROGRAM_ID
-    );
+    // Find the actual token account for signer — Pump.fun may not use standard ATA derivation
+    // Look up all token accounts for this wallet+mint combination
+    let signerGhostAta;
+    try {
+      const tokenAccounts = await connection.getTokenAccountsByOwner(walletPubkey, { mint: ghostMint });
+      console.log('[Ghost] Token accounts for mint:', tokenAccounts.value.length);
+      if (tokenAccounts.value.length > 0) {
+        signerGhostAta = tokenAccounts.value[0].pubkey;
+        console.log('[Ghost] Found real signerGhostAta:', signerGhostAta.toBase58());
+      } else {
+        // Fall back to ATA derivation if none found
+        const [derived] = await PublicKey.findProgramAddress(
+          [walletPubkey.toBytes(), ghostTokenProgramId.toBytes(), ghostMint.toBytes()],
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
+        signerGhostAta = derived;
+        console.log('[Ghost] No token account found, using derived ATA:', signerGhostAta.toBase58());
+      }
+    } catch(e) {
+      const [derived] = await PublicKey.findProgramAddress(
+        [walletPubkey.toBytes(), ghostTokenProgramId.toBytes(), ghostMint.toBytes()],
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      signerGhostAta = derived;
+      console.log('[Ghost] Error fetching token accounts, using derived:', signerGhostAta.toBase58());
+    }
 
     // ghost_stake_vault = ATA owned by ghost PDA for the $GHOST mint
     const [ghostStakeVault] = await PublicKey.findProgramAddress(
