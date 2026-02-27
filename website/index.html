@@ -2506,9 +2506,9 @@ async function initializeGhost() {
       keys: [
         { pubkey: ghostPda,        isSigner: false, isWritable: true  },
         { pubkey: vaultPda,        isSigner: false, isWritable: false },
-        { pubkey: ghostStakeVault, isSigner: false, isWritable: true  },
-        { pubkey: signerGhostAta,  isSigner: false, isWritable: true  },
         { pubkey: walletPubkey,    isSigner: true,  isWritable: true  },
+        { pubkey: signerGhostAta,  isSigner: false, isWritable: true  },
+        { pubkey: ghostStakeVault, isSigner: false, isWritable: true  },
         { pubkey: TOKEN_PROGRAM_ID,isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
