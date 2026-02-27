@@ -2518,7 +2518,7 @@ async function initializeGhost() {
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const vaultPda = new PublicKey(ghostState.vaultPda);
     const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-    const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB');
+    const TOKEN_2022_PROGRAM_ID = new PublicKey(new Uint8Array([0, 30, 79, 74, 132, 28, 130, 123, 0, 122, 27, 201, 146, 247, 249, 161, 194, 146, 167, 199, 9, 168, 186, 224, 224, 5, 203, 112, 13, 226, 62, 58])); // TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB
 
     // Derive signer's $GHOST ATA (Associated Token Account)
     const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso');
