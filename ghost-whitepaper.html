@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>$GHOST — Whitepaper — Trustless Digital Legacy Protocol on Solana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #05050f;
+    --surface: #0a0918;
+    --accent: #6633ff;
+    --glow: #9966ff;
+    --muted: #9890b8;
+    --text: #cfc8ee;
+    --white: #f0ecff;
+    --red: #ff3d5a;
+    --border: rgba(102,51,255,0.18);
+    --page-max: 900px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 16px;
+    line-height: 1.9;
+    min-height: 100vh;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 48px;
+    height: 56px;
+    background: rgba(5,5,15,0.94);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(14px);
+  }
+  .topbar-logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 17px;
+    color: var(--white);
+    text-decoration: none;
+    letter-spacing: 0.05em;
+  }
+  .topbar-logo span { color: var(--glow); }
+  .topbar-right {
+    display: flex;
+    gap: 28px;
+    align-items: center;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .topbar-right a {
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .topbar-right a:hover { color: var(--glow); }
+  .topbar-badge {
+    background: rgba(102,51,255,0.15);
+    border: 1px solid rgba(102,51,255,0.35);
+    color: var(--glow);
+    padding: 4px 12px;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+  }
+
+  /* ── LAYOUT ── */
+  .doc {
+    max-width: var(--page-max);
+    margin: 0 auto;
+    padding: 108px 56px 140px;
+  }
+
+  /* ── COVER ── */
+  .cover {
+    text-align: center;
+    padding: 80px 0 100px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 90px;
+  }
+  .cover-logo {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 44px;
+    background: radial-gradient(circle at 40% 35%, #7755ee, #3311aa);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 70px rgba(102,51,255,0.38);
+  }
+  .cover-logo svg { width: 76px; height: 76px; }
+  .cover-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 80px;
+    letter-spacing: -0.02em;
+    color: var(--white);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .cover-ticker {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 20px;
+    letter-spacing: 0.35em;
+    color: var(--glow);
+    margin-bottom: 18px;
+  }
+  .cover-sub {
+    font-size: 17px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    margin-bottom: 52px;
+  }
+  .cover-quote {
+    font-style: italic;
+    font-size: 18px;
+    color: var(--text);
+    line-height: 1.75;
+    margin-bottom: 8px;
+  }
+  .cover-attr {
+    font-size: 13px;
+    letter-spacing: 0.28em;
+    color: var(--glow);
+    text-transform: uppercase;
+    margin-bottom: 60px;
+  }
+
+  /* ── PARAMS TABLE ── */
+  .params-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 auto;
+    max-width: 600px;
+  }
+  .params-table thead tr { border-bottom: 1px solid var(--accent); }
+  .params-table thead th {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--glow);
+    text-transform: uppercase;
+    padding: 12px 18px;
+    text-align: left;
+  }
+  .params-table tbody tr { border-bottom: 1px solid rgba(102,51,255,0.08); }
+  .params-table tbody tr:last-child { border-bottom: none; }
+  .params-table td {
+    padding: 13px 18px;
+    color: var(--muted);
+    font-size: 14px;
+    letter-spacing: 0.04em;
+  }
+  .params-table td:last-child {
+    color: var(--white);
+    font-weight: 700;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+  }
+  .cover-version {
+    margin-top: 44px;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: #333355;
+    text-transform: uppercase;
+  }
+
+  /* ── SECTION ── */
+  .section {
+    margin-bottom: 88px;
+    break-inside: avoid;
+  }
+  .section-tag {
+    font-size: 11px;
+    letter-spacing: 0.38em;
+    color: var(--glow);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 14px;
+    opacity: 0.7;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 36px;
+    color: var(--white);
+    line-height: 1.1;
+    margin-bottom: 30px;
+    letter-spacing: -0.01em;
+  }
+  .section-body {
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.95;
+    margin-bottom: 22px;
+  }
+  .subsection-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 17px;
+    color: var(--white);
+    margin: 36px 0 14px;
+  }
+
+  /* ── ARROW LIST ── */
+  .arrow-list { list-style: none; margin: 18px 0; }
+  .arrow-list li {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(102,51,255,0.07);
+    font-size: 15px;
+    color: var(--text);
+    line-height: 1.75;
+  }
+  .arrow-list li:last-child { border-bottom: none; }
+  .arrow-list li::before { content: '→'; color: var(--glow); flex-shrink: 0; margin-top: 2px; }
+
+  /* ── STEPS ── */
+  .steps { display: flex; flex-direction: column; gap: 0; margin: 28px 0; border: 1px solid var(--border); }
+  .step { display: grid; grid-template-columns: 60px 1fr; align-items: stretch; border-bottom: 1px solid var(--border); }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: var(--glow);
+    background: rgba(102,51,255,0.07);
+    display: flex; align-items: center; justify-content: center;
+    border-right: 1px solid var(--border);
+    opacity: 0.75;
+  }
+  .step-content { padding: 20px 24px; }
+  .step-label {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--white);
+    margin-bottom: 6px;
+  }
+  .step-desc { font-size: 14px; color: var(--muted); line-height: 1.8; }
+
+  /* ── COMPARE TABLE ── */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 22px 0; font-size: 14px; }
+  .compare-table thead th {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    color: var(--glow);
+    text-transform: uppercase;
+    padding: 12px 18px;
+    text-align: left;
+    border-bottom: 1px solid var(--accent);
+  }
+  .compare-table tbody tr { border-bottom: 1px solid rgba(102,51,255,0.08); }
+  .compare-table tbody tr:last-child { border-bottom: none; }
+  .compare-table td { padding: 15px 18px; color: var(--text); line-height: 1.6; }
+  .compare-table td:first-child { color: var(--muted); }
+  .tag-bad { color: #ff6080; font-size: 12px; font-family: 'Share Tech Mono', monospace; }
+  .tag-good { color: #44dd88; font-size: 12px; font-family: 'Share Tech Mono', monospace; }
+
+  /* ── ACTIONS GRID ── */
+  .actions-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 28px; }
+  .action-col-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--glow);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    opacity: 0.7;
+  }
+  .action-pill {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 16px;
+    background: rgba(102,51,255,0.05);
+    border: 1px solid var(--border);
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .action-pill-icon { font-size: 16px; flex-shrink: 0; }
+  .action-pill-future { opacity: 0.5; border-style: dashed; }
+
+  /* ── TOKEN TABLE ── */
+  .token-table { width: 100%; border-collapse: collapse; margin: 28px 0; }
+  .token-table thead th {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--glow);
+    text-transform: uppercase;
+    padding: 14px 18px;
+    text-align: left;
+    border-bottom: 1px solid var(--accent);
+  }
+  .token-table tbody tr { border-bottom: 1px solid rgba(102,51,255,0.08); }
+  .token-table tbody tr:last-child { border-bottom: none; }
+  .token-table td { padding: 16px 18px; color: var(--text); font-size: 15px; }
+  .token-table td:nth-child(2) { color: var(--white); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; }
+  .token-table td:nth-child(3) { color: var(--glow); font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; }
+  .token-table td:nth-child(4) { font-size: 13px; color: var(--muted); }
+
+  /* ── ROADMAP ── */
+  .roadmap-rows { display: flex; flex-direction: column; gap: 2px; margin-top: 28px; }
+  .road-row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .road-left {
+    background: rgba(102,51,255,0.06);
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    border-right: 1px solid var(--border);
+    gap: 6px;
+  }
+  .road-phase {
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    color: var(--glow);
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+  .road-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--white);
+    line-height: 1.1;
+  }
+  .road-when {
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .road-right { padding: 24px 28px; }
+  .road-right ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .road-right li {
+    font-size: 14px;
+    color: var(--text);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    line-height: 1.6;
+  }
+  .road-right li::before { content: '·'; color: var(--glow); flex-shrink: 0; font-size: 18px; line-height: 1.2; }
+
+  /* ── RISKS ── */
+  .risks-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 28px; }
+  .risk-card { padding: 26px; border: 1px solid rgba(255,61,90,0.15); background: rgba(255,61,90,0.03); }
+  .risk-label { font-size: 11px; letter-spacing: 0.28em; color: rgba(255,96,128,0.7); text-transform: uppercase; margin-bottom: 12px; }
+  .risk-text { font-size: 14px; color: var(--muted); line-height: 1.85; }
+  .disclaimer {
+    margin-top: 36px;
+    font-size: 13px;
+    color: #444466;
+    line-height: 1.9;
+    text-align: center;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    padding-top: 32px;
+  }
+
+  /* ── FOOTER ── */
+  .doc-footer {
+    text-align: center;
+    margin-top: 88px;
+    padding-top: 44px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: #333355;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .doc-footer a { color: var(--glow); text-decoration: none; }
+  .doc-footer a:hover { color: var(--white); }
+
+  @media (max-width: 680px) {
+    .doc { padding: 88px 24px 88px; }
+    .cover-title { font-size: 52px; }
+    .topbar { padding: 0 20px; }
+    .actions-cols, .risks-grid { grid-template-columns: 1fr; }
+    .road-row { grid-template-columns: 1fr; }
+    .road-left { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+  <a class="topbar-logo" href="index.html"><span>$</span>GHOST</a>
+  <div class="topbar-right">
+    <span class="topbar-badge">WHITEPAPER v1.0</span>
+    <a href="index.html">← Back to Site</a>
+  </div>
+</nav>
+
+<div class="doc">
+
+  <!-- COVER -->
+  <div class="cover">
+    <div class="cover-logo">
+      <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M18 36 C18 22 28 14 40 14 C52 14 62 22 62 36 L62 66 L54 60 L46 66 L40 60 L34 66 L26 60 L18 66 Z" fill="white" opacity="0.93"/>
+        <circle cx="33" cy="36" r="4.5" fill="#1a0a3a"/>
+        <circle cx="47" cy="36" r="4.5" fill="#1a0a3a"/>
+        <circle cx="34.5" cy="34.5" r="1.8" fill="white"/>
+        <circle cx="48.5" cy="34.5" r="1.8" fill="white"/>
+        <polyline points="24,47 29,47 31,40 34,54 37,42 39,49 41,47 56,47" stroke="#ff4466" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <div class="cover-title">GHOST</div>
+    <div class="cover-ticker">$GHOST</div>
+    <div class="cover-sub">Trustless Digital Legacy Protocol on Solana</div>
+
+    <div class="cover-quote">"Death is not the end of presence.<br>It is only the end of the heartbeat."</div>
+    <div class="cover-attr">— The GHOST Manifesto</div>
+
+    <table class="params-table">
+      <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Token</td><td>$GHOST (SPL Token)</td></tr>
+        <tr><td>Total Supply</td><td>1,000,000,000 (fixed)</td></tr>
+        <tr><td>Blockchain</td><td>Solana</td></tr>
+        <tr><td>Launch</td><td>Pump.fun (fair launch)</td></tr>
+        <tr><td>Smart Contract</td><td>Anchor Framework (Rust)</td></tr>
+        <tr><td>Vault Type</td><td>PDA (Program Derived Address)</td></tr>
+        <tr><td>Default Heartbeat</td><td>365 days (configurable)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="cover-version">Version 1.0 — Community Review · Solana Mainnet · 2026</div>
+  </div>
+
+  <!-- 01 -->
+  <div class="section">
+    <span class="section-tag">01 — What is Ghost</span>
+    <h2 class="section-title">The Problem Worth Solving</h2>
+    <p class="section-body">Millions of people hold crypto with no plan for what happens if they die or disappear. Unlike physical assets, on-chain holdings can't be inherited through a lawyer or a bank. If you lose access to your wallet — or your wallet loses access to you — those assets are gone forever. Over 4 million Bitcoin are already permanently lost.</p>
+    <div class="subsection-title">The Solution</div>
+    <p class="section-body">GHOST is a dead man's switch for your digital assets. You deposit SOL and SPL tokens into a personal vault on Solana. You set your beneficiaries. You keep pinging to prove you're alive. If you stop pinging, a grace period starts. If no one cancels it, the GHOST executor bot detects the expiry and distributes your vault to your beneficiaries automatically.</p>
+    <p class="section-body">No private keys shared. No middlemen. No trust required. The smart contract is the only authority over your vault.</p>
+  </div>
+
+  <!-- 02 -->
+  <div class="section">
+    <span class="section-tag">02 — The Vault</span>
+    <h2 class="section-title">Your Keys Stay Yours</h2>
+    <p class="section-body">When you register, the program creates a unique vault address (PDA) derived from your wallet. This vault has no private key — only the program logic can move funds from it — triggered by the GHOST executor bot after your heartbeat expires and grace period passes.</p>
+    <p class="section-body">You deposit only what you want distributed. The rest stays in your personal wallet. Think of it as a mini on-chain will: specific assets earmarked for specific people. You can add to or withdraw from your vault at any time while alive.</p>
+
+    <div class="subsection-title">Why this is safer than the alternatives</div>
+    <table class="compare-table">
+      <thead><tr><th>Method</th><th>Risk</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Share seed phrase</td>
+          <td>Anyone with it can drain your wallet at any time</td>
+          <td><span class="tag-bad">✗ Unsafe</span></td>
+        </tr>
+        <tr>
+          <td>Multisig with friends</td>
+          <td>Requires coordination, trust, and crypto literacy</td>
+          <td><span class="tag-bad">✗ Fragile</span></td>
+        </tr>
+        <tr>
+          <td>Ghost Vault (PDA)</td>
+          <td>Trustless code — no human can touch it while you're alive</td>
+          <td><span class="tag-good">✓ Trustless</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 03 -->
+  <div class="section">
+    <span class="section-tag">03 — How it Works</span>
+    <h2 class="section-title">Five Steps</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-content">
+          <div class="step-label">Create Vault</div>
+          <div class="step-desc">Connect your wallet. Stake $GHOST. Set your heartbeat interval and grace period. Optionally add recovery wallets. Your vault PDA is created on-chain.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-content">
+          <div class="step-label">Fund &amp; Configure</div>
+          <div class="step-desc">Deposit SOL and SPL tokens. Set up to 10 beneficiaries — who gets what when you go dark. Update anytime while alive.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-content">
+          <div class="step-label">Stay Alive</div>
+          <div class="step-desc">Ping before your interval expires. Costs ~0.000005 SOL. As long as you ping, your vault stays locked.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <div class="step-content">
+          <div class="step-label">Grace Period</div>
+          <div class="step-desc">Miss your interval and the grace period begins automatically on-chain. You or any of your recovery wallets can cancel during the grace window. Once the grace period expires with no intervention, the GHOST executor bot triggers distribution.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">05</div>
+        <div class="step-content">
+          <div class="step-label">Execution</div>
+          <div class="step-desc">The GHOST executor bot — a dedicated watcher running every 5 minutes — detects that the grace period has passed and submits the execution transaction on-chain. Assets are distributed to your beneficiaries. No human involvement required.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 04 -->
+  <div class="section">
+    <span class="section-tag">04 — Recovery Wallets</span>
+    <h2 class="section-title">A Safety Net</h2>
+    <p class="section-body">Life is unpredictable. You might lose your phone, travel without internet, or simply forget. GHOST lets you register recovery wallets — a spouse, a trusted friend, a hardware wallet in a safe — each of which can cancel a ghost awakening during the grace period.</p>
+    <p class="section-body">Each recovery wallet can be individually configured. By default, a recovery wallet can only cancel an awakening — it cannot access vault funds. Optionally, you may grant a recovery wallet withdrawal access, allowing it to move assets out of the vault on your behalf.</p>
+    <p class="section-body">No recovery wallet can trigger execution or redistribute assets — that authority stays with the program logic alone.</p>
+  </div>
+
+  <!-- 05 -->
+  <div class="section">
+    <span class="section-tag">05 — Ghost Actions</span>
+    <h2 class="section-title">What Your Ghost Can Do</h2>
+    <p class="section-body">Configure exactly what happens when your heartbeat stops. Actions are set per beneficiary and triggered by the GHOST executor bot once your grace period expires.</p>
+    <div class="actions-cols">
+      <div>
+        <div class="action-col-title">On-Chain — Available Now</div>
+        <div class="action-pill"><span class="action-pill-icon">◎</span> Send SOL to beneficiaries</div>
+        <div class="action-pill"><span class="action-pill-icon">🪙</span> Send SPL tokens to beneficiaries</div>
+        <div class="action-pill"><span class="action-pill-icon">🔥</span> Burn SPL tokens permanently</div>
+        <div class="action-pill"><span class="action-pill-icon">👥</span> Split vault across up to 10 beneficiaries</div>
+      </div>
+      <div>
+        <div class="action-col-title">Coming — Phase II &amp; III</div>
+        <div class="action-pill action-pill-future"><span class="action-pill-icon">🖼</span> Transfer NFTs to beneficiaries</div>
+        <div class="action-pill action-pill-future"><span class="action-pill-icon">🔒</span> Time-locked transfers</div>
+        <div class="action-pill action-pill-future"><span class="action-pill-icon">💱</span> Auto-sell to SOL via Jupiter</div>
+        <div class="action-pill action-pill-future"><span class="action-pill-icon">📣</span> Post a final message on X</div>
+        <div class="action-pill action-pill-future"><span class="action-pill-icon">📊</span> Close DeFi positions (Jupiter, Marginfi, Drift)</div>
+        <div class="action-col-title" style="margin-top:16px">Coming — Phase IV</div>
+        <div class="action-pill action-pill-future"><span class="action-pill-icon">🤖</span> Link to Pika Labs AI Selves profile</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 06 -->
+  <div class="section">
+    <span class="section-tag">06 — Tokenomics</span>
+    <h2 class="section-title">1 Billion $GHOST.<br>Not One More.</h2>
+    <p class="section-body">Fixed supply of 1,000,000,000 $GHOST. No minting function. No inflation. Fair launch on Pump.fun.</p>
+    <table class="token-table">
+      <thead><tr><th>Allocation</th><th>Amount</th><th>%</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Pump.fun Fair Launch</td>
+          <td>850,000,000</td>
+          <td>85%</td>
+          <td>Bonding curve. No presale. No VCs.</td>
+        </tr>
+        <tr>
+          <td>Project Treasury</td>
+          <td>100,000,000</td>
+          <td>10%</td>
+          <td>Team-controlled wallet. Marketing &amp; ops.</td>
+        </tr>
+        <tr>
+          <td>Team</td>
+          <td>50,000,000</td>
+          <td>5%</td>
+          <td>Locked on Streamflow. 6-month vest.</td>
+        </tr>
+        <tr>
+          <td>VC / Private Sale</td>
+          <td>0</td>
+          <td>0%</td>
+          <td>Does not exist. Never will.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 07 -->
+  <div class="section">
+    <span class="section-tag">07 — Roadmap</span>
+    <h2 class="section-title">The Path Into the Dark</h2>
+
+    <div class="roadmap-rows">
+      <div class="road-row">
+        <div class="road-left">
+          <div class="road-phase">Phase I</div>
+          <div class="road-name">Summon</div>
+          <div class="road-when">March 2026</div>
+        </div>
+        <div class="road-right">
+          <ul>
+            <li>Fair launch on Pump.fun</li>
+            <li>Whitepaper &amp; website published</li>
+            <li>Community launch on X</li>
+            <li>Core protocol live on Solana mainnet</li>
+            <li>Ghost Dashboard — vault, beneficiaries &amp; heartbeat</li>
+            <li>SOL &amp; SPL token vault support</li>
+            <li>Recovery wallet support</li>
+            <li>Smart contract audit</li>
+            <li>Target: 1,500 holders</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="road-row">
+        <div class="road-left">
+          <div class="road-phase">Phase II</div>
+          <div class="road-name">Awaken</div>
+          <div class="road-when">Q2 2026</div>
+        </div>
+        <div class="road-right">
+          <ul>
+            <li>NFT vault support (Metaplex)</li>
+            <li>Time-locked transfers for beneficiaries</li>
+            <li>Auto-sell SPL tokens to SOL via Jupiter</li>
+            <li>Off-chain executor — post to X, send emails</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="road-row">
+        <div class="road-left">
+          <div class="road-phase">Phase III</div>
+          <div class="road-name">Possess</div>
+          <div class="road-when">Q3 2026</div>
+        </div>
+        <div class="road-right">
+          <ul>
+            <li>Close DeFi positions (Jupiter, Marginfi, Drift)</li>
+            <li>Cross-chain bridges (Ethereum, Base)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="road-row">
+        <div class="road-left">
+          <div class="road-phase">Phase IV</div>
+          <div class="road-name">Eternal</div>
+          <div class="road-when">Q4 2026</div>
+        </div>
+        <div class="road-right">
+          <ul>
+            <li>Off-chain link to Pika Labs AI Selves profile</li>
+            <li>100k souls registered</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  <!-- 08 -->
+  <div class="section">
+    <span class="section-tag">08 — Risks</span>
+    <h2 class="section-title">Important Disclaimers</h2>
+    <p class="section-body">$GHOST is an experimental protocol. Read before you ghost.</p>
+    <div class="risks-grid">
+      <div class="risk-card">
+        <div class="risk-label">Smart Contract Risk</div>
+        <div class="risk-text">Despite auditing, smart contracts may contain vulnerabilities. Funds deposited in ghost vaults could be at risk.</div>
+      </div>
+      <div class="risk-card">
+        <div class="risk-label">Execution Risk</div>
+        <div class="risk-text">The GHOST executor bot is required for automatic distribution. If the bot is offline, assets remain safely in the vault until it resumes or a beneficiary triggers execution manually. On-chain transfers are trustless and permanent once submitted.</div>
+      </div>
+      <div class="risk-card">
+        <div class="risk-label">Regulatory Risk</div>
+        <div class="risk-text">Digital asset regulations are evolving. Automated estate distribution is legally untested in most jurisdictions.</div>
+      </div>
+      <div class="risk-card">
+        <div class="risk-label">Market Risk</div>
+        <div class="risk-text">$GHOST is a volatile digital asset. Its value may go to zero. Do not invest more than you can afford to lose.</div>
+      </div>
+    </div>
+    <div class="disclaimer">
+      This document does not constitute financial, legal, or investment advice.<br>
+      $GHOST is an experimental protocol. Participate at your own risk.
+    </div>
+  </div>
+
+  <div class="doc-footer">
+    <a href="https://ghostprotocol.xyz">ghostprotocol.xyz</a>
+    &nbsp;·&nbsp;
+    <a href="https://x.com/ghostprotocol">@ghostprotocol</a>
+    &nbsp;·&nbsp;
+    Solana Mainnet · 2026
+  </div>
+
+</div>
+</body>
+</html>
