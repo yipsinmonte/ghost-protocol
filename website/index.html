@@ -2513,20 +2513,27 @@ async function initializeGhost() {
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const vaultPda = new PublicKey(ghostState.vaultPda);
     const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB');
 
     // Derive signer's $GHOST ATA (Associated Token Account)
     const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso');
     const ghostMint = new PublicKey(GHOST_MINT);
 
+    // Detect which token program owns the ghost mint (Token vs Token-2022)
+    const ghostMintInfo = await connection.getAccountInfo(ghostMint);
+    const ghostTokenProgramId = ghostMintInfo?.owner?.toBase58() === 'TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB'
+      ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    console.log('[Ghost] Ghost mint token program:', ghostTokenProgramId.toBase58());
+
     // ATA = findProgramAddress([wallet, TOKEN_PROGRAM, mint], ASSOCIATED_TOKEN_PROGRAM)
     const [signerGhostAta] = await PublicKey.findProgramAddress(
-      [walletPubkey.toBytes(), TOKEN_PROGRAM_ID.toBytes(), ghostMint.toBytes()],
+      [walletPubkey.toBytes(), ghostTokenProgramId.toBytes(), ghostMint.toBytes()],
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
 
     // ghost_stake_vault = ATA owned by ghost PDA for the $GHOST mint
     const [ghostStakeVault] = await PublicKey.findProgramAddress(
-      [ghostPda.toBytes(), TOKEN_PROGRAM_ID.toBytes(), ghostMint.toBytes()],
+      [ghostPda.toBytes(), ghostTokenProgramId.toBytes(), ghostMint.toBytes()],
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
 
@@ -2540,7 +2547,7 @@ async function initializeGhost() {
         { pubkey: ghostStakeVault, isSigner: false, isWritable: true  },
         { pubkey: signerGhostAta,  isSigner: false, isWritable: true  },
         { pubkey: walletPubkey,    isSigner: true,  isWritable: true  },
-        { pubkey: TOKEN_PROGRAM_ID,isSigner: false, isWritable: false },
+        { pubkey: ghostTokenProgramId,isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data
@@ -2552,13 +2559,20 @@ async function initializeGhost() {
     const stakeVaultInfo = await connection.getAccountInfo(ghostStakeVault);
     console.log('[Ghost] ghostStakeVault exists:', !!stakeVaultInfo);
 
-    if (!stakeVaultInfo) {
-      console.log('[Ghost] Creating stakeVault ATA in separate TX...');
-      showNotif('Step 1/2: Creating stake vault...', '');
+    // Check both ATAs — create any that don't exist
+    const signerAtaInfo = await connection.getAccountInfo(signerGhostAta);
+    console.log('[Ghost] signerGhostAta exists:', !!signerAtaInfo);
+    console.log('[Ghost] ghostStakeVault exists:', !!stakeVaultInfo);
+
+    const missingAtas = [];
+    if (!signerAtaInfo) missingAtas.push(buildCreateATAIx(walletPubkey, signerGhostAta, walletPubkey, ghostMint, ghostTokenProgramId));
+    if (!stakeVaultInfo) missingAtas.push(buildCreateATAIx(walletPubkey, ghostStakeVault, ghostPda, ghostMint, ghostTokenProgramId));
+
+    if (missingAtas.length > 0) {
+      showNotif(`Step 1/2: Creating ${missingAtas.length} token account(s)...`, '');
       const { blockhash: bh1 } = await connection.getLatestBlockhash();
       const ataTx = new Transaction({ recentBlockhash: bh1, feePayer: walletPubkey });
-      ataTx.add(buildCreateATAIx(walletPubkey, ghostStakeVault, ghostPda, ghostMint));
-      // Use provider.sendTransaction if available (respects wallet's RPC), else fallback
+      missingAtas.forEach(ix => ataTx.add(ix));
       let ataSig;
       if (ghostState.provider.sendTransaction) {
         ataSig = await ghostState.provider.sendTransaction(ataTx, connection);
@@ -2568,7 +2582,7 @@ async function initializeGhost() {
       }
       console.log('[Ghost] ATA TX sent:', ataSig);
       await connection.confirmTransaction(ataSig, 'confirmed');
-      console.log('[Ghost] ATA created');
+      console.log('[Ghost] ATAs created');
       showNotif('Step 2/2: Initializing ghost...', '');
     }
 
@@ -4359,19 +4373,20 @@ async function findATA(ownerPk, mintPk) {
 }
 
 // Build create-ATA instruction (with rent sysvar for compatibility)
-function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk) {
+function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk, tokenProgId) {
   const { PublicKey, TransactionInstruction, SystemProgram } = solanaWeb3;
   const RENT_SYSVAR = new PublicKey('SysvarRent111111111111111111111111111111111');
+  const tokenProg = tokenProgId || new PublicKey(TOKEN_PROGRAM_STR);
   return new TransactionInstruction({
     programId: new PublicKey(ASSOC_TOKEN_PROG_STR),
     keys: [
-      { pubkey: payerPk,                             isSigner: true,  isWritable: true  },
-      { pubkey: ataPk,                               isSigner: false, isWritable: true  },
-      { pubkey: ownerPk,                             isSigner: false, isWritable: false },
-      { pubkey: mintPk,                              isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId,             isSigner: false, isWritable: false },
-      { pubkey: new PublicKey(TOKEN_PROGRAM_STR),    isSigner: false, isWritable: false },
-      { pubkey: RENT_SYSVAR,                         isSigner: false, isWritable: false },
+      { pubkey: payerPk,          isSigner: true,  isWritable: true  },
+      { pubkey: ataPk,            isSigner: false, isWritable: true  },
+      { pubkey: ownerPk,          isSigner: false, isWritable: false },
+      { pubkey: mintPk,           isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: tokenProg,        isSigner: false, isWritable: false },
+      { pubkey: RENT_SYSVAR,      isSigner: false, isWritable: false },
     ],
     data: new Uint8Array([0]) // standard create
   });
