@@ -2558,8 +2558,14 @@ async function initializeGhost() {
       const { blockhash: bh1 } = await connection.getLatestBlockhash();
       const ataTx = new Transaction({ recentBlockhash: bh1, feePayer: walletPubkey });
       ataTx.add(buildCreateATAIx(walletPubkey, ghostStakeVault, ghostPda, ghostMint));
-      const signedAta = await ghostState.provider.signTransaction(ataTx);
-      const ataSig = await connection.sendRawTransaction(signedAta.serialize(), { skipPreflight: false });
+      // Use provider.sendTransaction if available (respects wallet's RPC), else fallback
+      let ataSig;
+      if (ghostState.provider.sendTransaction) {
+        ataSig = await ghostState.provider.sendTransaction(ataTx, connection);
+      } else {
+        const signedAta = await ghostState.provider.signTransaction(ataTx);
+        ataSig = await connection.sendRawTransaction(signedAta.serialize(), { skipPreflight: true });
+      }
       console.log('[Ghost] ATA TX sent:', ataSig);
       await connection.confirmTransaction(ataSig, 'confirmed');
       console.log('[Ghost] ATA created');
