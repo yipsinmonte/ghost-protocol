@@ -1,0 +1,15 @@
+{
+  "name": "ghost-executor-bot",
+  "version": "1.0.0",
+  "description": "GHOST Protocol — watcher bot that triggers vault execution after grace period expires",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node --watch bot.js"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "bs58": "^5.0.0",
+    "dotenv": "^16.0.0"
+  }
+}
