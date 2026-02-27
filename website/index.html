@@ -1206,7 +1206,7 @@
   <span class="contract-addr" id="contractAddr">6AjQ3jxo8DMHE5G63tz55Rc7u6TsjXhJsV6tft8Hpump</span>
   <button class="copy-btn" onclick="copyContract()">COPY</button>
   <span class="sol-badge">◎ SOLANA</span>
-  <a href="https://pump.fun" target="_blank" style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:0.2em;color:var(--accent);text-decoration:none;border:1px solid rgba(102,51,255,0.3);padding:3px 10px;">BUY ON PUMP.FUN ↗</a>
+  <a href="https://pump.fun/coin/6AjQ3jxo8DMHE5G63tz55Rc7u6TsjXhJsV6tft8Hpump" target="_blank" style="font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:0.2em;color:var(--accent);text-decoration:none;border:1px solid rgba(102,51,255,0.3);padding:3px 10px;">BUY ON PUMP.FUN ↗</a>
 </div>
 
 <!-- HERO -->
@@ -1236,8 +1236,8 @@
   <p class="hero-ticker">$GHOST</p>
   <p class="hero-sub">Miss your heartbeat.<br><em>Your ghost awakens.</em></p>
   <div class="hero-actions">
-    <a class="btn-pump" href="https://pump.fun" target="_blank"><span class="pump-icon">👻</span> Buy on Pump.fun</a>
-    <a class="btn-dex" href="https://dexscreener.com" target="_blank">Dexscreener ↗</a>
+    <a class="btn-pump" href="https://pump.fun/coin/6AjQ3jxo8DMHE5G63tz55Rc7u6TsjXhJsV6tft8Hpump" target="_blank"><span class="pump-icon">👻</span> Buy on Pump.fun</a>
+    <a class="btn-dex" href="https://dexscreener.com/solana/6AjQ3jxo8DMHE5G63tz55Rc7u6TsjXhJsV6tft8Hpump" target="_blank">Dexscreener ↗</a>
     <button class="btn-secondary" onclick="ghostState.connected ? openDashboard() : openModal()">Register Heartbeat</button>
 
   </div>
@@ -1430,7 +1430,7 @@
   <h2 class="cta-title">Are you<br>still alive?</h2>
   <p class="cta-sub">Register your heartbeat before the silence speaks for you.</p>
   <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;position:relative;z-index:2;">
-    <a class="btn-pump" href="https://pump.fun" target="_blank"><span class="pump-icon">👻</span> Buy on Pump.fun</a>
+    <a class="btn-pump" href="https://pump.fun/coin/6AjQ3jxo8DMHE5G63tz55Rc7u6TsjXhJsV6tft8Hpump" target="_blank"><span class="pump-icon">👻</span> Buy on Pump.fun</a>
     <button class="btn-secondary" onclick="ghostState.connected ? openDashboard() : openModal()">Register Heartbeat</button>
   </div>
 </div>
@@ -2518,6 +2518,14 @@ async function initializeGhost() {
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
+
+    // Create ghostStakeVault ATA if it doesn't exist yet
+    // This is the ATA owned by the ghost PDA that holds staked $GHOST
+    const stakeVaultInfo = await connection.getAccountInfo(ghostStakeVault);
+    if (!stakeVaultInfo) {
+      tx.add(buildCreateATAIx(walletPubkey, ghostStakeVault, ghostPda, ghostMint));
+    }
+
     tx.add(ix);
 
     const signed = await ghostState.provider.signTransaction(tx);
