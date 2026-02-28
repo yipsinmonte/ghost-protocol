@@ -2408,8 +2408,8 @@ async function fetchGhostAccount() {
 const GHOST_DISC_LABELS = {
   '33ff88e28aafaed3': '\u{1F47B} Ghost summoned',
   'ad005eec4985e199': '\u{1F493} Heartbeat sent',
-  '123e6e081a6af897': '\u2795 Deposited to vault',
-  'b422252e9c00d3ee': '\u2796 Withdrew from vault',
+  '123e6e081a6af897': 'Vault Deposit',
+  'b422252e9c00d3ee': 'Vault Withdrawal',
   '1690d0d70fa59d7a': '\u{1F6D1} Awakening cancelled',
   'd39335ad64b4f231': '\u{1F511} Recovery wallet updated',
   '69d66a8db4a67bee': '\u{1F3AF} Beneficiary added',
@@ -2511,7 +2511,7 @@ async function fetchOnChainHistory() {
             if (amt&&sym) {
               const n=parseFloat(amt);
               const fmt=n>=1000?n.toLocaleString(undefined,{maximumFractionDigits:2}):parseFloat(n.toPrecision(4)).toString();
-              return (isDeposit?'\u2795 +':'\u2796 −')+fmt+' '+sym;
+              return (isDeposit?'Vault Deposit ':'Vault Withdrawal ')+fmt+' '+sym;
             }
           }
         }
@@ -3386,13 +3386,10 @@ async function sendPing() {
 // ─── Activity Log (persistent across session) ───────────────────
 if (!ghostState.activityLog) ghostState.activityLog = []; // [{msg, tx, ts}]
 
-function addActivityRow(msg, tx) {
-  // Mark as _local so it shows immediately; fetchOnChainHistory will replace it
-  // with the authoritative on-chain version once the tx is confirmed and indexed
+function addActivityRow(msg, tx, icon) {
   const ts = Date.now();
-  ghostState.activityLog.unshift({ msg, tx: tx||'', ts, _local: true });
+  ghostState.activityLog.unshift({ msg, tx: tx||'', ts, _local: true, icon: icon||null });
   renderActivityLog();
-  // Don't save to localStorage — chain history is the source of truth
 }
 
 function renderActivityLog() {
@@ -3402,6 +3399,8 @@ function renderActivityLog() {
     log.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#c0bce0">No activity yet</td></tr>';
     return;
   }
+  const _depositSvg = '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;vertical-align:middle;margin-right:5px;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="rgba(51,255,120,0.12)" stroke="#33ff78" stroke-width="1.2"/><path d="M12 7v10M7 14l5 4 5-4" stroke="#33ff78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+  const _withdrawSvg = '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;vertical-align:middle;margin-right:5px;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="rgba(255,80,80,0.12)" stroke="#ff5050" stroke-width="1.2"/><path d="M12 17V7M7 10l5-4 5 4" stroke="#ff5050" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
   const _angelSvg = '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;vertical-align:middle;margin-right:5px;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 4px rgba(200,180,255,0.95)) drop-shadow(0 0 8px rgba(160,120,255,0.6))"><ellipse cx="12" cy="4" rx="5" ry="1.5" fill="none" stroke="#e8dcff" stroke-width="1.2"/><circle cx="12" cy="8.5" r="3.2" fill="#cdbfff"/><path d="M4.5 11.5 Q1.5 9 2.5 6 Q4 3.5 7 5 Q9 6.2 8.5 9.5" fill="#ddd0ff" opacity="0.8"/><path d="M19.5 11.5 Q22.5 9 21.5 6 Q20 3.5 17 5 Q15 6.2 15.5 9.5" fill="#ddd0ff" opacity="0.8"/><path d="M7.5 13.5 Q4 16 5 19.5 Q6.5 22 9.5 20 Q11 19 12 17" fill="#c8b8ff" opacity="0.75"/><path d="M16.5 13.5 Q20 16 19 19.5 Q17.5 22 14.5 20 Q13 19 12 17" fill="#c8b8ff" opacity="0.75"/><ellipse cx="12" cy="14.5" rx="2.8" ry="4" fill="#b8a4ff" opacity="0.85"/></svg></span>';
   const _chestSvg = '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;vertical-align:middle;margin-right:5px;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 4px rgba(255,200,60,0.7)) drop-shadow(0 0 8px rgba(255,160,0,0.4))"><rect x="3" y="16" width="30" height="17" rx="2" fill="#7c4d00" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="8" rx="2" fill="#a06000" stroke="#f0a020" stroke-width="1.2"/><rect x="2" y="8" width="32" height="11" rx="3" fill="#c07800" stroke="#f0b030" stroke-width="1.2"/><rect x="13" y="19" width="10" height="7" rx="1.5" fill="#f0a020" stroke="#ffd060" stroke-width="0.8"/><circle cx="18" cy="22.5" r="2" fill="#ffd060" stroke="#fff8d0" stroke-width="0.5"/></svg></span>';
   log.innerHTML = ghostState.activityLog.map(entry => {
@@ -3410,8 +3409,16 @@ function renderActivityLog() {
     const fullSig = entry.tx||'';
     const short = fullSig.length>12 ? fullSig.slice(0,4)+'...'+fullSig.slice(-4) : fullSig;
     const cpBtn = fullSig ? '<button onclick="copyAddr(\'' + fullSig + '\')" title="Copy tx signature" style="background:none;border:1px solid rgba(102,51,255,0.25);color:#8888bb;font-size:10px;padding:1px 5px;cursor:pointer;margin-left:4px;font-family:\'Share Tech Mono\',monospace;vertical-align:middle;line-height:1.4">\u29C9</button>' : '';
-    let iconHtml = entry.icon === 'angel' ? _angelSvg : '';
-    if (!iconHtml && entry.msg && /whole vault|Whole vault|whole-vault|Whole Vault/i.test(entry.msg)) iconHtml = _chestSvg;
+    let iconHtml = '';
+    if (entry.icon === 'angel') iconHtml = _angelSvg;
+    else if (entry.icon === 'deposit') iconHtml = _depositSvg;
+    else if (entry.icon === 'withdraw') iconHtml = _withdrawSvg;
+    else if (entry.msg && /whole vault|Whole vault|whole-vault|Whole Vault/i.test(entry.msg)) iconHtml = _chestSvg;
+    // Auto-detect for chain history rows (no icon field stored)
+    if (!iconHtml) {
+      if (/Vault Deposit/i.test(entry.msg)) iconHtml = _depositSvg;
+      else if (/Vault Withdrawal/i.test(entry.msg)) iconHtml = _withdrawSvg;
+    }
     const rowBg = '';
     const tdStyle = iconHtml ? ' style="display:flex;align-items:center"' : '';
     return '<tr' + rowBg + '><td' + tdStyle + '>' + iconHtml + entry.msg + '</td><td style="white-space:nowrap;color:#9090b8">' + timeStr + '</td><td style="white-space:nowrap"><span class="addr-short">' + short + '</span>' + cpBtn + '</td></tr>';
@@ -4556,49 +4563,20 @@ async function guardianWithdrawAll(ownerAddress) {
     const wsolAccts = allAccts.filter(a => a.account?.data?.parsed?.info?.mint === WSOL_MINT_STR_G);
     const splAccts  = allAccts.filter(a => a.account?.data?.parsed?.info?.mint !== WSOL_MINT_STR_G);
 
-    if (allAccts.length === 0) { showNotif('No tokens found in vault (staked GHOST excluded)', 'error'); return; }
-
-    // Step 0: Clear all beneficiaries on-chain before withdrawing
-    // Fetch ghost account to know how many beneficiary slots are filled
+    // Check native SOL balance too — vault may have SOL without SPL tokens
+    let _nativeSolLamps = 0;
     try {
-      const ghostAcctInfo = await (new solanaWeb3.Connection(RPC_URL,'confirmed')).getAccountInfo(ghostPda);
-      if (ghostAcctInfo) {
-        const _gb = new Uint8Array(ghostAcctInfo.data);
-        const _gv = new DataView(_gb.buffer);
-        // Parse beneficiary count from offset 136 (u8 after all the fixed fields before beneficiaries)
-        // Actually count non-empty slots by scanning: offset 144 = start of beneficiaries[10]
-        // Each slot: recipient(32)+amount(8)+token_mint(33)+action(1)+executed(1) = 75 bytes
-        let _filledSlots = 0;
-        let _off = 144;
-        for (let _bi = 0; _bi < 10; _bi++) {
-          const _recip = _gb.slice(_off, _off + 32);
-          const _amt = _gv.getBigUint64(_off + 32, true);
-          if (_recip.some(b => b !== 0) || _amt > 0n) _filledSlots++;
-          _off += 75;
-        }
-        if (_filledSlots > 0) {
-          showNotif('Clearing ' + _filledSlots + ' beneficiar' + (_filledSlots===1?'y':'ies') + ' before withdrawal...', '');
-          const _rmDisc = [67, 27, 24, 153, 135, 64, 202, 77];
-          const { blockhash: _rmBh } = await connection.getLatestBlockhash();
-          const _rmTx = new Transaction({ recentBlockhash: _rmBh, feePayer: recoveryWalletPk });
-          for (let _ri = 0; _ri < _filledSlots; _ri++) {
-            const _d = new Uint8Array(9); _d.set(_rmDisc, 0); _d[8] = 0; // always slot 0 (shifts)
-            _rmTx.add(new TransactionInstruction({
-              programId,
-              keys: [{ pubkey: ghostPda, isSigner:false, isWritable:true }, { pubkey: recoveryWalletPk, isSigner:true, isWritable:true }],
-              data: _d
-            }));
-          }
-          const _rmSigned = await ghostState.provider.signTransaction(_rmTx);
-          const _rmSig = await connection.sendRawTransaction(_rmSigned.serialize(), { skipPreflight: true });
-          await connection.confirmTransaction(_rmSig, 'confirmed');
-          showNotif('Beneficiaries cleared. Proceeding with withdrawal...', '');
-        }
-      }
-    } catch(_clearErr) {
-      console.warn('[Ghost] Pre-withdraw beneficiary clear failed (non-fatal):', _clearErr.message);
-      // Non-fatal — proceed with withdrawal anyway
-    }
+      const _solRes = await fetch(RPC_URL, {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:'vsol',method:'getBalance',params:[vaultPda.toBase58()]})});
+      _nativeSolLamps = (await _solRes.json()).result?.value || 0;
+    } catch(_) {}
+    const _vaultHasAssets = allAccts.length > 0 || _nativeSolLamps > 10000000; // >0.01 SOL above rent
+
+    if (!_vaultHasAssets) { showNotif('Vault is already empty — nothing to withdraw', ''); return; }
+
+    // Note: remove_beneficiary requires the owner as signer (ConstraintSeeds) so a guardian
+    // cannot clear beneficiaries on-chain. They are fingerprinted and wiped locally after
+    // successful withdrawal in the post-success block below.
 
     // recovery_withdraw discriminator: sha256("global:recovery_withdraw")[0:8]
     const disc = [99, 163, 51, 105, 176, 179, 67, 34];
@@ -5898,7 +5876,7 @@ function dbDepositAll() {
     } else {
       ghostState.vaultTokens.push({ symbol, mint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl || null, name: t.name || null });
     }
-    addActivityRow('➕ ' + amount.toLocaleString() + ' ' + symbol, randomTx());
+    addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + symbol, randomTx(), 'deposit');
     count++;
   }
   if (count === 0) { showNotif('Nothing to deposit', 'error'); return; }
@@ -5942,7 +5920,7 @@ async function dbWithdrawAll() {
       if (wt) { wt.balance += vt.balance; } else {
         ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl || null });
       }
-      addActivityRow('➖ ' + vt.balance.toLocaleString() + ' ' + vt.symbol + ' [demo]', randomTx());
+      addActivityRow('Vault Withdrawal ' + vt.balance.toLocaleString() + ' ' + vt.symbol + ' [demo]', randomTx(), 'withdraw');
       count++;
     }
     ghostState.vaultTokens = [];
@@ -6027,7 +6005,7 @@ async function dbWithdrawAll() {
         const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
         if (wt) { wt.balance += vt.balance; } else { ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl || null }); }
         const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
-        addActivityRow('➖ ' + vt.balance.toLocaleString() + ' ' + vt.symbol, sig.slice(0,4)+'...'+sig.slice(-4));
+        addActivityRow('Vault Withdrawal ' + vt.balance.toLocaleString() + ' ' + vt.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
         successCount++;
       }
     } catch(err) {
@@ -6083,7 +6061,7 @@ async function dbWithdrawAll() {
       const wt = ghostState.walletTokens.find(w => w.mint === 'native');
       if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
       const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
-      addActivityRow('➖ ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4));
+      addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
       successCount++;
     } catch(err) { console.error('SOL withdraw error:', err); showNotif('⚠️ SOL withdraw failed: ' + (err.message || err), 'error'); }
   }
@@ -6333,7 +6311,7 @@ async function dbDeposit() {
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     _applyDeposit();
-    addActivityRow('➕ ' + amount.toLocaleString() + ' ' + displaySym + ' [demo]', randomTx());
+    addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + displaySym + ' [demo]', randomTx(), 'deposit');
     showNotif('✅ Deposited ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to vault! [demo]', 'green');
     return;
   }
@@ -6524,7 +6502,7 @@ async function dbDeposit() {
 
     _applyDeposit();
     const shortSig = sig.slice(0,4)+'...'+sig.slice(-4);
-    addActivityRow('➕ ' + amount.toLocaleString() + ' ' + displaySym, shortSig);
+    addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + displaySym, shortSig, 'deposit');
     showNotif('✅ Deposited ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to vault!', 'green');
     // Refresh vault from chain after short delay to pick up any token metadata the local state missed
     setTimeout(() => fetchGhostAccount().catch(()=>{}), 1800);
@@ -6576,7 +6554,7 @@ async function dbWithdrawAsset(vaultIdx) {
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     _applyWithdraw();
-    addActivityRow('➖ ' + amount.toLocaleString() + ' ' + displaySym + ' [demo]', randomTx());
+    addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' ' + displaySym + ' [demo]', randomTx(), 'withdraw');
     showNotif('✅ Withdrew ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' [demo]', 'green');
     return;
   }
@@ -6682,7 +6660,7 @@ async function dbWithdrawAsset(vaultIdx) {
       const conf = await connection.confirmTransaction(sig, 'confirmed');
       if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
       _applyWithdraw();
-      addActivityRow('➖ ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4));
+      addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
       showNotif('✅ Withdrew ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' SOL to wallet!', 'green');
       return;
     }
@@ -6734,7 +6712,7 @@ async function dbWithdrawAsset(vaultIdx) {
     const conf = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
     _applyWithdraw();
-    addActivityRow('➖ ' + amount.toLocaleString() + ' ' + displaySym, sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' ' + displaySym, sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
     showNotif('✅ Withdrew ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to wallet!', 'green');
   } catch(err) {
     console.error('Withdraw error:', err);
