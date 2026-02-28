@@ -5033,7 +5033,9 @@ async function dbDeposit() {
       const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
       initTx.add(buildCreateATAIx(walletPk, vaultAta, vaultPda, depositMintPk, tokenProgPk));
       const initSigned = await ghostState.provider.signTransaction(initTx);
-      const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: false });
+      // skipPreflight: true — preflight simulation may falsely reject ATA program on some RPCs
+      const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: true });
+      console.log('[Ghost] Vault ATA init tx sent:', initSig);
       const initConf = await connection.confirmTransaction(initSig, 'confirmed');
       if (initConf.value?.err) throw new Error('Vault init failed: ' + JSON.stringify(initConf.value.err));
       console.log('[Ghost] Vault ATA created:', initSig);
@@ -5054,7 +5056,7 @@ async function dbDeposit() {
       wrapIxs.forEach(ix => wrapTx.add(ix));
       console.log('[Ghost] SOL wrap ATA:', wsolAta.toBase58());
       const wrapSigned = await ghostState.provider.signTransaction(wrapTx);
-      const wrapSig = await connection.sendRawTransaction(wrapSigned.serialize(), { skipPreflight: false });
+      const wrapSig = await connection.sendRawTransaction(wrapSigned.serialize(), { skipPreflight: true });
       const wrapConf = await connection.confirmTransaction(wrapSig, 'confirmed');
       if (wrapConf.value?.err) throw new Error('SOL wrap failed: ' + JSON.stringify(wrapConf.value.err));
       effectiveOwnerAta = wsolAta;
