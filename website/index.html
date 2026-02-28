@@ -3943,8 +3943,8 @@ async function deriveATA(ownerPubkey, mintPubkey) {
 // Build instruction to create ATA if it doesn't exist
 function createATAInstruction(payer, ata, owner, mint, tokenProgram) {
   const { PublicKey } = solanaWeb3;
-  const RENT = new PublicKey('SysvarRent111111111111111111111111111111111');
   const tokenProg = tokenProgram || TOKEN_PROGRAM_ID_PK();
+  // Idempotent create [1]: 6 accounts only — no rent sysvar needed
   const keys = [
     { pubkey: payer,                   isSigner: true,  isWritable: true  },
     { pubkey: ata,                     isSigner: false, isWritable: true  },
@@ -3952,12 +3952,11 @@ function createATAInstruction(payer, ata, owner, mint, tokenProgram) {
     { pubkey: mint,                    isSigner: false, isWritable: false },
     { pubkey: SYSTEM_PROGRAM_ID_PK(), isSigner: false, isWritable: false },
     { pubkey: tokenProg,               isSigner: false, isWritable: false },
-    { pubkey: RENT,                    isSigner: false, isWritable: false },
   ];
   return new solanaWeb3.TransactionInstruction({
     programId: ASSOC_TOKEN_PROGRAM_ID_PK(),
     keys,
-    data: new Uint8Array([1]) // idempotent create — safe if already exists
+    data: new Uint8Array([1]) // idempotent create
   });
 }
 
@@ -4834,20 +4833,19 @@ async function findATA(ownerPk, mintPk) {
 // Build create-ATA instruction (with rent sysvar for compatibility)
 function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk, tokenProgId) {
   const { PublicKey, TransactionInstruction, SystemProgram } = solanaWeb3;
-  const RENT_SYSVAR = new PublicKey('SysvarRent111111111111111111111111111111111');
   const tokenProg = tokenProgId || new PublicKey(TOKEN_PROGRAM_STR);
+  // Idempotent create [1]: 6 accounts only — no rent sysvar
   return new TransactionInstruction({
     programId: new PublicKey(ASSOC_TOKEN_PROG_STR),
     keys: [
-      { pubkey: payerPk,          isSigner: true,  isWritable: true  },
-      { pubkey: ataPk,            isSigner: false, isWritable: true  },
-      { pubkey: ownerPk,          isSigner: false, isWritable: false },
-      { pubkey: mintPk,           isSigner: false, isWritable: false },
+      { pubkey: payerPk,                 isSigner: true,  isWritable: true  },
+      { pubkey: ataPk,                   isSigner: false, isWritable: true  },
+      { pubkey: ownerPk,                 isSigner: false, isWritable: false },
+      { pubkey: mintPk,                  isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: tokenProg,        isSigner: false, isWritable: false },
-      { pubkey: RENT_SYSVAR,      isSigner: false, isWritable: false },
+      { pubkey: tokenProg,               isSigner: false, isWritable: false },
     ],
-    data: new Uint8Array([1]) // idempotent create — safe if already exists
+    data: new Uint8Array([1]) // idempotent create
   });
 }
 
@@ -4972,9 +4970,13 @@ async function dbDeposit() {
     // For SOL: work with wSOL mint + classic token program
     const depositMintPk   = isSOL ? WSOL_MINT_PK : mintPk;
     const depositMintStr  = isSOL ? 'So11111111111111111111111111111111111111112' : mintStr;
-    const rawMintOwner    = isSOL
-      ? TOKEN_PROGRAM_STR
-      : ((mintPk ? (await connection.getAccountInfo(mintPk))?.owner?.toBase58() : null) || TOKEN_PROGRAM_STR);
+    let rawMintOwner = TOKEN_PROGRAM_STR;
+    if (!isSOL && mintPk) {
+      try {
+        const mintAcct = await connection.getAccountInfo(mintPk);
+        rawMintOwner = mintAcct?.owner?.toBase58() || TOKEN_PROGRAM_STR;
+      } catch(e) { /* default to classic token */ }
+    }
     // Normalize pump.fun non-standard Token-2022 → standard for ATA creation
     const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
     const tokenProgPk    = new PublicKey(normalizedTokenProg); // for ATA creation
@@ -5002,19 +5004,6 @@ async function dbDeposit() {
 
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-
-    // Ensure vault PDA is funded (needs lamports to own token accounts)
-    const vaultPdaInfo = await connection.getAccountInfo(vaultPda);
-    console.log('[Ghost] vaultPda:', vaultPda.toBase58(), 'lamports:', vaultPdaInfo?.lamports ?? 0);
-    if (!vaultPdaInfo || vaultPdaInfo.lamports === 0) {
-      const minRent = await connection.getMinimumBalanceForRentExemption(0);
-      console.log('[Ghost] Funding vault PDA with rent:', minRent);
-      tx.add(solanaWeb3.SystemProgram.transfer({
-        fromPubkey: walletPk,
-        toPubkey: vaultPda,
-        lamports: minRent
-      }));
-    }
 
     // Create vault token account if it doesn't exist
     const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
@@ -5060,15 +5049,20 @@ async function dbDeposit() {
         preflightCommitment: 'confirmed'
       });
     } catch(simErr) {
-      // Simulate with unsigned tx to get program logs
-      try {
-        const sim = await connection.simulateTransaction(tx);
-        console.error('[Ghost] Simulation logs:', sim.value.logs);
-        const simErrMsg = sim.value.err ? JSON.stringify(sim.value.err) : simErr.message;
-        throw new Error('Simulation failed: ' + simErrMsg + ' | logs: ' + (sim.value.logs||[]).slice(-3).join(' | '));
-      } catch(e2) {
-        throw new Error('TX failed: ' + simErr.message);
+      // Get detailed logs from the SendTransactionError
+      let logs = [];
+      try { logs = await simErr.getLogs(connection); } catch(_) {}
+      if (!logs?.length) {
+        // Fall back to manual simulation with unsigned tx
+        try {
+          const sim = await connection.simulateTransaction(tx);
+          logs = sim.value.logs || [];
+          console.error('[Ghost] Sim error:', sim.value.err);
+        } catch(_) {}
       }
+      console.error('[Ghost] TX logs:', logs);
+      const lastLogs = logs.slice(-5).join(' | ');
+      throw new Error('TX failed: ' + simErr.message + (lastLogs ? ' | ' + lastLogs : ''));
     }
     const conf   = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
