@@ -1892,12 +1892,21 @@ async function connectWallet(name) {
   }
   try {
     showNotif('Connecting to ' + name + '...', '');
-    // Always disconnect first to force the wallet to show the approve popup
+    // Force fresh connection — disconnect first, then reconnect
     try { await provider.disconnect(); } catch(e) {}
-    // Small delay so Phantom processes the disconnect before we call connect
-    await new Promise(r => setTimeout(r, 200));
-    // onlyIfTrusted: false → always shows the approve popup
+    await new Promise(r => setTimeout(r, 300));
+    // Connect to get the public key
     const resp = await provider.connect({ onlyIfTrusted: false });
+    // Force wallet approval popup by requesting a sign (user must manually approve)
+    // This prevents silent auto-connect on cached sessions
+    try {
+      const msg = new TextEncoder().encode('Sign to authenticate with GHOST Protocol\n' + new Date().toISOString());
+      await provider.signMessage(msg, 'utf8');
+    } catch(signErr) {
+      // User rejected sign = treat as cancelled connection
+      try { await provider.disconnect(); } catch(e) {}
+      throw new Error('Authentication cancelled — please sign the message to connect.');
+    }
     const pubkey = resp.publicKey.toString();
     ghostState.connected = true;
     ghostState.walletName = name;
@@ -2344,118 +2353,139 @@ async function fetchGhostAccount() {
 }
 
 // Fetch on-chain transaction signatures for the ghost PDA and rebuild activity + ping history
+// Correct Anchor discriminators: sha256("global:<ix_name>")[0:8]
+const GHOST_DISC_LABELS = {
+  '33ff88e28aafaed3': '👻 Ghost summoned',
+  'ad005eec4985e199': '💓 Heartbeat sent',
+  '123e6e081a6af897': '📥 Deposited to vault',
+  'b422252e9c00d3ee': '📤 Withdrew from vault',
+  '1690d0d70fa59d7a': '🛑 Awakening cancelled',
+  'd39335ad64b4f231': '🔑 Recovery wallet updated',
+  '69d66a8db4a67bee': '🎯 Beneficiary added',
+  '431b18998740ca4d': '❌ Beneficiary removed',
+  '51a633d59e549d6c': '⚙️ Settings updated',
+};
+
+// Decode base58 instruction data → hex of first 8 bytes (Anchor discriminator)
+function b58ToDiscHex(s) {
+  const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let leading = 0;
+  for (const c of s) { if (c === '1') leading++; else break; }
+  let num = 0n;
+  for (const ch of s.slice(leading)) { const i = B58.indexOf(ch); if(i<0) break; num = num*58n+BigInt(i); }
+  const bytes = [];
+  while (num > 0n) { bytes.unshift(Number(num & 0xffn)); num >>= 8n; }
+  const full = [...new Array(leading).fill(0), ...bytes];
+  while (full.length < 8) full.unshift(0);
+  return full.slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function fetchOnChainHistory() {
   if (!ghostState.ghostPda) return;
   try {
-    const res = await fetch(RPC_URL, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        jsonrpc: '2.0', id: 'hist', method: 'getSignaturesForAddress',
-        params: [ghostState.ghostPda, { limit: 50 }]
-      })
-    });
-    const data = await res.json();
-    const sigs = data.result || [];
-    if (sigs.length === 0) return;
+    // Collect signatures from BOTH ghost PDA and vault PDA (deposits/withdraws appear on vault)
+    const addresses = [ghostState.ghostPda];
+    if (ghostState.vaultPda) addresses.push(ghostState.vaultPda);
 
-    // Decode known discriminators to action labels
-    const DISC_LABELS = {
-      '33255588e28aafd3': '👻 Ghost summoned',
-      'ad005eec4985e199': '💓 Heartbeat sent',
-      '1690d0d70fa59d7a': '🛑 Awakening cancelled',
-      'b4222a2e9c00d3ee': '📤 Withdrew from vault',
-      '3d2a01f00aaaec0c': '📥 Deposited to vault',
-      'b43b71c9268e4f0d': '🔑 Recovery wallet set',
-    };
+    const allSigResults = await Promise.all(addresses.map(addr =>
+      fetch(RPC_URL, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({jsonrpc:'2.0', id:'hist',
+          method:'getSignaturesForAddress',
+          params:[addr, {limit:50, commitment:'confirmed'}]})
+      }).then(r=>r.json()).catch(()=>({result:[]}))
+    ));
 
-    // Build from oldest to newest so unshift gives chronological newest-first
-    const newActivity = [];
-    const newPings = [];
-    let pingNum = 0;
-    let lastPingTs = null;
+    // Deduplicate and sort newest-first
+    const sigMap = new Map();
+    for (const res of allSigResults) {
+      for (const s of (res.result || [])) {
+        if (!s.err && !sigMap.has(s.signature)) sigMap.set(s.signature, s);
+      }
+    }
+    const allSigs = [...sigMap.values()].sort((a,b) => (b.blockTime||0) - (a.blockTime||0));
+    if (allSigs.length === 0) return;
 
-    // sigs come newest-first from RPC; reverse to process chronologically
-    const chronoSigs = [...sigs].reverse();
-    for (const s of chronoSigs) {
-      if (s.err) continue;
-      const ts = s.blockTime ? s.blockTime * 1000 : Date.now();
-      const shortSig = s.signature.slice(0,4) + '...' + s.signature.slice(-4);
-      // Try to label by fetching parsed tx — expensive, skip for now; use memo if available
-      const label = '💓 Heartbeat sent'; // Default — we'll refine with parsed tx below
-      newActivity.unshift({ msg: shortSig, tx: shortSig, ts, sig: s.signature });
+    // Fetch up to 40 parsed transactions via Helius getParsedTransactions (batch)
+    const sigs40 = allSigs.slice(0, 40).map(s => s.signature);
+    let txList = [];
+    try {
+      const batchRes = await fetch(RPC_URL, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          jsonrpc:'2.0', id:'batch',
+          method:'getParsedTransactions',
+          params:[sigs40, {maxSupportedTransactionVersion:0, commitment:'confirmed'}]
+        })
+      });
+      const batchData = await batchRes.json();
+      txList = Array.isArray(batchData.result) ? batchData.result : [];
+    } catch(e) { console.warn('[Ghost] batch fetch failed:', e); }
+
+    // Fall back to individual getTransaction calls if batch returned nothing
+    if (txList.filter(Boolean).length === 0) {
+      for (const sig of sigs40.slice(0,20)) {
+        try {
+          const r = await fetch(RPC_URL, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({jsonrpc:'2.0', id:'tx', method:'getTransaction',
+              params:[sig, {encoding:'jsonParsed', maxSupportedTransactionVersion:0}]})
+          });
+          const d = await r.json();
+          txList.push(d.result || null);
+        } catch(e) { txList.push(null); }
+      }
     }
 
-    // Fetch parsed transactions in batch (up to 20 at a time for speed)
-    const batchSize = 20;
-    const allParsed = [];
-    for (let i = 0; i < chronoSigs.length; i += batchSize) {
-      const batch = chronoSigs.slice(i, i + batchSize);
-      try {
-        const txRes = await fetch(RPC_URL, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            jsonrpc:'2.0', id:'txb', method:'getTransactions',
-            params: [batch.map(s => s.signature), {encoding:'jsonParsed', maxSupportedTransactionVersion:0}]
-          })
-        });
-        const txData = await txRes.json();
-        if (Array.isArray(txData.result)) allParsed.push(...txData.result);
-      } catch(e) {}
-    }
-
-    // Rebuild activity and ping history from parsed txs
-    const builtActivity = [];
-    const builtPings = [];
-    pingNum = 0;
-    let prevPingTs = null;
-
-    for (let i = 0; i < allParsed.length; i++) {
-      const tx = allParsed[i];
-      if (!tx) continue;
-      const s = chronoSigs[i];
-      if (!s || s.err) continue;
-      const ts = (tx.blockTime || s.blockTime || 0) * 1000;
-      const shortSig = s.signature.slice(0,4) + '...' + s.signature.slice(-4);
-
-      // Read first instruction data to identify discriminator
-      let label = '📋 Transaction';
-      try {
-        const ixs = tx.transaction?.message?.instructions || [];
-        for (const ix of ixs) {
-          if (ix.programId === PROGRAM_ID) {
-            const rawData = ix.data; // base58 encoded
-            if (rawData) {
-              // Decode base58 to get first 8 bytes as hex
-              const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-              let n = 0n;
-              for (const ch of rawData) { const idx = B58.indexOf(ch); if(idx<0) break; n = n*58n+BigInt(idx); }
-              const bytes8 = [];
-              for (let b = 0; b < 8; b++) { bytes8.unshift(Number(n & 0xffn)); n >>= 8n; }
-              const hex = bytes8.map(b=>b.toString(16).padStart(2,'0')).join('');
-              label = DISC_LABELS[hex] || '📋 Transaction';
-              if (label === '💓 Heartbeat sent') {
-                pingNum++;
-                const gap = prevPingTs ? formatDuration(ts - prevPingTs) : '—';
-                builtPings.push({ num: pingNum, ts, tx: shortSig, gap });
-                prevPingTs = ts;
-              }
-              break;
-            }
-          }
+    // Helper: scan all ixs (top-level + inner) for our program's discriminator
+    function extractLabel(tx) {
+      if (!tx) return null;
+      const top = tx.transaction?.message?.instructions || [];
+      const inner = (tx.meta?.innerInstructions || []).flatMap(g => g.instructions || []);
+      for (const ix of [...top, ...inner]) {
+        if (ix.programId === PROGRAM_ID && ix.data) {
+          try {
+            const hex = b58ToDiscHex(ix.data);
+            if (GHOST_DISC_LABELS[hex]) return GHOST_DISC_LABELS[hex];
+          } catch(e) {}
         }
-      } catch(e) {}
-      builtActivity.unshift({ msg: label, tx: shortSig, ts });
+      }
+      return null;
     }
 
-    // Only update if we got useful data (don't wipe session activity if chain call failed)
+    // Build activity list (newest-first) and ping list (chronological → reversed for display)
+    const builtActivity = [];
+    const rawPings = [];
+
+    for (let i = 0; i < txList.length; i++) {
+      const tx = txList[i];
+      const s = allSigs[i];
+      if (!s) continue;
+      const ts = ((tx?.blockTime || s.blockTime) || 0) * 1000;
+      if (!ts) continue;
+      const shortSig = s.signature.slice(0,4) + '...' + s.signature.slice(-4);
+      const label = extractLabel(tx) || '📋 On-chain action';
+      builtActivity.push({ msg: label, tx: shortSig, ts });
+      if (label === '💓 Heartbeat sent') rawPings.push({ ts, shortSig });
+    }
+
+    // Build ping history in chronological order with gap tracking
+    const chronoPings = rawPings.sort((a,b) => a.ts - b.ts);
+    const builtPings = chronoPings.map((p, i) => {
+      const prev = chronoPings[i-1];
+      const gap = prev ? formatDuration(p.ts - prev.ts) : '—';
+      return { num: i+1, ts: p.ts, tx: p.shortSig, gap };
+    });
+
     if (builtActivity.length > 0) {
-      ghostState.activityLog = builtActivity;
+      ghostState.activityLog = builtActivity;       // already newest-first
       renderActivityLog();
     }
     if (builtPings.length > 0) {
-      ghostState.pingHistory = builtPings.reverse(); // newest first
+      ghostState.pingHistory = [...builtPings].reverse(); // newest-first for display
       renderPingHistory();
     }
+    console.log(`[Ghost] History loaded: ${builtActivity.length} txs, ${builtPings.length} pings`);
   } catch(e) {
     console.warn('[Ghost] fetchOnChainHistory error:', e);
   }
@@ -3075,7 +3105,7 @@ function updateCountdown() {
   }
 }
 
-setInterval(updateCountdown, 30000);
+setInterval(updateCountdown, 10000); // tick every 10s for accurate display
 
 // ─── Ping ──────────────────────────────────────────────────────
 async function sendPing() {
@@ -3960,10 +3990,7 @@ async function scanGuardianAssignments() {
                 ? `<button class="db-btn" style="flex:1;border-color:#ffaa33;color:#ffaa33;padding:10px" onclick="guardianCancelAwakening('${ownerB58}')">🛑 Cancel Awakening</button>`
                 : `<button class="db-btn" style="flex:1;border-color:#555;color:#666;padding:10px;cursor:not-allowed;opacity:0.4" disabled title="Ghost is not in grace period">🛑 Cancel Awakening</button>`
               }
-              ${awakened
-                ? `<button class="db-btn" style="flex:1;border-color:#c0a0ff;color:#c0a0ff;padding:10px" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>`
-                : `<button class="db-btn" style="flex:1;border-color:#555;color:#666;padding:10px;cursor:not-allowed;opacity:0.4" disabled title="Vault withdraw only available when ghost has awakened">📤 Withdraw Vault</button>`
-              }
+              <button class="db-btn" style="flex:1;border-color:#c0a0ff;color:#c0a0ff;padding:10px" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>
             </div>` : `
             <div style="padding-top:12px;border-top:1px solid rgba(255,51,102,0.15);font-family:'Share Tech Mono',monospace;font-size:11px;color:#ff3366;letter-spacing:0.1em">⚠ EXECUTED — ghost protocol has run</div>`}
           </div>`);
@@ -4596,10 +4623,21 @@ async function loadWalletTokens() {
               }
             }
             // Remove vault tokens that no longer have on-chain balance
+            // (ghostMint is NOT stored in ghost object — never keep stale entries)
             ghostState.vaultTokens = ghostState.vaultTokens.filter(v =>
-              v.mint === ghostState.ghost?.ghostMint || // keep GHOST stake entry
               freshVault.find(f => f.mint === v.mint)
             );
+            // Fetch metadata for vault tokens not in wallet (e.g. token was deposited then wallet balance went to 0)
+            const vaultOnlyMints = freshVault
+              .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint))
+              .filter(v => !v.name) // only if we don't already have name
+              .map(v => v.mint);
+            if (vaultOnlyMints.length > 0) {
+              fetchTokenMetadata(ghostState.vaultTokens, vaultOnlyMints).then(() => {
+                renderVaultOverview();
+                renderVaultHoldings();
+              }).catch(() => {});
+            }
           }
           console.log('[Ghost] Vault tokens from chain:', ghostState.vaultTokens.map(v => v.symbol + ':' + v.balance));
         }
