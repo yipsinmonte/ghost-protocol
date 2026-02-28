@@ -713,8 +713,11 @@
         <div class="db-page-sub">Vault Status · Digital Legacy Protocol</div>
 
         <div class="db-alert" id="dbAwakeningAlert">
-          ⚠ GHOST AWAKENED — Grace period expires in <strong id="dbGraceCountdown">6d 14h</strong>. Ping now to cancel.
-          <br><button class="db-btn db-btn-green" style="margin-top:8px" onclick="sendPing()">💓 SEND HEARTBEAT NOW</button>
+          ⚠ GHOST AWAKENED — Grace period expires in <strong id="dbGraceCountdown">6d 14h</strong>. Ping or cancel to save your ghost.
+          <br><div style="display:flex;gap:8px;margin-top:8px">
+          <button class="db-btn db-btn-green" onclick="sendPing()">💓 SEND HEARTBEAT</button>
+          <button class="db-btn" style="border-color:#ff9966;color:#ff9966" onclick="cancelAwakening()">🛑 CANCEL AWAKENING</button>
+          </div>
         </div>
 
         <div class="status-hero">
@@ -1158,6 +1161,15 @@
         <div class="db-page-title">Heartbeat Checker</div>
         <div class="db-page-sub">Check if any wallet is still alive</div>
         <div class="db-info">Enter any Solana wallet address to see their ghost status, last heartbeat, and time remaining before their ghost awakens.</div>
+          <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(102,51,255,0.15)">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.2em;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Recovery Wallet Mode</div>
+            <div style="font-size:13px;color:#9090a8;margin-bottom:12px">If you're set as someone's recovery wallet, enter their address to view their ghost and cancel an awakening.</div>
+            <div style="display:flex;gap:8px">
+              <input id="recoverySoulInput" placeholder="Soul's wallet address..." style="flex:1;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#c0a0ff;font-family:'Share Tech Mono',monospace;font-size:13px;padding:10px 14px;outline:none" />
+              <button class="db-btn db-btn-primary" onclick="checkIfRecoveryWallet()">CHECK</button>
+            </div>
+            <div id="recoveryStatusResult" style="margin-top:12px"></div>
+          </div>
         <div class="db-form">
           <div class="db-form-title">💓 Check a Wallet</div>
           <div class="db-form-group" style="margin-bottom:14px">
@@ -2306,8 +2318,19 @@ function parseGhostAccount(bytes) {
   try {
     // owner: Pubkey (32 bytes)
     offset += 32;
-    // recovery_wallet: Option<Pubkey> (1 tag + 32 bytes = 33)
-    offset += 33;
+    // recovery_wallet: Option<Pubkey> — Borsh: 1 byte tag, +32 bytes only if Some
+    const recoveryTag = bytes[offset]; offset += 1;
+    let recoveryWalletPubkey = null;
+    if (recoveryTag === 1) {
+      const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      const pkBytes = bytes.slice(offset, offset + 32);
+      let n = BigInt(0);
+      for (const b of pkBytes) n = n * BigInt(256) + BigInt(b);
+      let r = ''; let tmp = n;
+      while (tmp > 0n) { const rem = tmp % 58n; r = B58[Number(rem)] + r; tmp = tmp / 58n; }
+      recoveryWalletPubkey = '1'.repeat(pkBytes.findIndex(b => b !== 0) === -1 ? 32 : Math.max(0, pkBytes.findIndex(b => b !== 0))) + r;
+      offset += 32;
+    }
     // last_heartbeat: i64
     const lastBeat = Number(view.getBigInt64(offset, true));
     offset += 8;
@@ -2320,16 +2343,17 @@ function parseGhostAccount(bytes) {
     // awakened: bool
     const awakened = bytes[offset] === 1;
     offset += 1;
-    // awakened_at: Option<i64> (1 tag + 8 bytes = 9)
+    // awakened_at: Option<i64> - Borsh None=1byte, Some=9bytes
     const hasAwakenedAt = bytes[offset] === 1;
     offset += 1;
     const awakenedAt = hasAwakenedAt ? Number(view.getBigInt64(offset, true)) : null;
-    offset += 8;
+    if (hasAwakenedAt) offset += 8;
     // executed: bool
     const executed = bytes[offset] === 1;
     offset += 1;
-    // executed_at: Option<i64> (9 bytes)
-    offset += 9;
+    // executed_at: Option<i64> - Borsh None=1byte, Some=9bytes
+    const exTag = bytes[offset]; offset += 1;
+    if (exTag === 1) offset += 8;
     // staked_ghost: u64
     const staked = Number(view.getBigUint64(offset, true));
     offset += 8;
@@ -2347,16 +2371,23 @@ function parseGhostAccount(bytes) {
     ghostState.ghost.intervalSeconds = interval;
     ghostState.ghost.gracePeriodSeconds = grace;
     ghostState.ghost.lastHeartbeat = lastBeat * 1000; // convert to ms
+    if (recoveryWalletPubkey) ghostState.ghost.recoveryWallet = recoveryWalletPubkey;
     ghostState.ghost.awakened = awakened;
     ghostState.ghost.awakenedAt = awakenedAt ? awakenedAt * 1000 : null;
     ghostState.ghost.executed = executed;
-    ghostState.ghost.stakedGhost = staked;
+    ghostState.ghost.stakedGhost = staked / 1_000_000; // convert from base units to token units
     ghostState.ghost.pingCount = pingCount;
     ghostState.ghost.beneficiaryCount = benefCount;
 
     if (executed) ghostState.ghost.status = 'executed';
     else if (awakened) ghostState.ghost.status = 'awakened';
     else ghostState.ghost.status = 'alive';
+
+    // Populate recovery wallet from on-chain state if present
+    if (recoveryWalletPubkey && !ghostState.recoveryWallets.find(w => w.address === recoveryWalletPubkey)) {
+      ghostState.recoveryWallets = [{ address: recoveryWalletPubkey, canWithdraw: false }];
+      renderRecoveryWallets();
+    }
     
   } catch (err) {
     console.error('Parse error:', err);
@@ -3422,11 +3453,16 @@ async function dbLookupSoul() {
     const view = new DataView(bytes.buffer);
     
     let offset = 8 + 32; // skip discriminator + owner
+    // recovery_wallet: Option<Pubkey> - Borsh None=1byte, Some=33bytes
+    const rTag = bytes[offset]; offset += 1;
+    if (rTag === 1) offset += 32;
+    const lastBeat = Number(view.getBigInt64(offset, true)); offset += 8;
     const interval = Number(view.getBigInt64(offset, true)); offset += 8;
     const grace = Number(view.getBigInt64(offset, true)); offset += 8;
-    const lastBeat = Number(view.getBigInt64(offset, true)); offset += 8;
     const awakened = bytes[offset] === 1; offset += 1;
-    offset += 9; // awakened_at option
+    // awakened_at: Option<i64> - None=1byte, Some=9bytes
+    const awTag = bytes[offset]; offset += 1;
+    if (awTag === 1) offset += 8;
     const executed = bytes[offset] === 1;
 
     const now = Math.floor(Date.now() / 1000);
@@ -3461,6 +3497,114 @@ async function dbLookupSoul() {
     `;
   } catch(err) {
     result.innerHTML = '<span style="color:var(--pulse)">Error: ' + (err.message || err) + '</span>';
+  }
+}
+
+async function cancelAwakening() {
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    ghostState.ghost.status = 'alive';
+    ghostState.ghost.awakened = false;
+    ghostState.ghost.awakenedAt = null;
+    ghostState.ghost.lastHeartbeat = Date.now();
+    showNotif('✅ Awakening cancelled [demo]', 'green');
+    renderDashboard();
+    return;
+  }
+  try {
+    showNotif('Cancelling awakening...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    // cancel_awakening can be called by owner OR recovery wallet
+    // ghostPda derived from the OWNER's key, not necessarily connected wallet
+    const ownerKey = ghostState.ghost.ownerPubkey || ghostState.publicKey;
+    const [ghostPda] = await PublicKey.findProgramAddress(
+      [new TextEncoder().encode('ghost'), new PublicKey(ownerKey).toBytes()],
+      new PublicKey(PROGRAM_ID)
+    );
+    const programId = new PublicKey(PROGRAM_ID);
+
+    // Discriminator: sha256("global:cancel_awakening")[0:8]
+    const disc = [22, 144, 208, 215, 15, 165, 157, 122]; // sha256('global:cancel_awakening')[0:8]
+    const ix = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPk, isSigner: true, isWritable: false },
+      ],
+      data: new Uint8Array(disc)
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    tx.add(ix);
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    await connection.confirmTransaction(sig, 'confirmed');
+
+    ghostState.ghost.status = 'alive';
+    ghostState.ghost.awakened = false;
+    ghostState.ghost.awakenedAt = null;
+    ghostState.ghost.lastHeartbeat = Date.now();
+    showNotif('✅ Awakening cancelled!', 'green');
+    renderDashboard();
+    addActivityRow('🛑 Awakening cancelled', sig.slice(0,4)+'...'+sig.slice(-4));
+  } catch(err) {
+    showNotif('Cancel failed: ' + (err.message || err), 'error');
+  }
+}
+
+// ─── Recovery wallet mode — check if connected wallet is someone's recovery ──
+async function checkIfRecoveryWallet() {
+  if (!ghostState.publicKey) return;
+  // This requires an indexer in production. For now, expose manual entry:
+  // User can paste the soul's address to act as their recovery wallet
+  const soul = document.getElementById('recoverySoulInput')?.value?.trim();
+  if (!soul) return;
+  try {
+    const { PublicKey } = solanaWeb3;
+    const [ghostPda] = await PublicKey.findProgramAddress(
+      [new TextEncoder().encode('ghost'), new PublicKey(soul).toBytes()],
+      new PublicKey(PROGRAM_ID)
+    );
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const acct = await connection.getAccountInfo(ghostPda);
+    if (!acct) { showNotif('No ghost found for that address', 'error'); return; }
+    // Decode to verify recovery wallet matches connected wallet
+    const bytes = new Uint8Array(acct.data);
+    const view = new DataView(bytes.buffer);
+    let off = 8 + 32; // skip disc + owner
+    const rTag = bytes[off]; off++;
+    if (rTag !== 1) { showNotif('This ghost has no recovery wallet set', 'error'); return; }
+    // Decode recovery wallet pubkey
+    const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const pkBytes = bytes.slice(off, off+32); off += 32;
+    let n = BigInt(0);
+    for (const b of pkBytes) n = n * 256n + BigInt(b);
+    let r = ''; let tmp = n;
+    while (tmp > 0n) { const rem = Number(tmp % 58n); r = B58[rem] + r; tmp = tmp / 58n; }
+    const recovPk = r;
+    if (!recovPk.includes(ghostState.publicKey.slice(0,8))) {
+      // Check full match
+      const connectedBytes = new PublicKey(ghostState.publicKey).toBytes();
+      const match = pkBytes.every((b,i) => b === connectedBytes[i]);
+      if (!match) { showNotif('Your wallet is not the recovery wallet for this ghost', 'error'); return; }
+    }
+    // Set recovery mode — store owner so cancelAwakening uses correct PDA
+    ghostState.ghost.ownerPubkey = soul;
+    const lastBeat = Number(view.getBigInt64(off, true)); off += 8;
+    const interval = Number(view.getBigInt64(off, true)); off += 8;
+    const awakened = bytes[off+8] === 1;
+    const status = awakened ? '⚠️ AWAKENED — you can cancel!' : '✅ Alive';
+    document.getElementById('recoveryStatusResult').innerHTML = 
+      `<div style="color:#33ff99;font-family:'Share Tech Mono',monospace;font-size:13px;line-height:2">
+        SOUL: ${soul.slice(0,8)}...<br>
+        STATUS: ${status}<br>
+        LAST PING: ${Math.floor((Date.now()/1000 - lastBeat)/86400)}d ago<br>
+        ${awakened ? '<button class="db-btn" style="margin-top:8px;border-color:#ff9966;color:#ff9966" onclick="cancelAwakening()">🛑 CANCEL AWAKENING</button>' : ''}
+      </div>`;
+  } catch(err) {
+    showNotif('Error: ' + (err.message||err), 'error');
   }
 }
 
@@ -4099,27 +4243,114 @@ function renderRecoveryWallets() {
   }
 }
 
-function dbAddRecoveryWallet() {
+async function dbAddRecoveryWallet() {
   const addr = document.getElementById('dbNewRecovery').value.trim();
   if (!addr || addr.length < 32) { showNotif('⚠️ Enter a valid Solana address', 'error'); return; }
-  if (ghostState.recoveryWallets.length >= 3) { showNotif('⚠️ Maximum 3 recovery wallets', 'error'); return; }
   if (ghostState.recoveryWallets.find(w => w.address === addr)) { showNotif('⚠️ Address already added', 'error'); return; }
   const canWithdraw = document.getElementById('permWithdraw').checked;
-  ghostState.recoveryWallets.push({ address: addr, canWithdraw });
-  // Also set the legacy single recovery for on-chain tx compatibility
-  ghostState.ghost.recoveryWallet = addr;
-  document.getElementById('dbNewRecovery').value = '';
-  document.getElementById('permWithdraw').checked = false;
-  renderRecoveryWallets();
-  showNotif('✅ Recovery wallet added' + (canWithdraw ? ' with withdrawal rights' : ''), 'green');
+
+  // Demo mode
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    ghostState.recoveryWallets = [{ address: addr, canWithdraw }];
+    ghostState.ghost.recoveryWallet = addr;
+    document.getElementById('dbNewRecovery').value = '';
+    renderRecoveryWallets();
+    showNotif('✅ Recovery wallet set [demo]', 'green');
+    return;
+  }
+
+  // On-chain: update_recovery_wallet
+  try {
+    showNotif('Setting recovery wallet on-chain...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const programId = new PublicKey(PROGRAM_ID);
+
+    // Discriminator: sha256("global:update_recovery_wallet")[0:8]
+    const disc = [17, 163, 88, 154, 97, 78, 169, 93]; // sha256('global:update_recovery_wallet')[0:8]
+    // Args: recovery_wallet: Option<Pubkey>
+    const recoveryBytes = new Uint8Array(33);
+    recoveryBytes[0] = 1;
+    recoveryBytes.set(new PublicKey(addr).toBytes(), 1);
+    const data = new Uint8Array(8 + 33);
+    data.set(disc, 0);
+    data.set(recoveryBytes, 8);
+
+    const ix = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPk, isSigner: true, isWritable: false },
+      ],
+      data
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    tx.add(ix);
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    await connection.confirmTransaction(sig, 'confirmed');
+
+    ghostState.recoveryWallets = [{ address: addr, canWithdraw }];
+    ghostState.ghost.recoveryWallet = addr;
+    document.getElementById('dbNewRecovery').value = '';
+    renderRecoveryWallets();
+    showNotif('✅ Recovery wallet set on-chain!', 'green');
+  } catch(err) {
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
 }
 
-function dbRemoveRecoveryWallet(idx) {
-  if (!confirm('Remove this recovery wallet?')) return;
-  ghostState.recoveryWallets.splice(idx, 1);
-  if (ghostState.recoveryWallets.length === 0) ghostState.ghost.recoveryWallet = null;
-  renderRecoveryWallets();
-  showNotif('Recovery wallet removed', 'info');
+async function dbRemoveRecoveryWallet(idx) {
+  if (!confirm('Remove this recovery wallet on-chain?')) return;
+
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    ghostState.recoveryWallets.splice(idx, 1);
+    if (!ghostState.recoveryWallets.length) ghostState.ghost.recoveryWallet = null;
+    renderRecoveryWallets();
+    return;
+  }
+
+  try {
+    showNotif('Removing recovery wallet on-chain...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const programId = new PublicKey(PROGRAM_ID);
+
+    const disc = [17, 163, 88, 154, 97, 78, 169, 93]; // sha256('global:update_recovery_wallet')[0:8]
+    // Option::None = [0x00]
+    const data = new Uint8Array(9);
+    data.set(disc, 0);
+    data[8] = 0; // None
+
+    const ix = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPk, isSigner: true, isWritable: false },
+      ],
+      data
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    tx.add(ix);
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    await connection.confirmTransaction(sig, 'confirmed');
+
+    ghostState.recoveryWallets.splice(idx, 1);
+    if (!ghostState.recoveryWallets.length) ghostState.ghost.recoveryWallet = null;
+    renderRecoveryWallets();
+    showNotif('Recovery wallet removed on-chain', 'green');
+  } catch(err) {
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
 }
 
 function toggleRecoveryWithdraw(idx, val) {
@@ -4251,6 +4482,10 @@ function renderVaultHoldings() {
 
 // ─── Bulk deposit / withdraw ────────────────────────────────────
 function dbDepositAll() {
+  if (ghostState.provider && !ghostState.walletName?.includes('demo')) {
+    showNotif('Use individual deposits for each asset — Deposit All coming soon', 'error');
+    return;
+  }
   const tokens = ghostState.walletTokens.filter(tok => tok.balance > 0);
   if (tokens.length === 0) { showNotif('No assets with balance in wallet', 'error'); return; }
   let count = 0;
@@ -4548,7 +4783,7 @@ async function dbDeposit() {
       ? await findATA(walletPk, mintPk)
       : (await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk })).value[0]?.pubkey || await findATA(walletPk, mintPk);
     // For $GHOST token, vault is the PDA stake vault; for others use vaultPda ATA
-    const ghostMintStr = ghostState.ghost?.mint || GHOST_MINT_STR;
+    const ghostMintStr = ghostState.ghost?.mint || GHOST_MINT;
     const vaultAta = (mintStr === ghostMintStr)
       ? await solanaWeb3.PublicKey.findProgramAddress(
           [new TextEncoder().encode('stake_vault'), new PublicKey(ghostState.publicKey).toBytes()],
@@ -4562,8 +4797,8 @@ async function dbDeposit() {
     // For SOL: wrap to wSOL first — creates/funds the wSOL ATA
     if (isSOL) {
       const lamports = Math.round(amount * 1e9);
-      const { preIxs } = await buildWrapIxs(walletPk, lamports);
-      tx.add(...preIxs);
+      const wrapIxs = await buildWrapSOLInstructions(walletPk, lamports);
+      tx.add(...wrapIxs);
     }
 
     // deposit_to_vault discriminator: sha256("global:deposit_to_vault")[0:8]
