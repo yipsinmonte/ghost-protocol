@@ -4866,9 +4866,8 @@ async function dbWithdrawAll() {
   const ghostPda  = new PublicKey(ghostState.ghostPda);
   const vaultPda  = new PublicKey(ghostState.vaultPda);
   const programId = new PublicKey(PROGRAM_ID);
-  const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
   const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
-  const disc = [180, 34, 37, 46, 156, 0, 211, 238]; // withdraw_from_vault discriminator
+  const disc = [180, 34, 37, 46, 156, 0, 211, 238];
   const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 
   let successCount = 0;
@@ -4878,12 +4877,39 @@ async function dbWithdrawAll() {
     try {
       const isSOL = (vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
       const mintStr = effectiveMint(vt.mint);
-      const mintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
       const displaySym = isSOL ? 'SOL' : vt.symbol;
       const amount = vt.balance;
+      const withdrawMintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
 
-      const ownerAta = await findATA(walletPk, mintPk);
-      const vaultAta = await findATA(vaultPda, mintPk);
+      // Detect token program — mirrors deposit
+      let rawMintOwner = TOKEN_PROGRAM_STR;
+      if (!isSOL) {
+        try {
+          const mintAcct = await connection.getAccountInfo(withdrawMintPk);
+          rawMintOwner = mintAcct?.owner?.toBase58() || TOKEN_PROGRAM_STR;
+        } catch(e) {}
+      }
+      const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
+      const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
+
+      // Owner destination ATA — use real account lookup for Token-2022
+      let ownerAta;
+      if (isSOL) {
+        ownerAta = await findATA(walletPk, WSOL_MINT_PK);
+      } else if (rawMintOwner === TOKEN_PROGRAM_STR) {
+        ownerAta = await findATA(walletPk, withdrawMintPk);
+      } else {
+        const existing = await connection.getTokenAccountsByOwner(walletPk, { mint: withdrawMintPk }).catch(() => ({ value: [] }));
+        ownerAta = existing.value[0]?.pubkey || await findATA(walletPk, withdrawMintPk);
+      }
+
+      // Vault source — look up real token account (raw keypair, not ATA)
+      let vaultAta;
+      try {
+        const vaultAccts = await connection.getTokenAccountsByOwner(vaultPda, { mint: withdrawMintPk });
+        if (vaultAccts.value.length > 0) vaultAta = vaultAccts.value[0].pubkey;
+      } catch(e) {}
+      if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, withdrawMintPk, new PublicKey(normalizedTokenProg));
 
       const amountRaw = BigInt(Math.round(amount * Math.pow(10, vt.decimals)));
       const buf = new ArrayBuffer(8);
@@ -4897,27 +4923,36 @@ async function dbWithdrawAll() {
       // Create owner ATA if missing
       const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
       if (!ownerAtaInfo) {
-        console.log('[Ghost] Owner ATA missing — prepending createATA ix for', mintPk.toBase58());
-        tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, TOKEN_PROG));
+        tx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
       }
 
       tx.add(new TransactionInstruction({ programId,
         keys: [
-          { pubkey: ghostPda,   isSigner: false, isWritable: false },
-          { pubkey: vaultPda,   isSigner: false, isWritable: false },
-          { pubkey: walletPk,   isSigner: true,  isWritable: true  },
-          { pubkey: mintPk,     isSigner: false, isWritable: false },
-          { pubkey: ownerAta,   isSigner: false, isWritable: true  },
-          { pubkey: vaultAta,   isSigner: false, isWritable: true  },
-          { pubkey: TOKEN_PROG, isSigner: false, isWritable: false },
+          { pubkey: ghostPda,       isSigner: false, isWritable: false },
+          { pubkey: vaultPda,       isSigner: false, isWritable: false },
+          { pubkey: walletPk,       isSigner: true,  isWritable: true  },
+          { pubkey: withdrawMintPk, isSigner: false, isWritable: false },
+          { pubkey: ownerAta,       isSigner: false, isWritable: true  },
+          { pubkey: vaultAta,       isSigner: false, isWritable: true  },
+          { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
         ], data }));
       if (isSOL) tx.add(buildUnwrapIx(walletPk, ownerAta));
 
       const signed = await ghostState.provider.signTransaction(tx);
-      const sig    = await connection.sendRawTransaction(signed.serialize());
-      await connection.confirmTransaction(sig, 'confirmed');
+      let sig;
+      try {
+        sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+      } catch(simErr) {
+        let logs = [];
+        try { logs = await simErr.getLogs(connection); } catch(_) {}
+        if (!logs?.length) { try { const sim = await connection.simulateTransaction(tx); logs = sim.value.logs || []; } catch(_) {} }
+        console.error('[Ghost] TX logs:', logs);
+        throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length ? ' | ' + logs.slice(-5).join(' | ') : ''));
+      }
+      const conf = await connection.confirmTransaction(sig, 'confirmed');
+      if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
-      // Apply to local state only after confirmed on-chain
+      // Apply to local state only after confirmed
       const walletMint = isSOL ? 'native' : vt.mint;
       const wt = ghostState.walletTokens.find(w => w.mint === walletMint);
       if (wt) { wt.balance += amount; } else {
@@ -5427,15 +5462,49 @@ async function dbWithdrawAsset(vaultIdx) {
     const ghostPda  = new PublicKey(ghostState.ghostPda);
     const vaultPda  = new PublicKey(ghostState.vaultPda);
     const programId = new PublicKey(PROGRAM_ID);
-    const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
-    console.log('[Ghost] mintStr:', mintStr, 'isSOL:', isSOL);
-
-    // Always use the real wSOL mint for ATA derivation — never null
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
-    const mintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
 
-    const ownerAta = await findATA(walletPk, mintPk);
-    const vaultAta = await findATA(vaultPda, mintPk);
+    // Mirror deposit: resolve effective mint and detect token program
+    const withdrawMintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
+    let rawMintOwner = TOKEN_PROGRAM_STR;
+    if (!isSOL) {
+      try {
+        const mintAcct = await connection.getAccountInfo(withdrawMintPk);
+        rawMintOwner = mintAcct?.owner?.toBase58() || TOKEN_PROGRAM_STR;
+      } catch(e) { /* default to classic token */ }
+    }
+    const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
+    const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
+    console.log('[Ghost] withdraw mint:', withdrawMintPk.toBase58(), 'tokenProg:', rawMintOwner);
+
+    // Owner destination token account — mirror deposit's lookup pattern
+    let ownerAta;
+    if (isSOL) {
+      ownerAta = await findATA(walletPk, WSOL_MINT_PK);
+    } else if (rawMintOwner === TOKEN_PROGRAM_STR) {
+      ownerAta = await findATA(walletPk, withdrawMintPk);
+    } else {
+      // Token-2022: look up real account, fall back to ATA derivation
+      const existing = await connection.getTokenAccountsByOwner(walletPk, { mint: withdrawMintPk }).catch(() => ({ value: [] }));
+      ownerAta = existing.value[0]?.pubkey || await findATA(walletPk, withdrawMintPk);
+    }
+
+    // Vault source token account — look up real account (created as raw keypair during deposit)
+    let vaultAta;
+    try {
+      const vaultAccts = await connection.getTokenAccountsByOwner(vaultPda, { mint: withdrawMintPk });
+      if (vaultAccts.value.length > 0) {
+        vaultAta = vaultAccts.value[0].pubkey;
+        console.log('[Ghost] Found vault token account:', vaultAta.toBase58());
+      }
+    } catch(e) { console.warn('[Ghost] Vault token account lookup failed:', e); }
+    if (!vaultAta) {
+      vaultAta = await findATAWithProg(vaultPda, withdrawMintPk, new PublicKey(normalizedTokenProg));
+      console.log('[Ghost] Using derived vault ATA (fallback):', vaultAta.toBase58());
+    }
+
+    console.log('[Ghost] ownerAta:', ownerAta.toBase58(), 'vaultAta:', vaultAta.toBase58());
 
     // withdraw_from_vault discriminator: sha256("global:withdraw_from_vault")[0:8]
     const disc = [180, 34, 37, 46, 156, 0, 211, 238];
@@ -5445,45 +5514,49 @@ async function dbWithdrawAsset(vaultIdx) {
     const data = new Uint8Array(16);
     data.set(disc, 0); data.set(new Uint8Array(buf), 8);
 
-    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
-    // Create owner ATA if it doesn't exist yet (e.g. wSOL was closed after deposit, or first-time SPL receive)
+    // Create owner ATA if it doesn't exist (e.g. wSOL closed after deposit, first-time SPL receive)
     const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
     if (!ownerAtaInfo) {
-      console.log('[Ghost] Owner ATA missing — prepending createATA ix for', mintPk.toBase58());
-      tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, TOKEN_PROG));
+      console.log('[Ghost] Owner ATA missing — prepending createATA ix for', withdrawMintPk.toBase58());
+      tx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
     }
 
     tx.add(new TransactionInstruction({ programId,
       keys: [
-        { pubkey: ghostPda,   isSigner: false, isWritable: false },
-        { pubkey: vaultPda,   isSigner: false, isWritable: false },
-        { pubkey: walletPk,   isSigner: true,  isWritable: true  },
-        { pubkey: mintPk,     isSigner: false, isWritable: false },
-        { pubkey: ownerAta,   isSigner: false, isWritable: true  },
-        { pubkey: vaultAta,   isSigner: false, isWritable: true  },
-        { pubkey: TOKEN_PROG, isSigner: false, isWritable: false },
+        { pubkey: ghostPda,      isSigner: false, isWritable: false },
+        { pubkey: vaultPda,      isSigner: false, isWritable: false },
+        { pubkey: walletPk,      isSigner: true,  isWritable: true  },
+        { pubkey: withdrawMintPk,isSigner: false, isWritable: false },
+        { pubkey: ownerAta,      isSigner: false, isWritable: true  },
+        { pubkey: vaultAta,      isSigner: false, isWritable: true  },
+        { pubkey: rawTokenProgPk,isSigner: false, isWritable: false },
       ], data }));
 
-    // For SOL: after withdraw_from_vault moves wSOL to owner's ATA,
-    // close the wSOL ATA to convert back to native SOL automatically.
-    if (isSOL) {
-      tx.add(buildUnwrapIx(walletPk, ownerAta));
-    }
+    // For SOL: close wSOL ATA after withdraw to unwrap back to native SOL
+    if (isSOL) tx.add(buildUnwrapIx(walletPk, ownerAta));
 
-    // Debug: log each instruction individually so console doesn't collapse
-    tx.instructions.forEach((ix, i) => 
+    tx.instructions.forEach((ix, i) =>
       console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
     );
     const signed = await ghostState.provider.signTransaction(tx);
-    const sig    = await connection.sendRawTransaction(signed.serialize());
-    await connection.confirmTransaction(sig, 'confirmed');
+    let sig;
+    try {
+      sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+    } catch(simErr) {
+      let logs = [];
+      try { logs = await simErr.getLogs(connection); } catch(_) {}
+      if (!logs?.length) { try { const sim = await connection.simulateTransaction(tx); logs = sim.value.logs || []; } catch(_) {} }
+      console.error('[Ghost] TX logs:', logs);
+      throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length ? ' | ' + logs.slice(-5).join(' | ') : ''));
+    }
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
     _applyWithdraw();
-    const shortSig = sig.slice(0,4)+'...'+sig.slice(-4);
-    addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' ' + displaySym, shortSig);
+    addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' ' + displaySym, sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif('✅ Withdrew ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to wallet!', 'green');
   } catch(err) {
     console.error('Withdraw error:', err);
