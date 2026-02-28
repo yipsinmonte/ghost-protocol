@@ -4791,7 +4791,16 @@ function fillMaxDeposit() {
 // ─── Vault Actions ──────────────────────────────────────────────
 // ─── SOL/wSOL constants ─────────────────────────────────────────────────────
 const WSOL_MINT_PK_STR = 'So11111111111111111111111111111111111111112';
-const TOKEN_PROGRAM_STR = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const TOKEN_PROGRAM_STR    = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const TOKEN_2022_STR       = 'TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB'; // standard
+const TOKEN_2022_PUMP_STR  = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'; // pump.fun variant
+
+// Normalize token program: pump.fun uses a non-standard Token-2022 address
+// The ATA program only recognizes the standard addresses — always normalize
+function normalizeTokenProg(addr) {
+  if (addr === TOKEN_2022_PUMP_STR) return TOKEN_2022_STR;
+  return addr;
+}
 const ASSOC_TOKEN_PROG_STR = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso';
 
 // Resolve effective mint: native SOL → wSOL mint string
@@ -4803,8 +4812,10 @@ function effectiveMint(mint) {
 async function findATAWithProg(owner, mint, tokenProg) {
   const { PublicKey } = solanaWeb3;
   const ASSOC = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso');
+  // Normalize pump.fun Token-2022 variant for ATA derivation
+  const normalizedProg = new PublicKey(normalizeTokenProg(tokenProg.toBase58()));
   const [ata] = await PublicKey.findProgramAddress(
-    [owner.toBytes(), tokenProg.toBytes(), mint.toBytes()], ASSOC
+    [owner.toBytes(), normalizedProg.toBytes(), mint.toBytes()], ASSOC
   );
   return ata;
 }
@@ -4960,9 +4971,13 @@ async function dbDeposit() {
     // For SOL: work with wSOL mint + classic token program
     const depositMintPk   = isSOL ? WSOL_MINT_PK : mintPk;
     const depositMintStr  = isSOL ? 'So11111111111111111111111111111111111111112' : mintStr;
-    const tokenProgPk     = isSOL
-      ? new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
-      : new PublicKey((await connection.getAccountInfo(mintPk))?.owner?.toBase58() || TOKEN_PROGRAM_STR);
+    const rawMintOwner    = isSOL
+      ? TOKEN_PROGRAM_STR
+      : ((await connection.getAccountInfo(mintPk))?.owner?.toBase58() || TOKEN_PROGRAM_STR);
+    // Normalize pump.fun non-standard Token-2022 → standard for ATA creation
+    const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
+    const tokenProgPk    = new PublicKey(normalizedTokenProg); // for ATA creation
+    const rawTokenProgPk = new PublicKey(rawMintOwner);        // for deposit instruction
 
     // Owner source token account
     const ownerAta = isSOL
@@ -4979,7 +4994,7 @@ async function dbDeposit() {
           [new TextEncoder().encode('stake_vault'), walletPk.toBytes()],
           new PublicKey(PROGRAM_ID)
         ).then(([pk]) => pk)
-      : await findATAWithProg(vaultPda, depositMintPk, tokenProgPk);
+      : await findATAWithProg(vaultPda, depositMintPk, tokenProgPk); // tokenProgPk already normalized
 
     console.log('[Ghost] deposit mint:', depositMintPk.toBase58(), 'tokenProg:', tokenProgPk.toBase58());
     console.log('[Ghost] ownerAta:', ownerAta.toBase58(), 'vaultAta:', vaultAta.toBase58());
@@ -5033,11 +5048,22 @@ async function dbDeposit() {
         { pubkey: depositMintPk,     isSigner: false, isWritable: false },
         { pubkey: effectiveOwnerAta, isSigner: false, isWritable: true  },
         { pubkey: vaultAta,          isSigner: false, isWritable: true  },
-        { pubkey: tokenProgPk,       isSigner: false, isWritable: false },
+        { pubkey: rawTokenProgPk,    isSigner: false, isWritable: false }, // use raw (may be pump.fun variant)
       ], data }));
 
     const signed = await ghostState.provider.signTransaction(tx);
-    const sig    = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    let sig;
+    try {
+      sig = await connection.sendRawTransaction(signed.serialize(), { 
+        skipPreflight: false,
+        preflightCommitment: 'confirmed'
+      });
+    } catch(simErr) {
+      // Get simulation logs for debugging
+      const sim = await connection.simulateTransaction(signed);
+      console.error('[Ghost] Simulation logs:', sim.value.logs);
+      throw new Error('Simulation failed: ' + (sim.value.err ? JSON.stringify(sim.value.err) : simErr.message));
+    }
     const conf   = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
