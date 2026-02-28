@@ -3975,7 +3975,7 @@ async function buildWrapSOLInstructions(walletPubkey, lamports) {
   instructions.push(solanaWeb3.SystemProgram.transfer({
     fromPubkey: walletPubkey,
     toPubkey: wsolAta,
-    lamports: BigInt(lamports),
+    lamports: Number(lamports),
   }));
 
   // 3. SyncNative — tells the token program the lamports are now the balance
@@ -4861,7 +4861,7 @@ async function buildWrapIxs(walletPk, lamports) {
     // idempotent create — safe to include even if ATA already exists
     buildCreateATAIx(walletPk, wsolAta, walletPk, mintPk),
     // fund it with native SOL
-    SystemProgram.transfer({ fromPubkey: walletPk, toPubkey: wsolAta, lamports: BigInt(lamports) }),
+    SystemProgram.transfer({ fromPubkey: walletPk, toPubkey: wsolAta, lamports: Number(lamports) }),
     // SyncNative (opcode 17) — tells token program to update balance from lamports
     new TransactionInstruction({
       programId: new PublicKey(TOKEN_PROGRAM_STR),
@@ -4963,6 +4963,7 @@ async function dbDeposit() {
     const vaultPda  = new PublicKey(ghostState.vaultPda);
     const programId = new PublicKey(PROGRAM_ID);
     const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
+    console.log('[Ghost] mintStr:', mintStr, 'isSOL:', isSOL);
     const mintPk     = isSOL ? null : new PublicKey(mintStr); // null for SOL, we use depositMintPk
 
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
@@ -5138,6 +5139,7 @@ async function dbWithdrawAsset(vaultIdx) {
     const vaultPda  = new PublicKey(ghostState.vaultPda);
     const programId = new PublicKey(PROGRAM_ID);
     const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
+    console.log('[Ghost] mintStr:', mintStr, 'isSOL:', isSOL);
     const mintPk     = isSOL ? null : new PublicKey(mintStr); // null for SOL, we use depositMintPk
 
     const ownerAta = await findATA(walletPk, mintPk);
