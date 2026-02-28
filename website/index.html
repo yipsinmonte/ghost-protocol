@@ -2557,6 +2557,41 @@ function parseGhostAccount(bytes) {
     ghostState.ghost.beneficiaryCount = benefCount;
     ghostState.ghost.registeredAt = registeredAt > 0 ? registeredAt * 1000 : null;
 
+    // v1.3: whole_vault_recipient at byte offset 894 (after 8 disc + 886 fields)
+    // At this point `offset` = 144 (past beneficiary_count). Skip beneficiaries[10] = 750 bytes.
+    offset += 750; // now at 894
+    try {
+      const wvTag = bytes[offset]; offset++;
+      let wholeVaultRecipient = null;
+      if (wvTag === 1 && bytes.length > offset + 31) {
+        const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        const wvBytes = bytes.slice(offset, offset + 32);
+        let wvn = BigInt(0);
+        for (const b of wvBytes) wvn = wvn * BigInt(256) + BigInt(b);
+        let wvr = ''; let wvtmp = wvn;
+        while (wvtmp > 0n) { const rem = wvtmp % 58n; wvr = B58[Number(rem)] + wvr; wvtmp = wvtmp / 58n; }
+        let leadOnes = '';
+        for (let i = 0; i < wvBytes.length && wvBytes[i] === 0; i++) leadOnes += '1';
+        wholeVaultRecipient = leadOnes + wvr;
+        offset += 32;
+      }
+      ghostState.ghost.wholeVaultRecipient = wholeVaultRecipient;
+      if (wholeVaultRecipient) {
+        const short = wholeVaultRecipient.slice(0,4) + '...' + wholeVaultRecipient.slice(-4);
+        ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: wholeVaultRecipient, pct: 100 }];
+        if (!ghostState.ghost.beneficiaries.some(b => b.action === 'whole-vault-share')) {
+          ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+          ghostState.ghost.beneficiaries.push({
+            recipient: short, fullAddr: wholeVaultRecipient,
+            sharePct: 100, amount: 0, token: 'VAULT x100%',
+            action: 'whole-vault-share', executed: false
+          });
+        }
+      } else {
+        ghostState.ghost.wholeVaultRecipient = null;
+      }
+    } catch(_) { ghostState.ghost.wholeVaultRecipient = null; }
+
     if (executed) ghostState.ghost.status = 'executed';
     else if (awakened) ghostState.ghost.status = 'awakened';
     else ghostState.ghost.status = 'alive';
@@ -3514,25 +3549,30 @@ async function dbAddBeneficiary(action) {
 
     const discriminator = [105, 214, 106, 141, 180, 166, 123, 238];
 
-    // Args: recipient(Pubkey=32), amount(u64=8), token_mint(Option<Pubkey>=33), action(u8=1) = 74 bytes
-    // amount must be in base units (6 decimals)
-    const amountRaw = BigInt(Math.round(amount * 1_000_000));
+    // Args: recipient(32), amount(u64), token_mint(Option<Pubkey>=33), action(u8) = 74 bytes
+    // Use actual token decimals (not hardcoded 6)
+    const tokenDecimals = t.decimals ?? 6;
+    const amountRaw = BigInt(Math.round(amount * Math.pow(10, tokenDecimals)));
     const buf = new ArrayBuffer(32 + 8 + 33 + 1);
     const dv = new DataView(buf);
     const bufBytes = new Uint8Array(buf);
 
-    // recipient: Pubkey (32 bytes) — zero for burn
+    // recipient: Pubkey (32 bytes) - zero for burn
     if (!isBurn) {
       bufBytes.set(new PublicKey(recipient).toBytes(), 0);
     }
     // amount: u64 (8 bytes at offset 32)
     dv.setBigUint64(32, amountRaw, true);
     // token_mint: Option<Pubkey> (33 bytes at offset 40)
-    // Use GHOST_MINT as the token_mint for now (vault holds SPL tokens)
-    // tag=0 means None (no specific mint required by program for tracking purposes)
-    bufBytes[40] = 0; // None tag
-    bufBytes.fill(0, 41, 73); // 32 zero bytes
-    // action: u8 (offset 73) — 0=Transfer, 1=Burn
+    // Send Some(mint) so contract records which token this beneficiary targets
+    const mintForTx = t.mint === 'native' ? WSOL_MINT_PK_STR : t.mint;
+    try {
+      bufBytes[40] = 1; // Some tag
+      bufBytes.set(new PublicKey(mintForTx).toBytes(), 41);
+    } catch(_) {
+      bufBytes[40] = 0; // None fallback
+    }
+    // action: u8 (offset 73) - 0=Transfer, 1=Burn
     bufBytes[73] = isBurn ? 1 : 0;
 
     const data = new Uint8Array(8 + buf.byteLength);
@@ -3578,14 +3618,71 @@ async function dbAddBeneficiary(action) {
   }
 }
 
-function dbRemoveBeneficiary(index) {
+async function dbRemoveBeneficiary(index) {
   if (!confirm('Remove this beneficiary?')) return;
-  ghostState.ghost.beneficiaries.splice(index, 1);
-  _refreshBenePickers();
-  renderBeneficiaries();
-  renderVaultHoldings(); // re-enable vault withdraw inputs now assignment is cleared
-  saveSession();
-  showNotif('✅ Removed', 'green');
+
+  const entry = ghostState.ghost.beneficiaries[index];
+
+  // Whole-vault-share: delegate to on-chain clear (set_whole_vault_recipient None)
+  if (entry?.action === 'whole-vault-share') {
+    await dbClearWholeVaultRecipient();
+    _refreshBenePickers(); renderVaultHoldings();
+    return;
+  }
+
+  // Demo mode - local only
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    ghostState.ghost.beneficiaries.splice(index, 1);
+    _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
+    saveSession(); showNotif('Removed [demo]', 'green');
+    return;
+  }
+
+  // On-chain remove_beneficiary(index: u8)
+  // on-chain index = count of non-whole-vault-share entries before this position
+  const onChainIndex = ghostState.ghost.beneficiaries
+    .slice(0, index)
+    .filter(b => b.action !== 'whole-vault-share')
+    .length;
+
+  try {
+    showNotif('Removing beneficiary on-chain...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const programId = new PublicKey(PROGRAM_ID);
+
+    const disc = [67, 27, 24, 153, 135, 64, 202, 77];
+    const data = new Uint8Array(9);
+    data.set(disc, 0);
+    data[8] = onChainIndex;
+
+    const ix = new TransactionInstruction({ programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPk, isSigner: true,  isWritable: true },
+      ],
+      data
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    tx.add(ix);
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+    ghostState.ghost.beneficiaries.splice(index, 1);
+    _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
+    addActivityRow('Beneficiary removed on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    saveSession();
+    showNotif('Beneficiary removed on-chain!', 'green');
+  } catch(err) {
+    console.error('Remove beneficiary error:', err);
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
 }
 
 // ─── Bene amount helpers ────────────────────────────────────
@@ -3624,17 +3721,15 @@ function renderWholeVaultShares() {
   const el = document.getElementById('wholeVaultShares');
   if (!el) return;
   if (shares.length === 0) { el.innerHTML = ''; return; }
-  const totalPct = shares.reduce((s, x) => s + x.pct, 0);
-  el.innerHTML = shares.map((s, i) => `
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(102,51,255,0.04);border:1px solid rgba(160,128,255,0.1);margin-bottom:6px">
-      <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#c0a0ff;width:44px">${s.pct}%</span>
-      <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#f0f0f8;flex:1">${s.addr}</span>
-      <button class="icon-btn" onclick="removeWholeVaultShare(${i})" style="color:#ff6666">✕</button>
-    </div>`).join('') +
-    `<div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:${totalPct===100?'#33ff99':totalPct>100?'#ff3d5a':'#ff9933'};margin-top:4px">
-      Total: ${totalPct}% ${totalPct===100?'✓ Complete':totalPct>100?'⚠️ Over 100%':'— '+(100-totalPct)+'% unassigned'}
+  const s = shares[0];
+  const isOnChain = ghostState.ghost.wholeVaultRecipient === s.fullAddr;
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(102,51,255,0.06);border:1px solid rgba(160,128,255,0.2);margin-bottom:8px">
+      <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#a080ff;width:80px">100% of vault</span>
+      <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#f0f0f8;flex:1">${s.addr}</span>
+      ${isOnChain ? '<span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#33ff99;letter-spacing:0.1em">ON-CHAIN</span>' : '<span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#ff9933;letter-spacing:0.1em">PENDING</span>'}
+      <button class="icon-btn" onclick="removeWholeVaultShare(0)" style="color:#ff6666" title="Remove">x</button>
     </div>`;
-  updateSharePreview();
 }
 
 function updateSharePreview() {
@@ -3656,48 +3751,155 @@ function updateSharePreview() {
 
 function addWholeVaultShare() {
   const addr = document.getElementById('wholeVaultAddr').value.trim();
-  const pct = parseFloat(document.getElementById('wholeVaultPct').value);
-  if (!addr || addr.length < 32) { showNotif('⚠️ Enter a valid Solana address', 'error'); return; }
-  if (!pct || pct <= 0 || pct > 100) { showNotif('⚠️ Enter a share between 1 and 100', 'error'); return; }
+  if (!addr || addr.length < 32) { showNotif('Enter a valid Solana address', 'error'); return; }
   if (!ghostState.ghost.wholeVaultShares) ghostState.ghost.wholeVaultShares = [];
-  const total = ghostState.ghost.wholeVaultShares.reduce((s, x) => s + x.pct, 0);
-  if (total + pct > 100) { showNotif('⚠️ Total shares would exceed 100% (' + (total + pct) + '%)', 'error'); return; }
+  // Contract stores single Option<Pubkey> - replace any existing entry
   const short = addr.slice(0,4) + '...' + addr.slice(-4);
-  ghostState.ghost.wholeVaultShares.push({ addr: short, fullAddr: addr, pct });
+  ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: addr, pct: 100 }];
   document.getElementById('wholeVaultAddr').value = '';
-  document.getElementById('wholeVaultPct').value = '';
+  const pctEl = document.getElementById('wholeVaultPct');
+  if (pctEl) pctEl.value = '';
   renderWholeVaultShares();
 }
 
-function removeWholeVaultShare(i) {
+async function removeWholeVaultShare(i) {
+  // If already on-chain, clear it on-chain
+  const share = ghostState.ghost.wholeVaultShares?.[i];
+  if (ghostState.ghost.wholeVaultRecipient && ghostState.ghost.wholeVaultRecipient === share?.fullAddr) {
+    await dbClearWholeVaultRecipient();
+    return;
+  }
+  // Just a pending local entry - remove locally
   ghostState.ghost.wholeVaultShares.splice(i, 1);
   renderWholeVaultShares();
 }
 
-function dbSaveWholeVaultPlan() {
+async function dbSaveWholeVaultPlan() {
   const shares = ghostState.ghost.wholeVaultShares || [];
-  if (shares.length === 0) { showNotif('Add at least one recipient share first', 'error'); return; }
-  const totalPct = shares.reduce((s, x) => s + x.pct, 0);
-  if (totalPct !== 100) { showNotif('⚠️ Shares must total exactly 100% (currently ' + totalPct + '%)', 'error'); return; }
-  if (ghostState.vaultTokens.length === 0) { showNotif('⚠️ Vault is empty — deposit assets first', 'error'); return; }
+  if (shares.length === 0) { showNotif('Add a recipient first', 'error'); return; }
+  const share = shares[0]; // contract stores single Option<Pubkey>
+  const recipient = share.fullAddr;
+  if (!recipient || recipient.length < 32) { showNotif('Invalid recipient address', 'error'); return; }
 
-  // Remove any existing whole-vault-share entries, replace with new plan
-  ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
-  for (const s of shares) {
-    ghostState.ghost.beneficiaries.push({
-      recipient: s.addr,
-      fullAddr: s.fullAddr,
-      sharePct: s.pct,
-      amount: 0, // calculated at execution time
-      token: 'VAULT ×' + s.pct + '%',
-      action: 'whole-vault-share',
-      executed: false
-    });
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    _applyWholeVaultLocally(share);
+    showNotif('Whole vault recipient set [demo]', 'green');
+    addActivityRow('Whole vault -> ' + share.addr + ' [demo]', '');
+    return;
   }
+
+  try {
+    showNotif('Setting whole vault recipient on-chain...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const programId = new PublicKey(PROGRAM_ID);
+
+    // set_whole_vault_recipient(recipient: Option<Pubkey>)
+    // Borsh: [1 tag][32 pubkey bytes] = 33 bytes
+    const disc = [217, 239, 225, 75, 244, 14, 252, 91];
+    const argBytes = new Uint8Array(33);
+    argBytes[0] = 1; // Some
+    argBytes.set(new PublicKey(recipient).toBytes(), 1);
+    const data = new Uint8Array(41);
+    data.set(disc, 0);
+    data.set(argBytes, 8);
+
+    const ix = new TransactionInstruction({ programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPk, isSigner: true,  isWritable: true },
+      ],
+      data
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    tx.add(ix);
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+    ghostState.ghost.wholeVaultRecipient = recipient;
+    _applyWholeVaultLocally(share);
+    addActivityRow('Whole vault -> ' + share.addr + ' on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif('Whole vault recipient set on-chain!', 'green');
+  } catch(err) {
+    console.error('set_whole_vault_recipient error:', err);
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
+}
+
+async function dbClearWholeVaultRecipient() {
+  if (!confirm('Remove the whole-vault recipient on-chain?')) return;
+
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    _clearWholeVaultLocally();
+    showNotif('Whole vault recipient cleared [demo]', 'green');
+    return;
+  }
+
+  try {
+    showNotif('Clearing whole vault recipient on-chain...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const programId = new PublicKey(PROGRAM_ID);
+
+    // set_whole_vault_recipient(None) - tag=0 only
+    const disc = [217, 239, 225, 75, 244, 14, 252, 91];
+    const data = new Uint8Array(9);
+    data.set(disc, 0);
+    data[8] = 0; // None tag
+
+    const ix = new TransactionInstruction({ programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPk, isSigner: true,  isWritable: true },
+      ],
+      data
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    tx.add(ix);
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+    ghostState.ghost.wholeVaultRecipient = null;
+    _clearWholeVaultLocally();
+    addActivityRow('Whole vault recipient cleared on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif('Whole vault recipient cleared on-chain!', 'green');
+  } catch(err) {
+    console.error('clear whole vault error:', err);
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
+}
+
+function _applyWholeVaultLocally(share) {
+  ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+  ghostState.ghost.beneficiaries.push({
+    recipient: share.addr, fullAddr: share.fullAddr,
+    sharePct: 100, amount: 0, token: 'VAULT x100%',
+    action: 'whole-vault-share', executed: false
+  });
   renderBeneficiaries();
+  renderWholeVaultShares();
   saveSession();
-  showNotif('👻 Whole vault plan saved · ' + shares.length + ' recipient' + (shares.length > 1 ? 's' : '') + ' · ' + totalPct + '%', 'green');
-  addActivityRow('👻 Whole vault plan: ' + shares.map(s => s.pct + '% → ' + s.addr).join(', '), randomTx());
+}
+
+function _clearWholeVaultLocally() {
+  ghostState.ghost.wholeVaultRecipient = null;
+  ghostState.ghost.wholeVaultShares = [];
+  ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+  renderBeneficiaries();
+  renderWholeVaultShares();
+  saveSession();
 }
 
 // ─── Vault ─────────────────────────────────────────────────────
@@ -4010,10 +4212,127 @@ async function guardianCancelAwakening(ownerAddress) {
 }
 
 async function guardianWithdrawAll(ownerAddress) {
-  // BLOCKED: withdraw_from_vault seeds ghost PDA from signer.key() — signer must be owner.
-  // Recovery wallet triggers ConstraintSeeds (0x7d6). Needs recovery_withdraw ix in Phase II.
-  showNotif('\u26a0\uFE0F Guardian withdraw requires a contract upgrade (recovery_withdraw instruction — Phase II).', 'error');
-  console.warn('[Ghost] guardian withdraw blocked: ConstraintSeeds — ghost PDA seeded from signer.key(), recovery wallet != owner. Owner:', ownerAddress);
+  if (!ghostState.provider) { showNotif('Connect your wallet first', 'error'); return; }
+  if (!confirm('Withdraw all vault assets from ' + ownerAddress.slice(0,6) + '...' + ownerAddress.slice(-4) + ' to your wallet?')) return;
+
+  try {
+    showNotif('Preparing guardian withdrawal...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const programId = new PublicKey(PROGRAM_ID);
+    const ownerPk = new PublicKey(ownerAddress);
+    const recoveryWalletPk = new PublicKey(ghostState.publicKey);
+
+    // Derive ghost and vault PDAs from owner (not signer)
+    const [ghostPda] = await PublicKey.findProgramAddress(
+      [new TextEncoder().encode('ghost'), ownerPk.toBytes()], programId
+    );
+    const [vaultPda] = await PublicKey.findProgramAddress(
+      [new TextEncoder().encode('vault'), ownerPk.toBytes()], programId
+    );
+    console.log('[Ghost] Guardian withdraw - ghost:', ghostPda.toBase58(), 'vault:', vaultPda.toBase58());
+
+    // Fetch all vault token accounts
+    const TOKEN_PROG_STR = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+    const TOKEN22_PROG_STR = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+    const fetchTAs = async (owner, prog) => {
+      const r = await fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ jsonrpc:'2.0', id:1, method:'getTokenAccountsByOwner',
+          params:[owner.toBase58(), {programId:prog}, {encoding:'jsonParsed'}]
+        })
+      });
+      return (await r.json()).result?.value || [];
+    };
+    const allAccts = [
+      ...await fetchTAs(vaultPda, TOKEN_PROG_STR),
+      ...await fetchTAs(vaultPda, TOKEN22_PROG_STR)
+    ];
+    if (allAccts.length === 0) { showNotif('No tokens found in vault', 'error'); return; }
+
+    // recovery_withdraw discriminator: sha256("global:recovery_withdraw")[0:8]
+    const disc = [99, 163, 51, 105, 176, 179, 67, 34];
+    const TOKEN_PK = new PublicKey(TOKEN_PROG_STR);
+    const TOKEN22_PK = new PublicKey(TOKEN22_PROG_STR);
+    let successCount = 0;
+
+    for (const acct of allAccts) {
+      const info = acct.account?.data?.parsed?.info;
+      if (!info) continue;
+      const rawAmount = BigInt(info.tokenAmount?.amount || '0');
+      if (rawAmount <= 0n) continue;
+
+      const mintPk = new PublicKey(info.mint);
+      const decimals = info.tokenAmount?.decimals || 0;
+      const tokenProgPk = (acct.account?.owner === TOKEN22_PROG_STR) ? TOKEN22_PK : TOKEN_PK;
+      const vaultTokenAcct = new PublicKey(acct.pubkey);
+
+      // Recipient ATA on recovery wallet
+      let recipientAta;
+      try {
+        const ex = await connection.getTokenAccountsByOwner(recoveryWalletPk, { mint: mintPk });
+        if (ex.value.length > 0) recipientAta = ex.value[0].pubkey;
+      } catch(_) {}
+      if (!recipientAta) recipientAta = await findATAWithProg(recoveryWalletPk, mintPk, tokenProgPk);
+
+      try {
+        const { blockhash } = await connection.getLatestBlockhash();
+        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: recoveryWalletPk });
+
+        // Create recipient ATA if needed
+        const ataInfo = await connection.getAccountInfo(recipientAta);
+        if (!ataInfo) tx.add(createATAInstruction(recoveryWalletPk, recipientAta, recoveryWalletPk, mintPk, tokenProgPk));
+
+        const amtBuf = new ArrayBuffer(8);
+        new DataView(amtBuf).setBigUint64(0, rawAmount, true);
+        const txData = new Uint8Array(16);
+        txData.set(disc, 0);
+        txData.set(new Uint8Array(amtBuf), 8);
+
+        // RecoveryWithdraw account order (must match Rust struct exactly):
+        // 0: ghost (mut) - PDA from owner
+        // 1: owner (read) - used for PDA derivation
+        // 2: vault (read) - PDA from owner
+        // 3: recovery_wallet (signer, mut)
+        // 4: ghost_mint (read)
+        // 5: vault_token_account (mut) - source
+        // 6: recipient_token_account (mut) - destination
+        // 7: token_program (read)
+        tx.add(new TransactionInstruction({ programId, keys: [
+          { pubkey: ghostPda,         isSigner: false, isWritable: true  },
+          { pubkey: ownerPk,          isSigner: false, isWritable: false },
+          { pubkey: vaultPda,         isSigner: false, isWritable: false },
+          { pubkey: recoveryWalletPk, isSigner: true,  isWritable: true  },
+          { pubkey: mintPk,           isSigner: false, isWritable: false },
+          { pubkey: vaultTokenAcct,   isSigner: false, isWritable: true  },
+          { pubkey: recipientAta,     isSigner: false, isWritable: true  },
+          { pubkey: tokenProgPk,      isSigner: false, isWritable: false },
+        ], data: txData }));
+
+        showNotif('Sign to withdraw ' + info.mint.slice(0,8) + '...', '');
+        const signed = await ghostState.provider.signTransaction(tx);
+        const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+        const conf = await connection.confirmTransaction(sig, 'confirmed');
+        if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+        const humanAmt = (Number(rawAmount) / Math.pow(10, decimals)).toLocaleString();
+        addActivityRow('Guardian withdrew ' + humanAmt + ' from ' + ownerAddress.slice(0,6) + '...', sig.slice(0,4)+'...'+sig.slice(-4));
+        successCount++;
+      } catch(tokenErr) {
+        console.error('[Ghost] Guardian withdraw failed for', info.mint, tokenErr);
+        showNotif('Failed for ' + info.mint.slice(0,8) + '...: ' + (tokenErr.message||tokenErr), 'error');
+      }
+    }
+
+    if (successCount > 0) {
+      showNotif('Guardian withdrew ' + successCount + ' asset' + (successCount > 1 ? 's' : '') + '!', 'green');
+      await scanGuardianAssignments();
+    } else {
+      showNotif('No assets were successfully withdrawn', 'error');
+    }
+  } catch(err) {
+    console.error('Guardian withdraw error:', err);
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
 }
 
 
