@@ -2694,6 +2694,12 @@ function parseGhostAccount(bytes) {
       // Empty slot: no recipient AND no amount AND no mint
       const hasRecip = recipBytes.some(b => b !== 0);
       if (!hasRecip && amtRaw === 0n && !mintPk) continue;
+      // Corrupt/default slot: recipient is all-zeros (system pubkey) or near-zero (base58 = 111...)
+      // and no valid mint — these are uninitialized slots from failed/test transactions
+      if (!mintPk && amtRaw === 0n) continue; // no mint, no amount — definitely empty
+      // Near-zero recipient: if >28 of 32 bytes are zero, treat as uninitialized
+      const _zeroBytes = recipBytes.filter(b => b === 0).length;
+      if (_zeroBytes >= 28 && !mintPk) continue; // system/default pubkey with no mint
       const recipFull = hasRecip ? _bDecodePk(recipBytes) : null;
       const isBurn = actionByte === 1;
       const short = recipFull ? recipFull.slice(0,4) + '...' + recipFull.slice(-4) : '(burn)';
@@ -5400,6 +5406,8 @@ async function loadWalletTokens() {
             const vaultOnlyMints = freshVault
               .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint) && !v.name)
               .map(v => v.mint);
+            // Refresh picker immediately with whatever symbols we have (even mint slices)
+            _refreshBenePickers();
             if (vaultOnlyMints.length > 0)
               fetchTokenMetadata(ghostState.vaultTokens, vaultOnlyMints)
                 .then(()=>{renderVaultOverview();renderVaultHoldings();_refreshBenePickers();}).catch(()=>{});
@@ -5535,20 +5543,16 @@ function vaultAssignableTokens() {
 
   return ghostState.vaultTokens
     .filter(vt => {
-      if (vt.balance < 0) return false; // show dust amounts (uiAmount may round to 0)
-      if (vt._unknownMeta) return false; // no real metadata — skip unknown tokens
+      if (vt.balance <= 0) return false; // exclude zero/negative balance
+      // NOTE: do NOT filter _unknownMeta here — tokens appear in picker immediately after deposit
+      // even before metadata resolves; symbol will be a mint slice until metadata loads
       if (isProtocolMint(vt.mint)) return false; // GHOST/DBD — protocol-only, never vault-assignable
       // Filter out tokens with no verified metadata
       const sym = vt.symbol || '';
       const mintStr = vt.mint || '';
-      // Known good symbols always pass (SOL, wSOL, USDC, USDT etc)
-      const KNOWN_GOOD = new Set(['SOL','wSOL','USDC','USDT','BONK','JUP','RAY','ORCA','mSOL','stSOL','JTO','PYTH','WIF','POPCAT','PNUT']);
-      if (!KNOWN_GOOD.has(sym)) {
-        // If symbol is a prefix slice of the mint address → no real metadata resolved
-        if (sym && mintStr && mintStr !== 'native' && mintStr.toUpperCase().startsWith(sym.toUpperCase())) return false;
-        // If symbol ≤ 6 chars AND no name → almost certainly a raw mint slice fallback
-        if (sym.length <= 6 && !vt.name && mintStr !== 'native') return false;
-      }
+      // Only hard-filter tokens with NO symbol at all (truly blank) — everything else shows
+      // Metadata loads async; a mint-slice symbol is better than hiding the token entirely
+      if (!sym && mintStr !== 'native') return false; // no symbol at all — skip
       // Sum only specific transfer/burn assignments (not whole-vault-share)
       const _matchBene = b => b.action !== 'whole-vault-share' && (b.token === vt.symbol || b.token === vt.mint || b.mint === vt.mint);
       const assigned = ghostState.ghost.beneficiaries.filter(_matchBene).reduce((s, b) => s + (b.amount || 0), 0);
