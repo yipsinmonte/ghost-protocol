@@ -4430,21 +4430,29 @@ async function loadWalletTokens() {
     if (ghostState.ghost?.status && ghostState.ghost.status !== 'none') {
       try {
         const vaultPdaStr = ghostState.vaultPda;
-        if (vaultPdaStr) {
-          const [vaultSpl, vaultSpl22] = await Promise.all([
+        const ghostPdaStr = ghostState.ghostPda;
+        // Query both PDAs — the deployed contract may store ATAs under ghostPda instead of vaultPda
+        const pdaAddrs = [...new Set([vaultPdaStr, ghostPdaStr].filter(Boolean))];
+        if (pdaAddrs.length > 0) {
+          console.log('[Ghost] Scanning vault token accounts for PDAs:', pdaAddrs);
+          const allFetches = pdaAddrs.flatMap(addr => [
             fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({jsonrpc:'2.0',id:'vs1',method:'getTokenAccountsByOwner',
-                params:[vaultPdaStr,{programId:'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'},{encoding:'jsonParsed'}]})
-            }).then(r=>r.json()),
+                params:[addr,{programId:'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'},{encoding:'jsonParsed'}]})
+            }).then(r=>r.json()).then(d => { console.log('[Ghost] SPL accts for',addr.slice(0,8),(d.result?.value||[]).length); return d; }),
             fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({jsonrpc:'2.0',id:'vs2',method:'getTokenAccountsByOwner',
-                params:[vaultPdaStr,{programId:'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'},{encoding:'jsonParsed'}]})
+                params:[addr,{programId:'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'},{encoding:'jsonParsed'}]})
             }).then(r=>r.json())
           ]);
-          const vaultAccts = [
-            ...(vaultSpl.result?.value || []),
-            ...(vaultSpl22.result?.value || [])
-          ];
+          const fetchResults = await Promise.all(allFetches);
+          const vaultAccts = fetchResults.flatMap(d => d.result?.value || []);
+          // Deduplicate by token account pubkey (same ATA won't appear twice)
+          const seen = new Set();
+          const deduped = vaultAccts.filter(a => { if (seen.has(a.pubkey)) return false; seen.add(a.pubkey); return true; });
+          // shadow vaultAccts with deduped for the rest of the block
+          vaultAccts.splice(0, vaultAccts.length, ...deduped);
+          if (true) { // keep original block structure
           // Rebuild vaultTokens from on-chain data
           const freshVault = [];
           for (const acct of vaultAccts) {
@@ -4493,6 +4501,7 @@ async function loadWalletTokens() {
                 .then(()=>{renderVaultOverview();renderVaultHoldings();}).catch(()=>{});
           }
           console.log('[Ghost] Vault tokens from chain:', ghostState.vaultTokens.map(v => v.symbol + ':' + v.balance));
+          } // end if(true)
         }
       } catch(e) { console.warn('[Ghost] Vault fetch error:', e); }
     }
