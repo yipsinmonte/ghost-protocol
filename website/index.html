@@ -1531,7 +1531,6 @@ function saveSession() {
       ghost: ghostState.ghost,
       vaultTokens: ghostState.vaultTokens,
       walletTokens: ghostState.walletTokens,
-      recoveryWallets: ghostState.recoveryWallets,
       lastPage: _currentPage || 'overview',
     };
     sessionStorage.setItem('ghostSession', JSON.stringify(s));
@@ -1551,7 +1550,6 @@ function loadSession() {
     ghostState.ghost = s.ghost || ghostState.ghost;
     ghostState.vaultTokens = s.vaultTokens || [];
     ghostState.walletTokens = s.walletTokens || [];
-    ghostState.recoveryWallets = s.recoveryWallets || [];
     return s.lastPage || 'overview';
   } catch(e) { return false; }
 }
@@ -2527,7 +2525,6 @@ async function initializeGhost() {
     ghostState.ghost.pingCount = 0;
     ghostState.ghost.vaultBalance = 0;
     showNotif('✅ Ghost initialized! [demo mode]', 'green');
-    saveSession();
     updateDashboardUI();
     dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
@@ -2683,7 +2680,6 @@ async function initializeGhost() {
 
     showNotif('✅ Ghost initialized on-chain!', 'green');
     addActivityRow('👻 Ghost initialized', sig.slice(0,4)+'...'+sig.slice(-4));
-    saveSession();
     updateDashboardUI();
     dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
@@ -4860,7 +4856,7 @@ async function dbWithdrawAll() {
     return;
   }
 
-  // ── On-chain: send one withdraw_from_vault tx per token ────────
+  // ── On-chain: one withdraw_from_vault tx per token ─────────────
   const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
   const walletPk  = new PublicKey(ghostState.publicKey);
   const ghostPda  = new PublicKey(ghostState.ghostPda);
@@ -4875,9 +4871,10 @@ async function dbWithdrawAll() {
 
   for (const vt of tokens) {
     try {
-      const isSOL  = (vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
+      const isSOL = (vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
       const mintStr = effectiveMint(vt.mint);
-      const mintPk  = isSOL ? null : new PublicKey(mintStr);
+      const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
+      const mintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
       const displaySym = isSOL ? 'SOL' : vt.symbol;
       const amount = vt.balance;
 
@@ -4897,6 +4894,7 @@ async function dbWithdrawAll() {
           { pubkey: ghostPda,   isSigner: false, isWritable: false },
           { pubkey: vaultPda,   isSigner: false, isWritable: false },
           { pubkey: walletPk,   isSigner: true,  isWritable: true  },
+          { pubkey: mintPk,     isSigner: false, isWritable: false },
           { pubkey: ownerAta,   isSigner: false, isWritable: true  },
           { pubkey: vaultAta,   isSigner: false, isWritable: true  },
           { pubkey: TOKEN_PROG, isSigner: false, isWritable: false },
@@ -5419,7 +5417,10 @@ async function dbWithdrawAsset(vaultIdx) {
     const programId = new PublicKey(PROGRAM_ID);
     const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
     console.log('[Ghost] mintStr:', mintStr, 'isSOL:', isSOL);
-    const mintPk     = isSOL ? null : new PublicKey(mintStr); // null for SOL, we use depositMintPk
+
+    // For SOL: always use wSOL mint for ATA derivation — never pass null
+    const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
+    const mintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
 
     const ownerAta = await findATA(walletPk, mintPk);
     const vaultAta = await findATA(vaultPda, mintPk);
@@ -5441,6 +5442,7 @@ async function dbWithdrawAsset(vaultIdx) {
         { pubkey: ghostPda,   isSigner: false, isWritable: false },
         { pubkey: vaultPda,   isSigner: false, isWritable: false },
         { pubkey: walletPk,   isSigner: true,  isWritable: true  },
+        { pubkey: mintPk,     isSigner: false, isWritable: false },
         { pubkey: ownerAta,   isSigner: false, isWritable: true  },
         { pubkey: vaultAta,   isSigner: false, isWritable: true  },
         { pubkey: TOKEN_PROG, isSigner: false, isWritable: false },
