@@ -3723,13 +3723,16 @@ function renderWholeVaultShares() {
   if (shares.length === 0) { el.innerHTML = ''; return; }
   const s = shares[0];
   const isOnChain = ghostState.ghost.wholeVaultRecipient === s.fullAddr;
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(102,51,255,0.06);border:1px solid rgba(160,128,255,0.2);margin-bottom:8px">
-      <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#a080ff;width:80px">100% of vault</span>
-      <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#f0f0f8;flex:1">${s.addr}</span>
-      ${isOnChain ? '<span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#33ff99;letter-spacing:0.1em">ON-CHAIN</span>' : '<span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#ff9933;letter-spacing:0.1em">PENDING</span>'}
-      <button class="icon-btn" onclick="removeWholeVaultShare(0)" style="color:#ff6666" title="Remove">x</button>
-    </div>`;
+  const statusSpan = isOnChain
+    ? '<span style="font-family:monospace;font-size:10px;color:#33ff99;letter-spacing:0.1em">ON-CHAIN</span>'
+    : '<span style="font-family:monospace;font-size:10px;color:#ff9933;letter-spacing:0.1em">PENDING</span>';
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(102,51,255,0.06);border:1px solid rgba(160,128,255,0.2);margin-bottom:8px">' +
+    '<span style="font-family:monospace;font-size:11px;color:#a080ff;width:80px">100% of vault</span>' +
+    '<span style="font-family:monospace;font-size:12px;color:#f0f0f8;flex:1">' + s.addr + '</span>' +
+    statusSpan +
+    '<button class="icon-btn" onclick="removeWholeVaultShare(0)" style="color:#ff6666" title="Remove">x</button>' +
+    '</div>';
 }
 
 function updateSharePreview() {
@@ -6510,7 +6513,7 @@ async function dbAbandon() {
       </div>
     </div>`;
 
-  // Helper to restart   
+  // Helper to restart  
   window.dbSummonNew = function() {
     ghostState.ghost = { status: 'none', stakedGhost: 0, pingCount: 0, beneficiaries: [], wholeVaultShares: [] };
     saveSession();
