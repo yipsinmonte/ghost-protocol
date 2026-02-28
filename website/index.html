@@ -5257,7 +5257,7 @@ async function loadWalletTokens() {
       splData.result.value = [...(splData.result.value || []), ...spl22Data.result.value];
     }
     const solBalance = (solData.result?.value || 0) / 1e9;
-    const freshTokens = [{ symbol: 'SOL', mint: 'native', balance: solBalance, decimals: 9 }];
+    const freshTokens = [{ symbol: 'SOL', mint: 'native', balance: solBalance, decimals: 9, logoUrl: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png', name: 'Solana' }];
     // Note: if wallet also holds a wSOL ATA, we merge it into the native SOL entry below
 
     const unknownMints = [];
@@ -5358,19 +5358,23 @@ async function loadWalletTokens() {
             // Compute balance from raw amount to avoid floating-point rounding to zero
             const balance = Number(rawAmount) / Math.pow(10, decimals);
             const mint = info.mint;
-            const meta = ghostState.walletTokens.find(t => t.mint === mint)
-                      || ghostState.vaultTokens.find(t => t.mint === mint)
+            // Normalise wSOL → display as SOL (same as native)
+            const _isWSOL = mint === 'So11111111111111111111111111111111111111112';
+            const _normMint = _isWSOL ? 'native' : mint;
+            const meta = ghostState.walletTokens.find(t => t.mint === _normMint || t.mint === mint)
+                      || ghostState.vaultTokens.find(t => t.mint === _normMint || t.mint === mint)
                       || {};
-            const _rawSym = meta.symbol || mint.slice(0,6);
+            const _rawSym = _isWSOL ? 'SOL' : (meta.symbol || mint.slice(0,6));
+            const _rawLogo = _isWSOL ? 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png' : (meta.logoUrl || null);
+            const _rawName = _isWSOL ? 'Solana' : (meta.name || null);
             freshVault.push({
               symbol: _rawSym,
-              mint,
+              mint: _normMint, // store as 'native' so it merges with SOL entries
               balance,
               decimals,
-              logoUrl: meta.logoUrl || null,
-              name: meta.name || null,
-              // Mark as unknown if symbol is just a mint slice (no real metadata yet)
-              _unknownMeta: !meta.symbol && !meta.name
+              logoUrl: _rawLogo,
+              name: _rawName,
+              _unknownMeta: !_isWSOL && !meta.symbol && !meta.name
             });
           }
           // Fetch native SOL (lamport) balance of each vault PDA and inject as 'native' entry
@@ -5384,7 +5388,7 @@ async function loadWalletTokens() {
               if (_solBal > 0) {
                 const _exSol = freshVault.find(v => v.mint === 'native');
                 if (_exSol) { _exSol.balance = Math.max(_exSol.balance, _solBal); }
-                else { freshVault.push({symbol:'SOL',mint:'native',balance:_solBal,decimals:9,logoUrl:null,name:'Solana',_unknownMeta:false}); }
+                else { freshVault.push({symbol:'SOL',mint:'native',balance:_solBal,decimals:9,logoUrl:'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',name:'Solana',_unknownMeta:false}); }
               }
             } catch(_) {}
           }
@@ -6024,7 +6028,7 @@ function dbDepositAll() {
   showNotif('📥 Deposited all ' + count + ' asset' + (count > 1 ? 's' : '') + ' to vault!', 'green');
   saveSession();
   // Chain re-fetch: rebuild vaultTokens + bene picker + chart from RPC
-  setTimeout(() => loadWalletTokens().catch(()=>{}), 800);
+  loadWalletTokens().catch(()=>{});
 }
 
 async function dbWithdrawAll() {
@@ -6394,17 +6398,23 @@ async function dbDeposit() {
   // Helper: update UI state after successful deposit
   const _applyDeposit = () => {
     t.balance = Math.max(0, t.balance - amount);
-    // Vault always stores by the effective (wSOL) mint, displayed as SOL
-    const vaultMint = mintStr;
-    const vaultSym  = displaySym;
-    const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
+    // For SOL: store as 'native' in vaultTokens so it merges correctly with chain-fetched SOL entry
+    // On-chain the vault holds a wSOL ATA but we always display/track as 'native' internally
+    const vaultMint = isSOL ? 'native' : mintStr;
+    const vaultSym  = isSOL ? 'SOL' : displaySym;
+    const vaultLogo = isSOL ? 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png' : (t.logoUrl || null);
+    const vaultName = isSOL ? 'Solana' : (t.name || null);
+    const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint || (isSOL && v.mint === 'So11111111111111111111111111111111111111112'));
     if (existing) {
       existing.balance += amount;
-      if (!existing.logoUrl && t.logoUrl) existing.logoUrl = t.logoUrl;
+      existing.mint = vaultMint; // normalise wSOL → native if needed
+      existing.symbol = vaultSym;
+      if (!existing.logoUrl) existing.logoUrl = vaultLogo;
+      if (!existing.name) existing.name = vaultName;
     } else {
       ghostState.vaultTokens.push({
         symbol: vaultSym, mint: vaultMint, balance: amount,
-        decimals: t.decimals, logoUrl: t.logoUrl || null, name: t.name || null
+        decimals: t.decimals, logoUrl: vaultLogo, name: vaultName
       });
     }
     buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]);
@@ -6629,8 +6639,9 @@ async function dbDeposit() {
     const shortSig = sig.slice(0,4)+'...'+sig.slice(-4);
     addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + displaySym, shortSig, 'deposit');
     showNotif('✅ Deposited ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to vault!', 'green');
-    // Hard chain re-fetch: rebuilds vaultTokens from RPC, refreshes bene picker + chart instantly
-    setTimeout(() => loadWalletTokens().catch(()=>{}), 800);
+    // Hard chain re-fetch: rebuilds vaultTokens from RPC, refreshes bene picker + chart
+    // Fire immediately — tx is confirmed so RPC will reflect the new balance
+    loadWalletTokens().catch(()=>{});
   } catch(err) {
     console.error('Deposit error:', err);
     showNotif('Deposit failed: ' + (err.message || err), 'error');
