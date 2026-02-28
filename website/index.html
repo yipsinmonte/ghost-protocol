@@ -5023,25 +5023,47 @@ async function dbDeposit() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
-    // Create vault token account if it doesn't exist
+    // Phase 1: Create vault token account if needed — separate tx to isolate errors
     const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
     console.log('[Ghost] vaultAta:', vaultAta.toBase58(), 'exists:', !!vaultAtaInfo);
     if (!vaultAtaInfo) {
-      console.log('[Ghost] Creating vault ATA for mint:', depositMintPk.toBase58(), 'owner:', vaultPda.toBase58(), 'tokenProg:', tokenProgPk.toBase58());
-      tx.add(buildCreateATAIx(walletPk, vaultAta, vaultPda, depositMintPk, tokenProgPk));
+      showNotif('Initializing vault account...', '');
+      console.log('[Ghost] Creating vault ATA — separate tx');
+      const { blockhash: initBh } = await connection.getLatestBlockhash();
+      const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
+      initTx.add(buildCreateATAIx(walletPk, vaultAta, vaultPda, depositMintPk, tokenProgPk));
+      const initSigned = await ghostState.provider.signTransaction(initTx);
+      const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: false });
+      const initConf = await connection.confirmTransaction(initSig, 'confirmed');
+      if (initConf.value?.err) throw new Error('Vault init failed: ' + JSON.stringify(initConf.value.err));
+      console.log('[Ghost] Vault ATA created:', initSig);
+      showNotif('Vault initialized — proceeding with deposit...', '');
+      // Refresh blockhash for deposit tx
+      const { blockhash: newBh } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = newBh;
     }
 
-    // For SOL: wrap to wSOL — create owner wSOL ATA + fund it
+    // Phase 2: For SOL — wrap native SOL to wSOL in separate tx
     let effectiveOwnerAta = ownerAta;
     if (isSOL) {
       const lamports = Math.round(amount * 1e9);
       const { instructions: wrapIxs, wsolAta } = await buildWrapSOLInstructions(walletPk, lamports);
-      wrapIxs.forEach(ix => tx.add(ix));
+      showNotif('Wrapping SOL...', '');
+      const { blockhash: wrapBh } = await connection.getLatestBlockhash();
+      const wrapTx = new Transaction({ recentBlockhash: wrapBh, feePayer: walletPk });
+      wrapIxs.forEach(ix => wrapTx.add(ix));
+      console.log('[Ghost] SOL wrap ATA:', wsolAta.toBase58());
+      const wrapSigned = await ghostState.provider.signTransaction(wrapTx);
+      const wrapSig = await connection.sendRawTransaction(wrapSigned.serialize(), { skipPreflight: false });
+      const wrapConf = await connection.confirmTransaction(wrapSig, 'confirmed');
+      if (wrapConf.value?.err) throw new Error('SOL wrap failed: ' + JSON.stringify(wrapConf.value.err));
       effectiveOwnerAta = wsolAta;
-      console.log('[Ghost] SOL wrap ATA:', wsolAta.toBase58(), 'vault wSOL ATA:', vaultAta.toBase58());
+      showNotif('SOL wrapped — depositing...', '');
+      const { blockhash: depBh } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = depBh;
     }
 
-    // deposit_to_vault discriminator: sha256("global:deposit_to_vault")[0:8]
+    // Phase 3: Deposit
     const disc = [18, 62, 110, 8, 26, 106, 248, 151];
     const amountRaw = BigInt(Math.round(amount * Math.pow(10, isSOL ? 9 : t.decimals)));
     const buf = new ArrayBuffer(8);
@@ -5056,13 +5078,9 @@ async function dbDeposit() {
         { pubkey: depositMintPk,     isSigner: false, isWritable: false },
         { pubkey: effectiveOwnerAta, isSigner: false, isWritable: true  },
         { pubkey: vaultAta,          isSigner: false, isWritable: true  },
-        { pubkey: rawTokenProgPk,    isSigner: false, isWritable: false }, // use raw (may be pump.fun variant)
+        { pubkey: rawTokenProgPk,    isSigner: false, isWritable: false },
       ], data }));
 
-    // Debug: log each instruction individually so console doesn't collapse
-    tx.instructions.forEach((ix, i) => 
-      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
-    );
     const signed = await ghostState.provider.signTransaction(tx);
     let sig;
     try {
