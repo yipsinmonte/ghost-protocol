@@ -3976,32 +3976,59 @@ function createATAInstruction(payer, ata, owner, mint, tokenProgram) {
   });
 }
 
-// Wrap native SOL into wSOL ATA
-// Returns { instructions, wsolAta } — no extra keypair needed
+// Wrap native SOL into a wSOL token account
+// If wSOL ATA already exists → reuse it (transfer + syncNative only)
+// If not → create via manual keypair (ATA program unreliable on some nodes)
+// Returns { instructions, wsolAta, kp } — kp is non-null only when new account created
 async function buildWrapSOLInstructions(walletPubkey, lamports, connection) {
-  const mintPk = new solanaWeb3.PublicKey(WSOL_MINT);
-  const wsolAta = await deriveATA(walletPubkey, mintPk);
+  const { Keypair, SystemProgram, TransactionInstruction, PublicKey } = solanaWeb3;
+  const mintPk = new PublicKey(WSOL_MINT);
+  const TOKEN_PROG = TOKEN_PROGRAM_ID_PK();
   const instructions = [];
 
-  // Create wSOL ATA if it doesn't exist (standard create, empty data buffer)
+  const wsolAta = await deriveATA(walletPubkey, mintPk);
   const existing = connection ? await connection.getAccountInfo(wsolAta) : null;
+  console.log('[Ghost] wSOL ATA:', wsolAta.toBase58(), 'exists:', !!existing);
+
+  let wsolAcct = wsolAta;
+  let kp = null;
+
   if (!existing) {
-    instructions.push(createATAInstruction(walletPubkey, wsolAta, walletPubkey, mintPk, TOKEN_PROGRAM_ID_PK()));
+    // createAccount with lamports = rent + wrapAmount
+    // Per SPL docs: InitializeAccount sets token balance = SOL balance at init time
+    // So we bake the wrap amount directly into createAccount — no transfer+syncNative needed
+    kp = Keypair.generate();
+    wsolAcct = kp.publicKey;
+    const space = 165;
+    const rent = connection ? await connection.getMinimumBalanceForRentExemption(space) : 2039280;
+    instructions.push(SystemProgram.createAccount({
+      fromPubkey: walletPubkey, newAccountPubkey: wsolAcct,
+      lamports: rent + Number(lamports), // rent + wrap amount = token balance at init
+      space, programId: TOKEN_PROG
+    }));
+    const initData = new Uint8Array(33);
+    initData[0] = 18; // InitializeAccount3 opcode
+    initData.set(walletPubkey.toBytes(), 1); // owner = wallet
+    instructions.push(new TransactionInstruction({
+      programId: TOKEN_PROG,
+      keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true },
+             { pubkey: mintPk,   isSigner: false, isWritable: false }],
+      data: initData
+    }));
+    console.log('[Ghost] wSOL keypair account:', wsolAcct.toBase58(), 'lamports:', rent + Number(lamports));
+  } else {
+    // Account already exists — transfer additional SOL and sync
+    instructions.push(SystemProgram.transfer({
+      fromPubkey: walletPubkey, toPubkey: wsolAcct, lamports: Number(lamports)
+    }));
+    instructions.push(new TransactionInstruction({
+      programId: TOKEN_PROG,
+      keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }],
+      data: new Uint8Array([17]) // SyncNative
+    }));
   }
 
-  // Transfer native SOL into the wSOL ATA
-  instructions.push(solanaWeb3.SystemProgram.transfer({
-    fromPubkey: walletPubkey, toPubkey: wsolAta, lamports: Number(lamports),
-  }));
-
-  // SyncNative — tell token program the lamports are now the balance
-  instructions.push(new solanaWeb3.TransactionInstruction({
-    programId: TOKEN_PROGRAM_ID_PK(),
-    keys: [{ pubkey: wsolAta, isSigner: false, isWritable: true }],
-    data: new Uint8Array([17]) // SyncNative opcode
-  }));
-
-  return { instructions, wsolAta, kp: null };
+  return { instructions, wsolAta: wsolAcct, kp };
 }
 
 // Unwrap wSOL ATA back to native SOL by closing the account
@@ -5189,14 +5216,15 @@ async function dbDeposit() {
     let effectiveOwnerAta = ownerAta;
     if (isSOL) {
       const lamports = Math.round(amount * 1e9);
-      const { instructions: wrapIxs, wsolAta } = await buildWrapSOLInstructions(walletPk, lamports, connection);
+      const { instructions: wrapIxs, wsolAta, kp: wsolKp } = await buildWrapSOLInstructions(walletPk, lamports, connection);
       showNotif('Wrapping SOL...', '');
       const { blockhash: wrapBh } = await connection.getLatestBlockhash();
       const wrapTx = new Transaction({ recentBlockhash: wrapBh, feePayer: walletPk });
       wrapIxs.forEach(ix => wrapTx.add(ix));
-      console.log('[Ghost] SOL wrap ATA:', wsolAta.toBase58());
-      const wrapSigned = await ghostState.provider.signTransaction(wrapTx);
-      const wrapSig = await connection.sendRawTransaction(wrapSigned.serialize(), { skipPreflight: true });
+      console.log('[Ghost] SOL wrap account:', wsolAta.toBase58(), 'newKp:', !!wsolKp);
+      const wrapWalletSigned = await ghostState.provider.signTransaction(wrapTx);
+      if (wsolKp) wrapWalletSigned.partialSign(wsolKp);
+      const wrapSig = await connection.sendRawTransaction(wrapWalletSigned.serialize(), { skipPreflight: true });
       const wrapConf = await connection.confirmTransaction(wrapSig, 'confirmed');
       if (wrapConf.value?.err) throw new Error('SOL wrap failed: ' + JSON.stringify(wrapConf.value.err));
       effectiveOwnerAta = wsolAta;
