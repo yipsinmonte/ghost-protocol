@@ -2503,6 +2503,7 @@ async function initializeGhost() {
     // initialize_ghost(interval_seconds: i64, grace_period_seconds: i64, recovery_wallet: Option<Pubkey>, stake_amount: u64)
     // stake_amount in base units (6 decimals): UI value × 1_000_000
     const stakeRaw = BigInt(stakeAmt) * BigInt(1_000_000);
+    console.log('[Ghost] stakeAmt:', stakeAmt, 'stakeRaw:', stakeRaw.toString());
     const recoveryWallet = ghostState.recoveryWallets?.[0]?.address || null;
 
     // Option<Pubkey>: 1 byte tag (0=None, 1=Some) + 32 bytes
