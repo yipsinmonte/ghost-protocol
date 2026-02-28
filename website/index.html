@@ -5404,9 +5404,17 @@ async function loadWalletTokens() {
               }
             }
             // Remove vault tokens that no longer have on-chain balance
-            ghostState.vaultTokens = ghostState.vaultTokens.filter(v =>
-              freshVault.find(f => f.mint === v.mint)
-            );
+            // Exception: keep tokens marked _pendingDeposit for 8s — RPC may lag behind confirmed tx
+            const _now = Date.now();
+            ghostState.vaultTokens = ghostState.vaultTokens.filter(v => {
+              if (freshVault.find(f => f.mint === v.mint)) return true; // found on chain — keep
+              if (v._pendingDeposit && (_now - v._pendingDeposit) < 8000) return true; // recent deposit — protect
+              return false; // genuinely gone — remove
+            });
+            // Clear _pendingDeposit flag on tokens now confirmed on-chain
+            ghostState.vaultTokens.forEach(v => {
+              if (v._pendingDeposit && freshVault.find(f => f.mint === v.mint)) delete v._pendingDeposit;
+            });
             const vaultOnlyMints = freshVault
               .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint) && !v.name)
               .map(v => v.mint);
@@ -6411,10 +6419,12 @@ async function dbDeposit() {
       existing.symbol = vaultSym;
       if (!existing.logoUrl) existing.logoUrl = vaultLogo;
       if (!existing.name) existing.name = vaultName;
+      existing._pendingDeposit = Date.now(); // protect from premature removal
     } else {
       ghostState.vaultTokens.push({
         symbol: vaultSym, mint: vaultMint, balance: amount,
-        decimals: t.decimals, logoUrl: vaultLogo, name: vaultName
+        decimals: t.decimals, logoUrl: vaultLogo, name: vaultName,
+        _pendingDeposit: Date.now() // RPC may lag — protect from premature removal for 8s
       });
     }
     buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]);
