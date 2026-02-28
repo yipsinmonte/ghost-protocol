@@ -2613,7 +2613,7 @@ async function initializeGhost() {
     ghostState.ghost.status = 'alive';
     ghostState.ghost.intervalSeconds = intervalDays * 86400;
     ghostState.ghost.gracePeriodSeconds = graceDays * 86400;
-    ghostState.ghost.stakedGhost = Number(stakeRaw);
+    ghostState.ghost.stakedGhost = Number(stakeRaw) / 1_000_000;
     ghostState.ghost.lastHeartbeat = Date.now();
     ghostState.ghost.pingCount = 0;
 
@@ -3725,15 +3725,24 @@ async function loadWalletTokens() {
 
   // Real wallet — fetch live balances but preserve any in-memory vault adjustments
   try {
-    const [solRes, splRes] = await Promise.all([
+    const [solRes, splRes, spl22Res] = await Promise.all([
       fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({jsonrpc:'2.0',id:1,method:'getBalance',params:[ghostState.publicKey]}) }),
       fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({jsonrpc:'2.0',id:2,method:'getTokenAccountsByOwner',
-          params:[ghostState.publicKey,{programId:'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'},{encoding:'jsonParsed'}]}) })
+          params:[ghostState.publicKey,{programId:'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'},{encoding:'jsonParsed'}]}) }),
+      fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({jsonrpc:'2.0',id:3,method:'getTokenAccountsByOwner',
+          params:[ghostState.publicKey,{programId:'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'},{encoding:'jsonParsed'}]}) })
     ]);
     const solData = await solRes.json();
     const splData = await splRes.json();
+    const spl22Data = await spl22Res.json();
+    // Merge Token-2022 accounts into splData results
+    if (spl22Data.result?.value) {
+      splData.result = splData.result || { value: [] };
+      splData.result.value = [...(splData.result.value || []), ...spl22Data.result.value];
+    }
     const solBalance = (solData.result?.value || 0) / 1e9;
     const freshTokens = [{ symbol: 'SOL', mint: 'native', balance: solBalance, decimals: 9 }];
     // Note: if wallet also holds a wSOL ATA, we merge it into the native SOL entry below
@@ -4374,6 +4383,15 @@ function effectiveMint(mint) {
 }
 
 // Derive ATA — synchronous using pre-fetched PDA
+async function findATAWithProg(owner, mint, tokenProg) {
+  const { PublicKey } = solanaWeb3;
+  const ASSOC = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso');
+  const [ata] = await PublicKey.findProgramAddress(
+    [owner.toBytes(), tokenProg.toBytes(), mint.toBytes()], ASSOC
+  );
+  return ata;
+}
+
 async function findATA(ownerPk, mintPk) {
   const { PublicKey } = solanaWeb3;
   const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
@@ -4519,10 +4537,25 @@ async function dbDeposit() {
     const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
     const mintPk     = new PublicKey(mintStr);
 
-    const ownerAta = await findATA(walletPk, mintPk);
-    const vaultAta = await findATA(vaultPda, mintPk);
-
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+
+    // Detect token program from mint owner
+    const mintInfo = await connection.getAccountInfo(mintPk);
+    const mintOwnerStr = mintInfo?.owner?.toBase58() || TOKEN_PROGRAM_STR;
+    const tokenProgPk = new PublicKey(mintOwnerStr);
+
+    const ownerAta = mintStr === TOKEN_PROGRAM_STR
+      ? await findATA(walletPk, mintPk)
+      : (await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk })).value[0]?.pubkey || await findATA(walletPk, mintPk);
+    // For $GHOST token, vault is the PDA stake vault; for others use vaultPda ATA
+    const ghostMintStr = ghostState.ghost?.mint || GHOST_MINT_STR;
+    const vaultAta = (mintStr === ghostMintStr)
+      ? await solanaWeb3.PublicKey.findProgramAddress(
+          [new TextEncoder().encode('stake_vault'), new PublicKey(ghostState.publicKey).toBytes()],
+          new PublicKey(PROGRAM_ID)
+        ).then(([pk]) => pk)
+      : await findATAWithProg(vaultPda, mintPk, tokenProgPk);
+
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
@@ -4545,9 +4578,10 @@ async function dbDeposit() {
       keys: [
         { pubkey: ghostPda,   isSigner: false, isWritable: false },
         { pubkey: walletPk,   isSigner: true,  isWritable: true  },
+        { pubkey: mintPk,     isSigner: false, isWritable: false },
         { pubkey: ownerAta,   isSigner: false, isWritable: true  },
         { pubkey: vaultAta,   isSigner: false, isWritable: true  },
-        { pubkey: TOKEN_PROG, isSigner: false, isWritable: false },
+        { pubkey: tokenProgPk,isSigner: false, isWritable: false },
       ], data }));
 
     const signed = await ghostState.provider.signTransaction(tx);
