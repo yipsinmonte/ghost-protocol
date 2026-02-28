@@ -4963,7 +4963,7 @@ async function dbDeposit() {
     const vaultPda  = new PublicKey(ghostState.vaultPda);
     const programId = new PublicKey(PROGRAM_ID);
     const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
-    const mintPk     = new PublicKey(mintStr);
+    const mintPk     = isSOL ? null : new PublicKey(mintStr); // null for SOL, we use depositMintPk
 
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const WSOL_MINT_PK = new PublicKey('So11111111111111111111111111111111111111112');
@@ -4973,7 +4973,7 @@ async function dbDeposit() {
     const depositMintStr  = isSOL ? 'So11111111111111111111111111111111111111112' : mintStr;
     const rawMintOwner    = isSOL
       ? TOKEN_PROGRAM_STR
-      : ((await connection.getAccountInfo(mintPk))?.owner?.toBase58() || TOKEN_PROGRAM_STR);
+      : ((mintPk ? (await connection.getAccountInfo(mintPk))?.owner?.toBase58() : null) || TOKEN_PROGRAM_STR);
     // Normalize pump.fun non-standard Token-2022 → standard for ATA creation
     const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
     const tokenProgPk    = new PublicKey(normalizedTokenProg); // for ATA creation
@@ -4981,11 +4981,11 @@ async function dbDeposit() {
 
     // Owner source token account
     const ownerAta = isSOL
-      ? await findATA(walletPk, WSOL_MINT_PK)  // wSOL ATA (will be created + funded in wrap step)
-      : depositMintStr === TOKEN_PROGRAM_STR
-        ? await findATA(walletPk, depositMintPk)
+      ? await findATA(walletPk, WSOL_MINT_PK)  // wSOL ATA (created + funded in wrap step)
+      : rawMintOwner === TOKEN_PROGRAM_STR
+        ? await findATA(walletPk, depositMintPk)  // classic Token — use ATA derivation
         : (await connection.getTokenAccountsByOwner(walletPk, { mint: depositMintPk })).value[0]?.pubkey
-          || await findATA(walletPk, depositMintPk);
+          || await findATA(walletPk, depositMintPk); // Token-2022 — look up real account
 
     // Vault destination token account
     const ghostMintStr = ghostState.ghost?.mint || GHOST_MINT;
@@ -5059,10 +5059,15 @@ async function dbDeposit() {
         preflightCommitment: 'confirmed'
       });
     } catch(simErr) {
-      // Get simulation logs for debugging
-      const sim = await connection.simulateTransaction(signed);
-      console.error('[Ghost] Simulation logs:', sim.value.logs);
-      throw new Error('Simulation failed: ' + (sim.value.err ? JSON.stringify(sim.value.err) : simErr.message));
+      // Simulate with unsigned tx to get program logs
+      try {
+        const sim = await connection.simulateTransaction(tx);
+        console.error('[Ghost] Simulation logs:', sim.value.logs);
+        const simErrMsg = sim.value.err ? JSON.stringify(sim.value.err) : simErr.message;
+        throw new Error('Simulation failed: ' + simErrMsg + ' | logs: ' + (sim.value.logs||[]).slice(-3).join(' | '));
+      } catch(e2) {
+        throw new Error('TX failed: ' + simErr.message);
+      }
     }
     const conf   = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
@@ -5133,7 +5138,7 @@ async function dbWithdrawAsset(vaultIdx) {
     const vaultPda  = new PublicKey(ghostState.vaultPda);
     const programId = new PublicKey(PROGRAM_ID);
     const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
-    const mintPk     = new PublicKey(mintStr);
+    const mintPk     = isSOL ? null : new PublicKey(mintStr); // null for SOL, we use depositMintPk
 
     const ownerAta = await findATA(walletPk, mintPk);
     const vaultAta = await findATA(vaultPda, mintPk);
