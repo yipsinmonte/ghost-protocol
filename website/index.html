@@ -2477,6 +2477,15 @@ async function initializeGhost() {
   // Real transaction — call initialize_ghost on-chain
   try {
     showNotif('Initializing ghost account...', '');
+    // Base58 decode helper for pubkey bytes
+    function b58dec(s) {
+      const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      let n = BigInt(0);
+      for (const c of s) n = n * BigInt(58) + BigInt(B58.indexOf(c));
+      const b = new Uint8Array(32);
+      for (let i = 31; i >= 0; i--) { b[i] = Number(n & BigInt(0xff)); n >>= BigInt(8); }
+      return b;
+    }
     console.log('[Ghost] initializeGhost START - provider:', !!ghostState.provider, 'pubkey:', ghostState.publicKey, 'ghostPda:', ghostState.ghostPda);
     // Re-derive PDAs if missing (can happen after page reload)
     if (!ghostState.ghostPda && ghostState.publicKey) {
@@ -2531,10 +2540,9 @@ async function initializeGhost() {
     const ghostMintInfo = await connection.getAccountInfo(ghostMint);
     const mintOwner = ghostMintInfo?.owner?.toBase58() || '';
     // Also check a known ATA for this mint - Pump.fun sometimes uses Token-2022 under the hood
-    const isToken2022 = mintOwner === 'TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB' ||
-                        (ghostMintInfo?.data?.length || 0) > 165;
-    const ghostTokenProgramId = isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
-    console.log('[Ghost] Ghost mint owner:', mintOwner, 'data len:', ghostMintInfo?.data?.length, '→ Token-2022:', isToken2022);
+    // Use the actual program that owns the mint — this is the token program to use
+    const ghostTokenProgramId = mintOwner ? new PublicKey(new Uint8Array(b58dec(mintOwner))) : TOKEN_PROGRAM_ID;
+    console.log('[Ghost] Ghost mint owner (token program):', mintOwner, 'data len:', ghostMintInfo?.data?.length);
 
     // Find the actual token account for signer — Pump.fun may not use standard ATA derivation
     // Look up all token accounts for this wallet+mint combination
