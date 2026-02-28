@@ -712,6 +712,16 @@
         <div class="db-page-title">Your Ghost</div>
         <div class="db-page-sub">Vault Status · Digital Legacy Protocol</div>
 
+        <!-- Wallet identity -->
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:rgba(102,51,255,0.06);border:1px solid rgba(102,51,255,0.14);margin-bottom:20px">
+          <canvas id="dbWalletAvatar" width="40" height="40" style="border-radius:50%;flex-shrink:0"></canvas>
+          <div style="min-width:0;flex:1">
+            <div id="dbWalletDomain" style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:#f0f0f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+            <div id="dbWalletShortAddr" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#9090b8;letter-spacing:0.06em;margin-top:2px"></div>
+          </div>
+          <div id="dbSolBadge" style="display:none;background:rgba(153,69,255,0.15);border:1px solid rgba(153,69,255,0.3);color:#cc99ff;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.15em;padding:3px 8px;flex-shrink:0">.SOL</div>
+        </div>
+
         <div class="db-alert" id="dbAwakeningAlert">
           ⚠ GHOST AWAKENED — Grace period expires in <strong id="dbGraceCountdown">6d 14h</strong>. Ping or cancel to save your ghost.
           <br><div style="display:flex;gap:8px;margin-top:8px">
@@ -728,7 +738,7 @@
               <div class="status-meta-item"><label>Last Ping</label><span id="dbLastPing">—</span></div>
               <div class="status-meta-item"><label>Interval</label><span id="dbInterval">365 days</span></div>
               <div class="status-meta-item"><label>Grace</label><span id="dbGrace">30 days</span></div>
-              <div class="status-meta-item"><label>Registered</label><span>—</span></div>
+              <div class="status-meta-item"><label>Registered</label><span id="dbRegistered">—</span></div>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
@@ -1532,6 +1542,8 @@ function saveSession() {
       vaultTokens: ghostState.vaultTokens,
       walletTokens: ghostState.walletTokens,
       recoveryWallets: ghostState.recoveryWallets,
+      ghostPda: ghostState.ghostPda,
+      vaultPda: ghostState.vaultPda,
       lastPage: _currentPage || 'overview',
     };
     sessionStorage.setItem('ghostSession', JSON.stringify(s));
@@ -1552,6 +1564,8 @@ function loadSession() {
     ghostState.vaultTokens = s.vaultTokens || [];
     ghostState.walletTokens = s.walletTokens || [];
     ghostState.recoveryWallets = s.recoveryWallets || [];
+    if (s.ghostPda) ghostState.ghostPda = s.ghostPda;
+    if (s.vaultPda) ghostState.vaultPda = s.vaultPda;
     return s.lastPage || 'overview';
   } catch(e) { return false; }
 }
@@ -1860,8 +1874,6 @@ document.getElementById('walletModal').addEventListener('click', function(e) {
 
 async function connectWallet(name) {
   closeModal();
-  
-  // Get the right provider based on wallet name
   let provider = null;
   if (name === 'Phantom') {
     provider = window.phantom?.solana || window.solana;
@@ -1870,34 +1882,31 @@ async function connectWallet(name) {
   } else if (name === 'Backpack') {
     provider = window.backpack?.solana;
   }
-
-  // Fallback: try any available wallet
-  if (!provider) {
-    provider = window.phantom?.solana || window.solflare || window.solana;
-  }
-
+  if (!provider) provider = window.phantom?.solana || window.solflare || window.solana;
   if (!provider) {
     showNotif('⚠️ ' + name + ' not found. Please install it first.', 'error');
-    // For testing without a wallet extension, use demo mode
     connectWalletDemo(name);
     return;
   }
-
   try {
     showNotif('Connecting to ' + name + '...', '');
-    const resp = await provider.connect();
+    // Always fully disconnect first so the wallet demands a fresh signature
+    try { await provider.disconnect(); } catch(e) {}
+    // onlyIfTrusted: false → always shows the approve popup
+    const resp = await provider.connect({ onlyIfTrusted: false });
     const pubkey = resp.publicKey.toString();
-    
     ghostState.connected = true;
     ghostState.walletName = name;
     ghostState.walletAddress = pubkey.slice(0,4) + '...' + pubkey.slice(-4);
     ghostState.publicKey = pubkey;
     ghostState.provider = provider;
-
-    // Derive PDAs
+    // Listen for account switches — treat as a full disconnect
+    const _onAccountChange = () => {
+      showNotif('👻 Wallet account changed — please reconnect.', '');
+      disconnectWallet();
+    };
+    try { provider.off?.('accountChanged', _onAccountChange); provider.on?.('accountChanged', _onAccountChange); } catch(e) {}
     await deriveAndSetPDAs(pubkey);
-
-    // Update UI
     const btn = document.getElementById('walletBtn');
     btn.textContent = '● ' + ghostState.walletAddress;
     btn.classList.add('connected');
@@ -1907,14 +1916,13 @@ async function connectWallet(name) {
     document.getElementById('navDisconnectBtn').style.display = 'inline-block';
     const wsEl = document.getElementById('walletStatus');
     if (wsEl) wsEl.textContent = ghostState.walletAddress + ' — Heartbeat Active';
-
     showNotif('✓ ' + name + ' connected!', 'green');
     saveSession();
-
-    // Fetch on-chain ghost account
     await fetchGhostAccount();
-
-    setTimeout(openDashboard, 600);
+    setTimeout(() => {
+      openDashboard();
+      if (ghostState.ghost.status !== 'none') dbShowPage('overview', document.getElementById('nav-overview'));
+    }, 600);
   } catch (err) {
     console.error('Wallet connect error:', err);
     showNotif('Connection failed: ' + (err.message || err), 'error');
@@ -2388,6 +2396,7 @@ function parseGhostAccount(bytes) {
     // bump: u8, vault_bump: u8
     offset += 2;
     // registered_at: i64
+    const registeredAt = Number(view.getBigInt64(offset, true));
     offset += 8;
     // ping_count: u64 (NOT u32 — matches lib.rs pub ping_count: u64)
     const pingCount = Number(view.getBigUint64(offset, true));
@@ -2406,6 +2415,7 @@ function parseGhostAccount(bytes) {
     ghostState.ghost.stakedGhost = staked / 1_000_000; // convert from base units to token units
     ghostState.ghost.pingCount = pingCount;
     ghostState.ghost.beneficiaryCount = benefCount;
+    ghostState.ghost.registeredAt = registeredAt > 0 ? registeredAt * 1000 : null;
 
     if (executed) ghostState.ghost.status = 'executed';
     else if (awakened) ghostState.ghost.status = 'awakened';
@@ -2473,11 +2483,16 @@ function updateDashboardUI() {
     }
   }
 
-  // Interval / grace display
+  // Interval / grace / registered display
   const intervalEl = document.getElementById('dbInterval');
   if (intervalEl) intervalEl.textContent = Math.round(g.intervalSeconds/86400) + ' days';
   const graceEl = document.getElementById('dbGrace');
   if (graceEl) graceEl.textContent = Math.round(g.gracePeriodSeconds/86400) + ' days';
+  const regEl = document.getElementById('dbRegistered');
+  if (regEl && g.registeredAt) {
+    const d = new Date(g.registeredAt);
+    regEl.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
 
   // Awakening alert
   const alert = document.getElementById('dbAwakeningAlert');
@@ -2485,6 +2500,53 @@ function updateDashboardUI() {
 
   updateCountdown();
   syncSettingsDisplay();
+  updateWalletIdentity();
+}
+
+// ─── Wallet Identity Card ────────────────────────────────────────
+let _walletIdentityAddr = null;
+function updateWalletIdentity() {
+  const addr = ghostState.publicKey;
+  if (!addr) return;
+  const domainEl = document.getElementById('dbWalletDomain');
+  const shortEl  = document.getElementById('dbWalletShortAddr');
+  const canvas   = document.getElementById('dbWalletAvatar');
+  if (!canvas) return;
+  const short = addr.slice(0,4) + '...' + addr.slice(-4);
+  if (shortEl) shortEl.textContent = addr;
+  // Deterministic identicon
+  try {
+    const ctx = canvas.getContext('2d');
+    const S = 40, C = S / 7;
+    let seed = 0;
+    for (let i = 0; i < addr.length; i++) seed = (seed * 31 + addr.charCodeAt(i)) | 0;
+    const rng = () => { seed = (seed * 1664525 + 1013904223) | 0; return (seed >>> 0) / 4294967295; };
+    const hue = Math.floor(rng() * 360);
+    ctx.fillStyle = '#110d1a'; ctx.fillRect(0, 0, S, S);
+    ctx.fillStyle = `hsl(${hue},65%,62%)`;
+    for (let y = 0; y < 7; y++) {
+      for (let x = 0; x < 4; x++) {
+        if (rng() > 0.42) {
+          ctx.fillRect(x * C, y * C, C - 0.5, C - 0.5);
+          if (x < 3) ctx.fillRect((6 - x) * C, y * C, C - 0.5, C - 0.5);
+        }
+      }
+    }
+  } catch(e) {}
+  if (_walletIdentityAddr === addr) return;
+  _walletIdentityAddr = addr;
+  if (domainEl) domainEl.textContent = short;
+  // Async SNS lookup
+  fetch('https://sns-sdk-proxy.bonfida.workers.dev/domains/' + addr)
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      const domains = data?.result;
+      if (Array.isArray(domains) && domains.length > 0) {
+        if (domainEl) domainEl.textContent = domains[0] + '.sol';
+        const badge = document.getElementById('dbSolBadge');
+        if (badge) badge.style.display = 'block';
+      }
+    }).catch(() => {});
 }
 
 function validateStakeInput(el) {
@@ -2694,6 +2756,8 @@ async function initializeGhost() {
 }
 function openDashboard() {
   if (!ghostState.connected) { openModal(); return; }
+  // Real wallet with no provider = session restored but not re-authenticated yet
+  if (!ghostState.walletName?.includes('demo') && !ghostState.provider) { openModal(); return; }
   document.getElementById('dashboardPanel').classList.add('open');
   document.body.style.overflow = 'hidden';
   updateDashboardUI(); // handles none vs alive routing
@@ -2713,29 +2777,30 @@ function closeDashboard() {
   document.body.style.overflow = '';
 }
 
-function disconnectWallet() {
-  // Disconnect provider if real wallet
-  try { ghostState.provider?.disconnect?.(); } catch(e) {}
-  // Clear session
+async function disconnectWallet() {
+  const provider = ghostState.provider;
+  ghostState.provider = null;
+  if (provider) {
+    try { await provider.disconnect(); } catch(e) {}
+    try { provider.off?.('accountChanged'); } catch(e) {}
+  }
   sessionStorage.removeItem('ghostSession');
-  // Reset state
   ghostState.connected = false;
   ghostState.walletName = null;
   ghostState.walletAddress = null;
   ghostState.publicKey = null;
-  ghostState.provider = null;
+  ghostState.ghostPda = null;
+  ghostState.vaultPda = null;
   ghostState.ghost = { status:'none', lastHeartbeat:null, intervalSeconds:365*86400, gracePeriodSeconds:30*86400, awakenedAt:null, executed:false, stakedGhost:0, pingCount:0, vaultBalance:0, recoveryWallet:null, beneficiaries:[] };
   ghostState.walletTokens = [];
   ghostState.vaultTokens = [];
+  ghostState.recoveryWallets = [];
   ghostState.selectedTokens = {};
-  // Reset wallet button
   const btn = document.getElementById('walletBtn');
   if (btn) { btn.textContent = 'Connect Wallet'; btn.classList.remove('connected'); btn.onclick = openModal; }
   document.getElementById('navDashboardLink')?.classList.remove('visible');
   document.getElementById('navDisconnectBtn').style.display = 'none';
-  // Close dashboard
   closeDashboard();
-  // Show a ghostly goodbye message
   showNotif('👻 Wallet disconnected — your ghost rests.', '');
 }
 
@@ -2755,27 +2820,26 @@ document.addEventListener('visibilitychange', () => {
 // ─── Restore session after page refresh ─────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const lastPage = loadSession();
-  if (!lastPage) return; // no session, stay on marketing page
-  // Re-hydrate wallet button UI
+  if (!lastPage) return;
+  const isDemo = ghostState.walletName?.includes('demo');
   const btn = document.getElementById('walletBtn');
-  if (btn) {
-    btn.textContent = '● ' + ghostState.walletAddress + (ghostState.walletName?.includes('demo') ? ' [demo]' : '');
-    btn.classList.add('connected');
-    btn.onclick = openDashboard;
+  document.getElementById('navDashboardLink')?.classList.add('visible');
+  document.getElementById('navDisconnectBtn').style.display = 'inline-block';
+  if (!isDemo) {
+    // Real wallet: provider is gone after refresh — require re-auth before dashboard access
+    if (btn) { btn.textContent = '● ' + ghostState.walletAddress + ' — reconnect'; btn.classList.add('connected'); btn.onclick = openModal; }
+    const panelAddr = document.getElementById('panelWalletAddr');
+    if (panelAddr) panelAddr.textContent = ghostState.walletAddress;
+    return; // don't open dashboard — wait for wallet sign
   }
-  const navLink = document.getElementById('navDashboardLink');
-  if (navLink) navLink.classList.add('visible');
-  const navDisBtn = document.getElementById('navDisconnectBtn');
-  if (navDisBtn) navDisBtn.style.display = 'inline-block';
+  // Demo: restore silently
+  if (btn) { btn.textContent = '● ' + ghostState.walletAddress + ' [demo]'; btn.classList.add('connected'); btn.onclick = openDashboard; }
   const panelAddr = document.getElementById('panelWalletAddr');
-  if (panelAddr) panelAddr.textContent = ghostState.walletAddress + (ghostState.walletName?.includes('demo') ? ' (demo)' : '');
-  // Re-open dashboard on the last page they were on
-  setTimeout(() => {
+  if (panelAddr) panelAddr.textContent = ghostState.walletAddress + ' (demo)';
+  setTimeout(async () => {
+    if (!ghostState.ghostPda && ghostState.publicKey) { try { await deriveAndSetPDAs(ghostState.publicKey); } catch(e) {} }
     openDashboard();
-    if (ghostState.ghost.status !== 'none' && lastPage !== 'init') {
-      dbShowPage(lastPage, document.getElementById('nav-' + lastPage));
-    }
-    // Re-fetch wallet tokens in background
+    if (ghostState.ghost.status !== 'none' && lastPage !== 'init') dbShowPage(lastPage, document.getElementById('nav-' + lastPage));
     loadWalletTokens();
   }, 100);
 });
@@ -4868,85 +4932,42 @@ async function dbWithdrawAll() {
   const disc = [180, 34, 37, 46, 156, 0, 211, 238];
   const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
   let successCount = 0;
-  showNotif('Withdrawing ' + tokens.length + ' asset' + (tokens.length > 1 ? 's' : '') + ' from vault...', '');
+  showNotif('Preparing withdrawal of ' + tokens.length + ' asset' + (tokens.length > 1 ? 's' : '') + '...', '');
 
-  for (const vt of tokens) {
+  // Separate SOL (needs keypair co-sig) from SPL (can batch)
+  const solTokens = tokens.filter(vt => vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
+  const splTokens = tokens.filter(vt => vt.mint !== WSOL_MINT_PK_STR && vt.mint !== 'native');
+
+  // ── Pre-fetch all SPL metadata in parallel ──────────────────────
+  const splMeta = await Promise.all(splTokens.map(async vt => {
+    const withdrawMintPk = new PublicKey(effectiveMint(vt.mint));
+    let rawMintOwner = TOKEN_PROGRAM_STR;
+    try { const ma = await connection.getAccountInfo(withdrawMintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
+    const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
+    const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
+    let vaultAta;
+    try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: withdrawMintPk }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
+    if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, withdrawMintPk, new PublicKey(normalizedTokenProg));
+    let ownerAta;
+    if (rawMintOwner === TOKEN_PROGRAM_STR) { ownerAta = await findATA(walletPk, withdrawMintPk); }
+    else { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: withdrawMintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, withdrawMintPk); }
+    const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
+    return { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing: !ownerAtaInfo };
+  }));
+
+  // ── Batch SPL: up to 3 withdrawals per tx (one Phantom prompt per batch) ──
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
+    const batch = splMeta.slice(i, i + BATCH_SIZE);
     try {
-      const isSOL = (vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
-      const mintStr = effectiveMint(vt.mint);
-      const displaySym = isSOL ? 'SOL' : vt.symbol;
-      const amount = vt.balance;
-      const withdrawMintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
-
-      // Detect token program
-      let rawMintOwner = TOKEN_PROGRAM_STR;
-      if (!isSOL) {
-        try { const ma = await connection.getAccountInfo(withdrawMintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
-      }
-      const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
-      const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
-
-      // Vault token account lookup
-      let vaultAta;
-      try {
-        const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: withdrawMintPk });
-        if (va.value.length > 0) vaultAta = va.value[0].pubkey;
-      } catch(e) {}
-      if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, withdrawMintPk, new PublicKey(normalizedTokenProg));
-
-      const amountRaw = BigInt(Math.round(amount * Math.pow(10, vt.decimals)));
-      const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
-      const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
-
-      let sig;
-
-      if (isSOL) {
-        // Create fresh wSOL receive account via manual keypair (avoids ATA program)
-        const wsolKp = Keypair.generate();
-        const wsolAcct = wsolKp.publicKey;
-        const space = 165;
-        const rent = await connection.getMinimumBalanceForRentExemption(space);
-        const { blockhash: initBh } = await connection.getLatestBlockhash();
-        const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
-        initTx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
-        const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
-        initTx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK,
-          keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }],
-          data: initData }));
-        const initSigned = await ghostState.provider.signTransaction(initTx);
-        initSigned.partialSign(wsolKp);
-        const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: true });
-        const initConf = await connection.confirmTransaction(initSig, 'confirmed');
-        if (initConf.value?.err) throw new Error('wSOL init failed: ' + JSON.stringify(initConf.value.err));
-
-        const { blockhash } = await connection.getLatestBlockhash();
-        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-        tx.add(new TransactionInstruction({ programId, keys: [
-          { pubkey: ghostPda,     isSigner: false, isWritable: false },
-          { pubkey: vaultPda,     isSigner: false, isWritable: false },
-          { pubkey: walletPk,     isSigner: true,  isWritable: true  },
-          { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
-          { pubkey: wsolAcct,     isSigner: false, isWritable: true  },
-          { pubkey: vaultAta,     isSigner: false, isWritable: true  },
-          { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
-        ], data }));
-        tx.add(buildUnwrapIx(walletPk, wsolAcct));
-        const signed = await ghostState.provider.signTransaction(tx);
-        try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
-        catch(simErr) {
-          let logs=[]; try { logs=await simErr.getLogs(connection); } catch(_){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
-          console.error('[Ghost] TX logs:', logs); throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
-        }
-      } else {
-        // SPL token
-        let ownerAta;
-        if (rawMintOwner === TOKEN_PROGRAM_STR) { ownerAta = await findATA(walletPk, withdrawMintPk); }
-        else { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: withdrawMintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, withdrawMintPk); }
-
-        const { blockhash } = await connection.getLatestBlockhash();
-        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-        const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
-        if (!ownerAtaInfo) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
+      const { blockhash } = await connection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+      for (const m of batch) {
+        const { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing } = m;
+        const amountRaw = BigInt(Math.round(vt.balance * Math.pow(10, vt.decimals)));
+        const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+        const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+        if (ownerAtaMissing) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
         tx.add(new TransactionInstruction({ programId, keys: [
           { pubkey: ghostPda,       isSigner: false, isWritable: false },
           { pubkey: vaultPda,       isSigner: false, isWritable: false },
@@ -4956,30 +4977,82 @@ async function dbWithdrawAll() {
           { pubkey: vaultAta,       isSigner: false, isWritable: true  },
           { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
         ], data }));
-        const signed = await ghostState.provider.signTransaction(tx);
-        try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
-        catch(simErr) {
-          let logs=[]; try { logs=await simErr.getLogs(connection); } catch(_){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
-          console.error('[Ghost] TX logs:', logs); throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
-        }
       }
-
+      showNotif('Sign to withdraw: ' + batch.map(m => m.vt.symbol).join(', ') + '...', '');
+      const signed = await ghostState.provider.signTransaction(tx);
+      let sig;
+      try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
+      catch(simErr) {
+        let logs=[]; try { logs=await simErr.getLogs(connection); } catch(_){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
+        console.error('[Ghost] batch TX logs:', logs); throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
+      }
       const conf = await connection.confirmTransaction(sig, 'confirmed');
       if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
-
-      const walletMint = isSOL ? 'native' : vt.mint;
-      const wt = ghostState.walletTokens.find(w => w.mint === walletMint);
-      if (wt) { wt.balance += amount; } else {
-        ghostState.walletTokens.push({ symbol: displaySym, mint: walletMint, balance: amount, decimals: vt.decimals, logoUrl: vt.logoUrl || null });
+      for (const m of batch) {
+        const { vt } = m;
+        const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
+        if (wt) { wt.balance += vt.balance; } else { ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl || null }); }
+        const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
+        addActivityRow('📤 Withdrew ' + vt.balance.toLocaleString() + ' ' + vt.symbol, sig.slice(0,4)+'...'+sig.slice(-4));
+        successCount++;
       }
-      const idx = ghostState.vaultTokens.indexOf(vt);
-      if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
-      addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' ' + displaySym, sig.slice(0,4)+'...'+sig.slice(-4));
-      successCount++;
     } catch(err) {
-      console.error('Withdraw all error for ' + vt.symbol + ':', err);
-      showNotif('⚠️ Failed to withdraw ' + vt.symbol + ': ' + (err.message || err), 'error');
+      const syms = batch.map(m => m.vt.symbol).join(', ');
+      console.error('Batch withdraw error [' + syms + ']:', err);
+      showNotif('⚠️ Batch failed [' + syms + ']: ' + (err.message || err), 'error');
     }
+  }
+
+  // ── SOL: always separate tx (needs keypair co-sig) ───────────────
+  for (const vt of solTokens) {
+    try {
+      const amount = vt.balance;
+      let vaultAta;
+      try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
+      if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
+      const amountRaw = BigInt(Math.round(amount * 1e9));
+      const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+      const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+      const wsolKp = Keypair.generate(); const wsolAcct = wsolKp.publicKey;
+      const space = 165; const rent = await connection.getMinimumBalanceForRentExemption(space);
+      const { blockhash: initBh } = await connection.getLatestBlockhash();
+      const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
+      initTx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
+      const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
+      initTx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK, keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }], data: initData }));
+      showNotif('Sign to create wSOL account...', '');
+      const initSigned = await ghostState.provider.signTransaction(initTx); initSigned.partialSign(wsolKp);
+      const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: true });
+      const initConf = await connection.confirmTransaction(initSig, 'confirmed');
+      if (initConf.value?.err) throw new Error('wSOL init failed: ' + JSON.stringify(initConf.value.err));
+      const { blockhash } = await connection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+      tx.add(new TransactionInstruction({ programId, keys: [
+        { pubkey: ghostPda,     isSigner: false, isWritable: false },
+        { pubkey: vaultPda,     isSigner: false, isWritable: false },
+        { pubkey: walletPk,     isSigner: true,  isWritable: true  },
+        { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
+        { pubkey: wsolAcct,     isSigner: false, isWritable: true  },
+        { pubkey: vaultAta,     isSigner: false, isWritable: true  },
+        { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
+      ], data }));
+      tx.add(buildUnwrapIx(walletPk, wsolAcct));
+      showNotif('Sign to withdraw SOL...', '');
+      const signed = await ghostState.provider.signTransaction(tx);
+      let sig;
+      try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
+      catch(simErr) {
+        let logs=[]; try { logs=await simErr.getLogs(connection); } catch(_){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
+        throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
+      }
+      const conf = await connection.confirmTransaction(sig, 'confirmed');
+      if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+      const wt = ghostState.walletTokens.find(w => w.mint === 'native');
+      if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
+      const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
+      addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4));
+      successCount++;
+    } catch(err) { console.error('SOL withdraw error:', err); showNotif('⚠️ SOL withdraw failed: ' + (err.message || err), 'error'); }
   }
 
   if (successCount > 0) {
