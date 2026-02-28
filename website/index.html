@@ -5023,24 +5023,42 @@ async function dbDeposit() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
-    // Phase 1: Create vault token account if needed — separate tx to isolate errors
+    // Phase 1: Create vault token account if needed
     const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
     console.log('[Ghost] vaultAta:', vaultAta.toBase58(), 'exists:', !!vaultAtaInfo);
     if (!vaultAtaInfo) {
-      showNotif('Initializing vault account...', '');
-      console.log('[Ghost] Creating vault ATA — separate tx');
+      // Step 1a: Fund vault PDA so ATA program accepts it as a valid owner
+      const vaultPdaInfo = await connection.getAccountInfo(vaultPda);
+      console.log('[Ghost] vaultPda lamports:', vaultPdaInfo?.lamports ?? 0);
+      if (!vaultPdaInfo || vaultPdaInfo.lamports === 0) {
+        showNotif('Activating vault...', '');
+        const minRent = await connection.getMinimumBalanceForRentExemption(0);
+        const { blockhash: fundBh } = await connection.getLatestBlockhash();
+        const fundTx = new Transaction({ recentBlockhash: fundBh, feePayer: walletPk });
+        fundTx.add(solanaWeb3.SystemProgram.transfer({
+          fromPubkey: walletPk, toPubkey: vaultPda, lamports: minRent
+        }));
+        const fundSigned = await ghostState.provider.signTransaction(fundTx);
+        const fundSig = await connection.sendRawTransaction(fundSigned.serialize(), { skipPreflight: true });
+        console.log('[Ghost] Vault PDA fund tx:', fundSig);
+        const fundConf = await connection.confirmTransaction(fundSig, 'confirmed');
+        if (fundConf.value?.err) throw new Error('Vault activation failed: ' + JSON.stringify(fundConf.value.err));
+        console.log('[Ghost] Vault PDA funded');
+      }
+
+      // Step 1b: Create vault token account
+      showNotif('Initializing vault token account...', '');
+      console.log('[Ghost] Creating vault ATA');
       const { blockhash: initBh } = await connection.getLatestBlockhash();
       const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
       initTx.add(buildCreateATAIx(walletPk, vaultAta, vaultPda, depositMintPk, tokenProgPk));
       const initSigned = await ghostState.provider.signTransaction(initTx);
-      // skipPreflight: true — preflight simulation may falsely reject ATA program on some RPCs
       const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: true });
-      console.log('[Ghost] Vault ATA init tx sent:', initSig);
+      console.log('[Ghost] Vault ATA init tx:', initSig);
       const initConf = await connection.confirmTransaction(initSig, 'confirmed');
       if (initConf.value?.err) throw new Error('Vault init failed: ' + JSON.stringify(initConf.value.err));
-      console.log('[Ghost] Vault ATA created:', initSig);
-      showNotif('Vault initialized — proceeding with deposit...', '');
-      // Refresh blockhash for deposit tx
+      console.log('[Ghost] Vault ATA created');
+      showNotif('Vault ready — proceeding with deposit...', '');
       const { blockhash: newBh } = await connection.getLatestBlockhash();
       tx.recentBlockhash = newBh;
     }
