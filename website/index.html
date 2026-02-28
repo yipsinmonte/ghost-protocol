@@ -904,6 +904,7 @@
             <div id="wholeVaultPreview" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#c0bce0;margin-top:8px;min-height:14px"></div>
           </div>
           <button class="db-btn db-btn-primary" id="addTransferBtn" onclick="dbAddBeneficiary('transfer')">➕ Add Transfer</button>
+            <button class="db-btn db-btn-danger" id="clearAllBeneBtn" onclick="dbClearAllBeneficiaries()" style="display:none;margin-left:6px">🗑 Clear All</button>
           <div id="wholeVaultLockNotice" style="display:none;margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px;color:#a080ff;background:rgba(102,51,255,0.06);border:1px solid rgba(160,128,255,0.2);padding:10px 12px">
             👻 Vault is fully assigned. Remove the whole-vault assignment to add specific transfers or burns.
           </div>
@@ -3157,25 +3158,12 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// ─── Disconnect on tab close, stay connected on refresh ─────────
-// sessionStorage survives refresh but clears on tab close/new tab
-// We use this to distinguish "refresh" from "fresh open"
-window.addEventListener('beforeunload', () => {
-  // Mark that we're in the middle of a navigation/refresh
-  sessionStorage.setItem('ghostRefresh', '1');
-  // Schedule localStorage wipe — if the page reloads the wipe gets cancelled by the flag check below
-  // If the tab closes, localStorage is cleared on next open by the absence of the refresh flag
-  // Actually: we clear immediately on beforeunload; DOMContentLoaded re-saves if refresh flag present
-  const key = _sessionKey();
-  localStorage.removeItem(key);
-  localStorage.removeItem('ghostLastWallet');
-});
+// ─── Session persists across refresh and tab close ───────────────
+// localStorage is only cleared by explicit disconnectWallet()
+// No beforeunload wipe — wallet identity + PDAs survive all navigation
 
-// ─── Restore session after page refresh ─────────────────────────
+// ─── Restore session on every page load ──────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  const isRefresh = sessionStorage.getItem('ghostRefresh') === '1';
-  sessionStorage.removeItem('ghostRefresh'); // consume the flag
-  if (!isRefresh) return; // fresh open (tab close + reopen, new tab) — stay disconnected
   const lastPage = loadSession();
   if (!lastPage) return;
   const isDemo = ghostState.walletName?.includes('demo');
@@ -3623,6 +3611,23 @@ function renderBeneficiaries() {
   // Disable burn button too
   const addBurnBtn = document.getElementById('addBurnBtn');
   if (addBurnBtn) { addBurnBtn.disabled = wholeShares.length > 0; addBurnBtn.style.opacity = wholeShares.length > 0 ? '0.35' : '1'; }
+  const clearAllBtn = document.getElementById('clearAllBeneBtn');
+  if (clearAllBtn) clearAllBtn.style.display = (transfers.length > 0 || burns.length > 0) ? 'inline-block' : 'none';
+}
+
+async function dbClearAllBeneficiaries() {
+  const _ok = await ghostConfirm({ icon:'🗑️', title:'Clear All Beneficiaries', message:'Remove all beneficiary assignments from your on-chain record? This sends a transaction for each active slot.', okLabel:'CLEAR ALL', danger:true });
+  if (!_ok) return;
+  const benes = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share' && b._fromChain);
+  if (benes.length === 0) { showNotif('No on-chain beneficiaries to clear', ''); return; }
+  let removed = 0;
+  for (let i = 0; i < ghostState.ghost.beneficiaries.length; i++) {
+    const b = ghostState.ghost.beneficiaries[i];
+    if (b.action === 'whole-vault-share') continue;
+    try { await dbRemoveBeneficiary(i, true); removed++; i--; } catch(e) { console.warn('Failed to remove slot', i, e); }
+  }
+  if (removed > 0) showNotif('Cleared ' + removed + ' beneficiar' + (removed===1?'y':'ies'), 'green');
+  else showNotif('No beneficiaries removed', 'error');
 }
 
 async function dbAddBeneficiary(action) {
@@ -3808,8 +3813,8 @@ async function dbAddBeneficiary(action) {
   }
 }
 
-async function dbRemoveBeneficiary(index) {
-  const _ok1 = await ghostConfirm({ icon:'🗑️', title:'Remove Beneficiary', message:'Remove this beneficiary? This sends a transaction to update the on-chain record.', okLabel:'REMOVE', danger:true }); if (!_ok1) return;
+async function dbRemoveBeneficiary(index, _silent) {
+  if (!_silent) { const _ok1 = await ghostConfirm({ icon:'🗑️', title:'Remove Beneficiary', message:'Remove this beneficiary? This sends a transaction to update the on-chain record.', okLabel:'REMOVE', danger:true }); if (!_ok1) return; }
 
   const entry = ghostState.ghost.beneficiaries[index];
 
