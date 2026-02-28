@@ -2564,10 +2564,12 @@ async function initializeGhost() {
     }
 
     // ghost_stake_vault = ATA owned by ghost PDA for the $GHOST mint
+    // Derive address for creation, then verify after
     const [ghostStakeVault] = await PublicKey.findProgramAddress(
       [ghostPda.toBytes(), ghostTokenProgramId.toBytes(), ghostMint.toBytes()],
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
+    console.log('[Ghost] Derived ghostStakeVault:', ghostStakeVault.toBase58());
 
     // Account order matches InitializeGhost context in lib.rs:
     // ghost, vault, ghost_stake_vault, signer_token_account, signer, token_program, system_program
@@ -2614,6 +2616,9 @@ async function initializeGhost() {
       console.log('[Ghost] ATA TX sent:', ataSig);
       await connection.confirmTransaction(ataSig, 'confirmed');
       console.log('[Ghost] ATAs created');
+      // Verify stake vault was created correctly
+      const vaultInfo = await connection.getAccountInfo(ghostStakeVault);
+      console.log('[Ghost] stakeVault after creation - exists:', !!vaultInfo, 'owner:', vaultInfo?.owner?.toBase58(), 'len:', vaultInfo?.data?.length);
       showNotif('Step 2/2: Initializing ghost...', '');
     }
 
