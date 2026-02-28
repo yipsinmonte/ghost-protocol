@@ -2571,11 +2571,10 @@ async function initializeGhost() {
       console.log('[Ghost] Error fetching token accounts, using derived:', signerGhostAta.toBase58());
     }
 
-    // ghost_stake_vault = ATA owned by ghost PDA for the $GHOST mint
-    // Derive address for creation, then verify after
+    // ghost_stake_vault = PDA token account with seeds ["stake_vault", signer]
     const [ghostStakeVault] = await PublicKey.findProgramAddress(
-      [ghostPda.toBytes(), ghostTokenProgramId.toBytes(), ghostMint.toBytes()],
-      ASSOCIATED_TOKEN_PROGRAM_ID
+      [new TextEncoder().encode('stake_vault'), walletPubkey.toBytes()],
+      programId
     );
     console.log('[Ghost] Derived ghostStakeVault:', ghostStakeVault.toBase58());
 
@@ -2591,7 +2590,6 @@ async function initializeGhost() {
         { pubkey: signerGhostAta,         isSigner: false, isWritable: true  },
         { pubkey: walletPubkey,           isSigner: true,  isWritable: true  },
         { pubkey: ghostTokenProgramId,    isSigner: false, isWritable: false },
-        { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso'), isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId,isSigner: false, isWritable: false },
       ],
       data
