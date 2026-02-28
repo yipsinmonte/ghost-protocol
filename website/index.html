@@ -1156,28 +1156,54 @@
         </div>
       </div>
 
-      <!-- HEARTBEAT CHECKER (was Watcher) -->
+      <!-- HEARTBEAT CHECKER -->
       <div class="db-page" id="db-page-watcher">
-        <div class="db-page-title">Heartbeat Checker</div>
-        <div class="db-page-sub">Check if any wallet is still alive</div>
-        <div class="db-info">Enter any Solana wallet address to see their ghost status, last heartbeat, and time remaining before their ghost awakens.</div>
-          <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(102,51,255,0.15)">
-            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.2em;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Recovery Wallet Mode</div>
-            <div style="font-size:13px;color:#9090a8;margin-bottom:12px">If you're set as someone's recovery wallet, enter their address to view their ghost and cancel an awakening.</div>
-            <div style="display:flex;gap:8px">
-              <input id="recoverySoulInput" placeholder="Soul's wallet address..." style="flex:1;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#c0a0ff;font-family:'Share Tech Mono',monospace;font-size:13px;padding:10px 14px;outline:none" />
-              <button class="db-btn db-btn-primary" onclick="checkIfRecoveryWallet()">CHECK</button>
-            </div>
-            <div id="recoveryStatusResult" style="margin-top:12px"></div>
-          </div>
-        <div class="db-form">
-          <div class="db-form-title">💓 Check a Wallet</div>
+        <div class="db-page-title">Soul Monitor</div>
+        <div class="db-page-sub">Check any wallet — or act as their guardian</div>
+
+        <!-- MODE TOGGLE -->
+        <div style="display:flex;gap:10px;margin-bottom:28px">
+          <button id="watcherModeObserve" onclick="setWatcherMode('observe')" style="flex:1;padding:16px 12px;font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:0.15em;text-transform:uppercase;border:1px solid rgba(102,51,255,0.4);cursor:pointer;transition:all 0.2s;background:rgba(102,51,255,0.2);color:#c8a8ff;font-weight:600">🔍&nbsp; Check Pulse</button>
+          <button id="watcherModeGuardian" onclick="setWatcherMode('guardian')" style="flex:1;padding:16px 12px;font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:0.15em;text-transform:uppercase;border:1px solid rgba(102,51,255,0.15);cursor:pointer;transition:all 0.2s;background:transparent;color:#6060808">🛡&nbsp; Guardian Mode</button>
+        </div>
+
+        <!-- CHECK PULSE MODE -->
+        <div id="watcherPanelObserve">
+          <div class="db-info" style="margin-bottom:20px">Enter any Solana wallet to see their ghost status, last heartbeat, and time remaining.</div>
           <div class="db-form-group" style="margin-bottom:14px">
             <label>Wallet Address</label>
             <input type="text" id="soulToCheck" placeholder="Enter any Solana wallet address...">
           </div>
           <button class="db-btn db-btn-primary" onclick="dbLookupSoul()">🔍 Check Heartbeat</button>
           <div class="watcher-result" id="watcherResult" style="margin-top:16px"></div>
+        </div>
+
+        <!-- GUARDIAN MODE -->
+        <div id="watcherPanelGuardian" style="display:none">
+          <div style="background:rgba(255,153,102,0.08);border:1px solid rgba(255,153,102,0.3);padding:20px 24px;margin-bottom:24px">
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:#ffcc99;margin-bottom:10px">👁 Your Guardian Assignments</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#e8c9a0;line-height:2">
+              Souls who have assigned you as their recovery wallet appear below. As a guardian you can:<br>
+              <span style="color:#ffd580">· Cancel an awakening</span> — reset the heartbeat clock during a grace period<br>
+              <span style="color:#ffd580">· Withdraw vault assets</span> — only if the soul granted you withdrawal rights at setup
+            </div>
+          </div>
+
+          <!-- SCAN STATE -->
+          <div id="guardianScanState" style="text-align:center;padding:32px 0">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#9090a8;margin-bottom:16px">Scan the chain to find wallets you're protecting</div>
+            <button class="db-btn" style="border-color:#ff9966;color:#ff9966;padding:14px 32px;font-size:13px;letter-spacing:0.15em" onclick="scanGuardianAssignments()">🔍 SCAN MY ASSIGNMENTS</button>
+            <div id="guardianScanStatus" style="margin-top:14px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#9090a8"></div>
+          </div>
+
+          <!-- RESULTS -->
+          <div id="guardianAssignmentsList" style="display:none"></div>
+
+          <div style="margin-top:28px;padding-top:20px;border-top:1px solid rgba(102,51,255,0.12);font-family:'Share Tech Mono',monospace;font-size:12px;color:rgba(200,180,255,0.55);line-height:2.2">
+            // Scans on-chain ghost accounts — may take a few seconds<br>
+            // Withdrawal access only unlocked if the soul granted it at setup<br>
+            // Cancelling resets the heartbeat clock and marks the soul alive
+          </div>
         </div>
       </div>
 
@@ -3555,6 +3581,148 @@ async function cancelAwakening() {
 }
 
 // ─── Recovery wallet mode — check if connected wallet is someone's recovery ──
+function setWatcherMode(mode) {
+  const obs = document.getElementById('watcherPanelObserve');
+  const grd = document.getElementById('watcherPanelGuardian');
+  const btnObs = document.getElementById('watcherModeObserve');
+  const btnGrd = document.getElementById('watcherModeGuardian');
+  if (mode === 'observe') {
+    obs.style.display = ''; grd.style.display = 'none';
+    btnObs.style.background = 'rgba(102,51,255,0.2)'; btnObs.style.color = '#c8a8ff';
+    btnObs.style.border = '1px solid rgba(102,51,255,0.4)';
+    btnGrd.style.background = 'transparent'; btnGrd.style.color = '#606080';
+    btnGrd.style.border = '1px solid rgba(102,51,255,0.15)';
+  } else {
+    obs.style.display = 'none'; grd.style.display = '';
+    btnGrd.style.background = 'rgba(255,153,102,0.15)'; btnGrd.style.color = '#ffcc99';
+    btnGrd.style.border = '1px solid rgba(255,153,102,0.5)';
+    btnObs.style.background = 'transparent'; btnObs.style.color = '#606080';
+    btnObs.style.border = '1px solid rgba(102,51,255,0.15)';
+  }
+}
+
+async function scanGuardianAssignments() {
+  if (!ghostState.publicKey) { showNotif('Connect your wallet first', 'error'); return; }
+  const statusEl = document.getElementById('guardianScanStatus');
+  const listEl = document.getElementById('guardianAssignmentsList');
+  const scanEl = document.getElementById('guardianScanState');
+
+  statusEl.textContent = '⟳ Scanning chain for ghost accounts...';
+  statusEl.style.color = '#c0a0ff';
+
+  try {
+    const { PublicKey } = solanaWeb3;
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const programId = new PublicKey(PROGRAM_ID);
+    const myPk = new PublicKey(ghostState.publicKey);
+    const myBytes = myPk.toBytes();
+
+    // getProgramAccounts with memcmp filter:
+    // GhostAccount layout after 8-byte discriminator:
+    // owner(32), recovery_wallet tag(1), recovery_wallet pubkey(32)
+    // Filter: offset 8+32+1 = 41, match my 32-byte pubkey
+    const accounts = await connection.getProgramAccounts(programId, {
+      filters: [
+        { memcmp: { offset: 41, bytes: myPk.toBase58() } }
+      ]
+    });
+
+    if (accounts.length === 0) {
+      statusEl.textContent = '— No guardian assignments found for this wallet';
+      statusEl.style.color = '#9090a8';
+      return;
+    }
+
+    statusEl.textContent = '';
+    scanEl.style.paddingBottom = '0';
+
+    // Decode each account
+    const cards = [];
+    for (const { pubkey, account } of accounts) {
+      try {
+        const bytes = new Uint8Array(account.data);
+        const view = new DataView(bytes.buffer);
+        let off = 8;
+        // owner pubkey
+        const ownerBytes = bytes.slice(off, off+32); off += 32;
+        const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        let n = 0n; for (const b of ownerBytes) n = n*256n+BigInt(b);
+        let ownerB58 = ''; let tmp = n;
+        while(tmp>0n){ownerB58=B58[Number(tmp%58n)]+ownerB58;tmp=tmp/58n;}
+        // skip recovery wallet (1+32)
+        const rTag = bytes[off]; off++;
+        if (rTag===1) off+=32;
+        // last_heartbeat, interval, grace
+        const lastBeat = Number(view.getBigInt64(off,true)); off+=8;
+        const interval = Number(view.getBigInt64(off,true)); off+=8;
+        const grace = Number(view.getBigInt64(off,true)); off+=8;
+        // awakened
+        const awakened = bytes[off]===1; off++;
+        // awakened_at
+        const awTag = bytes[off]; off++;
+        if(awTag===1) off+=8;
+        // executed
+        const executed = bytes[off]===1;
+
+        const now = Math.floor(Date.now()/1000);
+        const silenceSeconds = now - lastBeat;
+        const remainingSeconds = Math.max(0, interval - silenceSeconds);
+        const daysSince = Math.floor(silenceSeconds/86400);
+        const daysLeft = Math.floor(remainingSeconds/86400);
+        const statusColor = executed ? '#ff3366' : awakened ? '#ffaa33' : '#33ff99';
+        const statusText = executed ? 'EXECUTED' : awakened ? '⚠️ AWAKENED' : '✅ ALIVE';
+        const graceLeft = awakened ? Math.max(0, Math.floor((grace - silenceSeconds + interval)/86400)) : 0;
+
+        cards.push(`
+          <div style="background:#07070f;border:1px solid ${awakened?'rgba(255,170,51,0.35)':'rgba(102,51,255,0.2)'};padding:20px 22px;margin-bottom:12px" data-owner="${ownerB58}" data-awakened="${awakened}" data-executed="${executed}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+              <div>
+                <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.15em;margin-bottom:4px">SOUL</div>
+                <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#e0ddf0">${ownerB58.slice(0,8)}...${ownerB58.slice(-6)}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.15em;margin-bottom:4px">STATUS</div>
+                <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:${statusColor}">${statusText}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:24px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#9090a8;margin-bottom:${awakened&&!executed?'16':'0'}px">
+              <span>Last ping: <span style="color:#c0bce0">${daysSince}d ago</span></span>
+              <span>Interval: <span style="color:#c0bce0">${Math.floor(interval/86400)}d</span></span>
+              ${awakened&&!executed ? `<span>Grace left: <span style="color:#ffaa33">${graceLeft}d</span></span>` : `<span>Time left: <span style="color:#c0bce0">${daysLeft}d</span></span>`}
+            </div>
+            ${!executed && awakened ? `
+            <div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid rgba(255,170,51,0.15)">
+              <button class="db-btn" style="flex:1;border-color:#ffaa33;color:#ffaa33;padding:10px" onclick="guardianCancelAwakening('${ownerB58}')">🛑 Cancel Awakening</button>
+              <button class="db-btn" style="flex:1;border-color:#c0a0ff;color:#c0a0ff;padding:10px" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>
+            </div>` : !executed ? `
+            <div style="padding-top:12px;border-top:1px solid rgba(102,51,255,0.1)">
+              <button class="db-btn" style="width:100%;border-color:#c0a0ff;color:#c0a0ff;padding:10px;opacity:0.6" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault (if authorized)</button>
+            </div>` : ''}
+          </div>`);
+      } catch(e) { /* skip malformed */ }
+    }
+
+    listEl.innerHTML = `
+      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.2em;color:var(--muted);margin-bottom:14px">${cards.length} SOUL${cards.length!==1?'S':''} UNDER YOUR PROTECTION</div>
+      ${cards.join('')}`;
+    listEl.style.display = '';
+  } catch(err) {
+    statusEl.textContent = 'Scan failed: ' + (err.message||err);
+    statusEl.style.color = '#ff3366';
+  }
+}
+
+async function guardianCancelAwakening(ownerAddress) {
+  ghostState.ghost.ownerPubkey = ownerAddress;
+  await cancelAwakening();
+  await scanGuardianAssignments(); // refresh
+}
+
+async function guardianWithdrawAll(ownerAddress) {
+  showNotif('Guardian vault withdrawal coming soon', 'error');
+  // TODO: call withdraw_from_vault for each token in the vault
+}
+
 async function checkIfRecoveryWallet() {
   if (!ghostState.publicKey) return;
   // This requires an indexer in production. For now, expose manual entry:
@@ -3596,12 +3764,22 @@ async function checkIfRecoveryWallet() {
     const interval = Number(view.getBigInt64(off, true)); off += 8;
     const awakened = bytes[off+8] === 1;
     const status = awakened ? '⚠️ AWAKENED — you can cancel!' : '✅ Alive';
-    document.getElementById('recoveryStatusResult').innerHTML = 
-      `<div style="color:#33ff99;font-family:'Share Tech Mono',monospace;font-size:13px;line-height:2">
-        SOUL: ${soul.slice(0,8)}...<br>
-        STATUS: ${status}<br>
-        LAST PING: ${Math.floor((Date.now()/1000 - lastBeat)/86400)}d ago<br>
-        ${awakened ? '<button class="db-btn" style="margin-top:8px;border-color:#ff9966;color:#ff9966" onclick="cancelAwakening()">🛑 CANCEL AWAKENING</button>' : ''}
+    const daysSincePing = Math.floor((Date.now()/1000 - lastBeat)/86400);
+    const statusColor = awakened ? '#ffaa33' : '#33ff99';
+    const statusText = awakened ? '⚠️ AWAKENED' : '✅ ALIVE';
+    document.getElementById('recoveryStatusResult').innerHTML = `
+      <div style="background:rgba(0,0,0,0.3);border:1px solid ${awakened ? 'rgba(255,170,51,0.4)' : 'rgba(51,255,153,0.3)'};padding:22px;font-family:'Share Tech Mono',monospace;font-size:13px;line-height:2.4;color:#e0ddf0">
+        <div style="font-size:11px;letter-spacing:0.2em;color:#ff9966;margin-bottom:12px">✓ AUTHORITY VERIFIED — GUARDIAN ACCESS GRANTED</div>
+        <div><span style="color:var(--muted)">SOUL</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${soul.slice(0,8)}...${soul.slice(-4)}</div>
+        <div><span style="color:var(--muted)">STATUS</span>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${statusColor}">${statusText}</span></div>
+        <div><span style="color:var(--muted)">LAST PING</span>&nbsp;${daysSincePing}d ago</div>
+        <div><span style="color:var(--muted)">INTERVAL</span>&nbsp;&nbsp;${Math.floor(interval/86400)}d</div>
+        ${awakened ? `
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,170,51,0.2)">
+          <div style="color:#ffaa33;margin-bottom:10px">⚠ Ghost has awakened — grace period is active. You can cancel this awakening.</div>
+          <button class="db-btn" style="border-color:#ff9966;color:#ff9966;width:100%" onclick="cancelAwakening()">🛑 CANCEL AWAKENING ON-CHAIN</button>
+        </div>` : `
+        <div style="margin-top:12px;color:rgba(51,255,153,0.5);font-size:11px">// Soul is alive — no action required. You'll be notified if they stop pinging.</div>`}
       </div>`;
   } catch(err) {
     showNotif('Error: ' + (err.message||err), 'error');
@@ -4794,11 +4972,21 @@ async function dbDeposit() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
-    // For SOL: wrap to wSOL first — creates/funds the wSOL ATA
+    // For SOL: wrap to wSOL first
+    let effectiveOwnerAta = ownerAta;
     if (isSOL) {
       const lamports = Math.round(amount * 1e9);
-      const wrapIxs = await buildWrapSOLInstructions(walletPk, lamports);
-      tx.add(...wrapIxs);
+      const { instructions: wrapIxs, wsolAta } = await buildWrapSOLInstructions(walletPk, lamports);
+      wrapIxs.forEach(ix => tx.add(ix));
+      effectiveOwnerAta = wsolAta;
+    }
+
+    // Create vault token account if it doesn't exist (for non-GHOST tokens)
+    const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
+    if (!vaultAtaInfo) {
+      // Create vault ATA using idempotent ATA instruction
+      const createVaultAtaIx = buildCreateATAIx(walletPk, vaultAta, vaultPda, mintPk, tokenProgPk);
+      tx.add(createVaultAtaIx);
     }
 
     // deposit_to_vault discriminator: sha256("global:deposit_to_vault")[0:8]
@@ -4811,16 +4999,16 @@ async function dbDeposit() {
 
     tx.add(new TransactionInstruction({ programId,
       keys: [
-        { pubkey: ghostPda,   isSigner: false, isWritable: false },
-        { pubkey: walletPk,   isSigner: true,  isWritable: true  },
-        { pubkey: mintPk,     isSigner: false, isWritable: false },
-        { pubkey: ownerAta,   isSigner: false, isWritable: true  },
-        { pubkey: vaultAta,   isSigner: false, isWritable: true  },
-        { pubkey: tokenProgPk,isSigner: false, isWritable: false },
+        { pubkey: ghostPda,         isSigner: false, isWritable: false },
+        { pubkey: walletPk,         isSigner: true,  isWritable: true  },
+        { pubkey: mintPk,           isSigner: false, isWritable: false },
+        { pubkey: effectiveOwnerAta,isSigner: false, isWritable: true  },
+        { pubkey: vaultAta,         isSigner: false, isWritable: true  },
+        { pubkey: tokenProgPk,      isSigner: false, isWritable: false },
       ], data }));
 
     const signed = await ghostState.provider.signTransaction(tx);
-    const sig    = await connection.sendRawTransaction(signed.serialize());
+    const sig    = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     await connection.confirmTransaction(sig, 'confirmed');
 
     _applyDeposit();
