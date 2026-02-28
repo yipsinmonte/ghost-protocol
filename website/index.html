@@ -4662,7 +4662,7 @@ const WHOLE_VAULT_TOKEN = { symbol: 'Whole Vault', mint: '__whole_vault__', bala
 function populateAllPickers() {
   const t = ghostState.walletTokens;
   // Deposit picker: wallet tokens with balance > 0
-  const depositTokens = t.filter(tok => tok.balance > 0);
+  const depositTokens = t.filter(tok => tok.balance > 0 && tok.mint !== GHOST_MINT); // GHOST routes to stake_vault, not user vault
   buildPickerDropdown('deposit', depositTokens);
   // Bene picker: assignable vault tokens + whole vault option at bottom
   const assignable = vaultAssignableTokens();
@@ -5139,7 +5139,7 @@ async function dbWithdrawAll() {
       count++;
     }
     ghostState.vaultTokens = [];
-    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0);
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && tok.mint !== GHOST_MINT);
     buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', vaultAssignableTokens());
     ghostState.selectedTokens.deposit = null;
     if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
@@ -5282,7 +5282,7 @@ async function dbWithdrawAll() {
   }
 
   if (successCount > 0) {
-    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0);
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && tok.mint !== GHOST_MINT);
     buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', vaultAssignableTokens());
     ghostState.selectedTokens.deposit = null;
     if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
@@ -5467,6 +5467,14 @@ async function dbDeposit() {
   if (!amount || amount <= 0) { showNotif('Enter a valid amount', 'error'); return; }
   if (amount > t.balance) { showNotif('⚠️ Insufficient wallet balance', 'error'); return; }
 
+  // Block GHOST deposits — the contract routes all GHOST to stake_vault (not the user vault),
+  // merging it with the staked amount and making it unwithdrawable via withdraw_from_vault.
+  // GHOST staking happens only at ghost initialization, not via deposit.
+  if (t.mint === GHOST_MINT) {
+    showNotif('\u26A0\uFE0F $GHOST cannot be deposited into the vault — it goes to the stake account and cannot be withdrawn separately. Use SOL or other SPL tokens.', 'error');
+    return;
+  }
+
   const isSOL   = (t.mint === 'native');
   // Display symbol — always show "SOL" not "wSOL" to the user
   const displaySym  = isSOL ? 'SOL' : t.symbol;
@@ -5499,7 +5507,7 @@ async function dbDeposit() {
       t.balance.toLocaleString(undefined, {maximumFractionDigits:6}) + ' ' + displaySym;
     document.getElementById('depositAmt').value = '';
     document.getElementById('depositAmtDisplay').value = '';
-    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0);
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && tok.mint !== GHOST_MINT);
     buildPickerDropdown('deposit', depositPool);
     if (!ghostState.selectedTokens.deposit || ghostState.selectedTokens.deposit.balance <= 0) {
       ghostState.selectedTokens.deposit = null;
