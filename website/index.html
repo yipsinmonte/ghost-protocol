@@ -2525,12 +2525,7 @@ async function fetchOnChainHistory() {
         if (short) return 'Whole vault → ' + short;
         return 'Whole vault recipient set';
       }
-      // Guardian withdrawal — show signer wallet
-      if (matchHex==='63a333690b0b3b22') {
-        const feePayer = tx.transaction?.message?.accountKeys?.[0]?.pubkey || tx.transaction?.message?.accountKeys?.[0] || '';
-        const feeShort = feePayer && feePayer.length>8 ? feePayer.slice(0,4)+'...'+feePayer.slice(-4) : '';
-        return '\u{1F47C} Guardian Withdrawal' + (feeShort?' · by '+feeShort:'');
-      }
+      if (matchHex==='63a333690b0b3b22') { return 'Guardian Withdrawal'; }
       return baseLabel;
     }
     const builtActivity=[], rawPings=[];
@@ -2653,10 +2648,39 @@ function parseGhostAccount(bytes) {
     ghostState.ghost.beneficiaryCount = benefCount;
     ghostState.ghost.registeredAt = registeredAt > 0 ? registeredAt * 1000 : null;
 
-    // Skip beneficiaries[10] = 750 bytes (10 × 75: recipient32+amount8+token_mint33+action1+executed1)
-    // Beneficiary state is managed in ghostState.ghost.beneficiaries via add/remove tx flow
-    // The whole_vault_recipient field below is authoritative for whole-vault assignments
-    offset += 750; // now at offset 894
+    // Decode beneficiaries[10] from chain — 75 bytes each:
+    // recipient(32) + amount(u64=8) + token_mint(Option<Pubkey>=33) + action(u8=1) + executed(bool=1) = 75
+    const _B58c = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    function _bDecodePk(pkBytes) {
+      let n = 0n; for (const b of pkBytes) n = n * 256n + BigInt(b);
+      let r = ''; let t = n; while (t > 0n) { r = _B58c[Number(t % 58n)] + r; t = t / 58n; }
+      const li = pkBytes.findIndex(b => b !== 0);
+      return '1'.repeat(li < 0 ? 0 : li) + r;
+    }
+    const _chainBenefs = [];
+    for (let _bi = 0; _bi < 10; _bi++) {
+      const recipBytes = bytes.slice(offset, offset + 32); offset += 32;
+      const amtRaw = view.getBigUint64(offset, true); offset += 8;
+      const mintTag = bytes[offset]; offset += 1;
+      let mintPk = null;
+      if (mintTag === 1) { mintPk = _bDecodePk(bytes.slice(offset, offset + 32)); }
+      offset += 32; // always advance 32 (Borsh fixed-size Option<Pubkey>)
+      const actionByte = bytes[offset]; offset += 1;
+      const execByte = bytes[offset]; offset += 1;
+      if (!recipBytes.some(b => b !== 0) && amtRaw === 0n) continue; // empty slot
+      const recipFull = recipBytes.some(b => b !== 0) ? _bDecodePk(recipBytes) : null;
+      const isBurn = actionByte === 1;
+      const short = recipFull ? recipFull.slice(0,4) + '...' + recipFull.slice(-4) : '(burn)';
+      const _kt = mintPk ? ((ghostState.vaultTokens||[]).find(t=>t.mint===mintPk)||(ghostState.walletTokens||[]).find(t=>t.mint===mintPk)) : null;
+      _chainBenefs.push({
+        recipient: isBurn ? '(burn)' : short, fullAddr: isBurn ? null : recipFull,
+        amount: Number(amtRaw) / Math.pow(10, _kt?.decimals ?? 6),
+        token: _kt?.symbol || (mintPk ? mintPk.slice(0,6) : '?'), mint: mintPk,
+        action: isBurn ? 'burn' : 'transfer', executed: execByte === 1, _fromChain: true,
+      });
+    }
+    // Chain is authoritative — replace all; whole-vault-share re-added below from wholeVaultRecipient
+    ghostState.ghost.beneficiaries = [..._chainBenefs];
 
     // v1.3: whole_vault_recipient at byte offset 894 (after 8 disc + 886 fields)
     try {
@@ -3749,7 +3773,7 @@ async function dbAddBeneficiary(action) {
     renderVaultHoldings();
     document.getElementById(amountInput).value = '';
     if (!isBurn) document.getElementById('newRecipient').value = '';
-    addActivityRow(isBurn ? '🔥 Burn instruction on-chain' : '🎯 Beneficiary added on-chain', shortSig);
+    addActivityRow(isBurn ? '🔥 Burn instruction' : ('🎯 Beneficiary added · ' + short), shortSig);
     const mergeNote2 = mergedFromWhole ? ' · whole-vault assignment replaced' : '';
     showNotif(isBurn ? '🔥 Burn instruction confirmed!' : ('✅ Beneficiary added on-chain!' + mergeNote2), 'green');
   } catch(err) {
@@ -3816,7 +3840,7 @@ async function dbRemoveBeneficiary(index) {
 
     ghostState.ghost.beneficiaries.splice(index, 1);
     _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
-    addActivityRow('❌ Beneficiary removed on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('❌ Beneficiary removed · ' + (entry.fullAddr ? entry.fullAddr.slice(0,4)+'...'+entry.fullAddr.slice(-4) : (entry.recipient||'')), sig.slice(0,4)+'...'+sig.slice(-4));
     saveSession();
     showNotif('Beneficiary removed on-chain!', 'green');
   } catch(err) {
@@ -3967,7 +3991,7 @@ async function dbSaveWholeVaultPlan() {
 
     ghostState.ghost.wholeVaultRecipient = recipient;
     _applyWholeVaultLocally(share);
-    addActivityRow('👻 Whole vault → ' + share.addr + ' set on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('Whole vault → ' + share.addr, sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif('Whole vault recipient set on-chain!', 'green');
   } catch(err) {
     console.error('set_whole_vault_recipient error:', err);
@@ -4016,7 +4040,7 @@ async function dbClearWholeVaultRecipient(skipConfirm) {
 
     ghostState.ghost.wholeVaultRecipient = null;
     _clearWholeVaultLocally();
-    addActivityRow('👻 Whole vault recipient cleared on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('Whole vault recipient cleared', sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif('Whole vault recipient cleared on-chain!', 'green');
   } catch(err) {
     console.error('clear whole vault error:', err);
@@ -4570,7 +4594,7 @@ async function guardianWithdrawAll(ownerAddress) {
       const _gShort = ghostState.publicKey ? ghostState.publicKey.slice(0,4)+'...'+ghostState.publicKey.slice(-4) : 'guardian';
       const _lastSig = guardianWithdrawSigs[guardianWithdrawSigs.length-1] || '';
       const _summary = guardianWithdrawLog.length > 0 ? guardianWithdrawLog.join(' + ') : successCount + ' asset' + (successCount>1?'s':'');
-      addActivityRow('Guardian Withdrawal · ' + _summary + ' · by ' + _gShort, _lastSig.slice(0,4)+'...'+_lastSig.slice(-4), 'angel');
+      addActivityRow('Guardian Withdrawal', _lastSig.slice(0,4)+'...'+_lastSig.slice(-4), 'angel');
       showNotif('Guardian withdrew ' + successCount + ' asset' + (successCount > 1 ? 's' : '') + '!', 'green');
       await scanGuardianAssignments();
     } else {
@@ -5072,6 +5096,21 @@ async function loadWalletTokens() {
               _unknownMeta: !meta.symbol && !meta.name
             });
           }
+          // Fetch native SOL (lamport) balance of each vault PDA and inject as 'native' entry
+          for (const pdaAddr of pdaAddrs) {
+            try {
+              const _solR = await fetch(RPC_URL, {method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({jsonrpc:'2.0',id:'vsolbal',method:'getBalance',params:[pdaAddr]})});
+              const _solD = await _solR.json();
+              const _lamps = _solD.result?.value || 0;
+              const _solBal = Math.max(0, _lamps / 1e9 - 0.01); // subtract ~0.01 SOL rent reserve
+              if (_solBal > 0) {
+                const _exSol = freshVault.find(v => v.mint === 'native');
+                if (_exSol) { _exSol.balance = Math.max(_exSol.balance, _solBal); }
+                else { freshVault.push({symbol:'SOL',mint:'native',balance:_solBal,decimals:9,logoUrl:null,name:'Solana',_unknownMeta:false}); }
+              }
+            } catch(_) {}
+          }
           if (freshVault.length > 0 || vaultAccts.length >= 0) {
             // Merge: preserve logos/names from existing entries, update balances from chain
             for (const fresh of freshVault) {
@@ -5092,7 +5131,7 @@ async function loadWalletTokens() {
               .map(v => v.mint);
             if (vaultOnlyMints.length > 0)
               fetchTokenMetadata(ghostState.vaultTokens, vaultOnlyMints)
-                .then(()=>{renderVaultOverview();renderVaultHoldings();}).catch(()=>{});
+                .then(()=>{renderVaultOverview();renderVaultHoldings();_refreshBenePickers();}).catch(()=>{});
           }
           console.log('[Ghost] Vault tokens from chain:', ghostState.vaultTokens.map(v => v.symbol + ':' + v.balance));
           } // end if(true)
