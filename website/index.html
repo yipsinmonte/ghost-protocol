@@ -1176,7 +1176,7 @@
         <!-- MODE TOGGLE -->
         <div style="display:flex;gap:10px;margin-bottom:28px">
           <button id="watcherModeObserve" onclick="setWatcherMode('observe')" style="flex:1;padding:16px 12px;font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:0.15em;text-transform:uppercase;border:1px solid rgba(102,51,255,0.4);cursor:pointer;transition:all 0.2s;background:rgba(102,51,255,0.2);color:#c8a8ff;font-weight:600">🔍&nbsp; Check Pulse</button>
-          <button id="watcherModeGuardian" onclick="setWatcherMode('guardian')" style="flex:1;padding:16px 12px;font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:0.15em;text-transform:uppercase;border:1px solid rgba(102,51,255,0.15);cursor:pointer;transition:all 0.2s;background:transparent;color:#6060808">🛡&nbsp; Guardian Mode</button>
+          <button id="watcherModeGuardian" onclick="setWatcherMode('guardian')" style="flex:1;padding:16px 12px;font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:0.15em;text-transform:uppercase;border:1px solid rgba(102,51,255,0.15);cursor:pointer;transition:all 0.2s;background:transparent;color:#c0b8e8">🛡&nbsp; Guardian Mode</button>
         </div>
 
         <!-- CHECK PULSE MODE -->
@@ -2649,55 +2649,10 @@ function parseGhostAccount(bytes) {
     ghostState.ghost.beneficiaryCount = benefCount;
     ghostState.ghost.registeredAt = registeredAt > 0 ? registeredAt * 1000 : null;
 
-    // Decode beneficiaries[10] from chain bytes
-    // Rust layout: recipient(32) + amount(u64=8) + token_mint(Option<Pubkey>=33) + action(u8=1) + executed(bool=1) = 75 bytes × 10 = 750
-    const _B58c = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    function _bDecodePk(pkBytes) {
-      let n = 0n;
-      for (const b of pkBytes) n = n * 256n + BigInt(b);
-      let r = ''; let t = n;
-      while (t > 0n) { r = _B58c[Number(t % 58n)] + r; t = t / 58n; }
-      const leadIdx = pkBytes.findIndex(b => b !== 0);
-      return '1'.repeat(leadIdx < 0 ? 0 : leadIdx) + r;
-    }
-    const _chainBeneficiaries = [];
-    for (let _bi = 0; _bi < 10; _bi++) {
-      const recipBytes = bytes.slice(offset, offset + 32); offset += 32;
-      const amtRaw = view.getBigUint64(offset, true); offset += 8;
-      const mintTag = bytes[offset]; offset += 1;
-      let mintPk = null;
-      if (mintTag === 1) { mintPk = _bDecodePk(bytes.slice(offset, offset + 32)); }
-      offset += 32; // always skip 32 bytes whether Some or None
-      const actionByte = bytes[offset]; offset += 1;
-      const executedByte = bytes[offset]; offset += 1;
-      const hasRecip = recipBytes.some(b => b !== 0);
-      const hasAmt = amtRaw > 0n;
-      if (!hasRecip && !hasAmt) continue; // empty slot
-      const recipFull = hasRecip ? _bDecodePk(recipBytes) : null;
-      const short = recipFull ? recipFull.slice(0,4) + '...' + recipFull.slice(-4) : '(burn)';
-      const isBurn = actionByte === 1;
-      // Resolve symbol from already-loaded vault tokens if possible
-      const _knownTok = mintPk ? (ghostState.vaultTokens || []).find(t => t.mint === mintPk) : null;
-      const mintSym = _knownTok?.symbol || (mintPk ? mintPk.slice(0, 6) : '?');
-      const mintDec = _knownTok?.decimals ?? 6;
-      const humanAmt = Number(amtRaw) / Math.pow(10, mintDec);
-      _chainBeneficiaries.push({
-        recipient: isBurn ? '(burn)' : short,
-        fullAddr: isBurn ? null : recipFull,
-        amount: humanAmt,
-        token: mintSym,
-        mint: mintPk,
-        action: isBurn ? 'burn' : 'transfer',
-        executed: executedByte === 1,
-        _fromChain: true,
-      });
-    }
-    // Chain is authoritative: replace any cached beneficiaries with on-chain data
-    // Keep only whole-vault-share entries (decoded separately below from wholeVaultRecipient)
-    ghostState.ghost.beneficiaries = [
-      ..._chainBeneficiaries,
-      ...((ghostState.ghost.beneficiaries || []).filter(b => b.action === 'whole-vault-share')),
-    ];
+    // Skip beneficiaries[10] = 750 bytes (10 × 75: recipient32+amount8+token_mint33+action1+executed1)
+    // Beneficiary state is managed in ghostState.ghost.beneficiaries via add/remove tx flow
+    // The whole_vault_recipient field below is authoritative for whole-vault assignments
+    offset += 750; // now at offset 894
 
     // v1.3: whole_vault_recipient at byte offset 894 (after 8 disc + 886 fields)
     try {
@@ -4445,64 +4400,80 @@ async function guardianWithdrawAll(ownerAddress) {
     const guardianWithdrawLog = [];
     const guardianWithdrawSigs = [];
 
-    // ── SPL tokens ────────────────────────────────────────────────────────────
-    for (const acct of splAccts) {
-      const info = acct.account?.data?.parsed?.info;
-      if (!info) continue;
-      const rawAmount = BigInt(info.tokenAmount?.amount || '0');
-      if (rawAmount <= 0n) continue;
-
-      const mintPk = new PublicKey(info.mint);
-      const decimals = info.tokenAmount?.decimals || 0;
-      const tokenProgPk = (acct.account?.owner === TOKEN22_PROG_STR) ? TOKEN22_PK : TOKEN_PK;
-      const vaultTokenAcct = new PublicKey(acct.pubkey);
-
-      // Recipient ATA on recovery wallet
-      let recipientAta;
-      try {
-        const ex = await connection.getTokenAccountsByOwner(recoveryWalletPk, { mint: mintPk });
-        if (ex.value.length > 0) recipientAta = ex.value[0].pubkey;
-      } catch(_) {}
-      if (!recipientAta) recipientAta = await findATAWithProg(recoveryWalletPk, mintPk, tokenProgPk);
-
-      try {
-        const { blockhash } = await connection.getLatestBlockhash();
-        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: recoveryWalletPk });
-
-        // Create recipient ATA if needed
+    // ── SPL tokens — BATCHED into a single transaction ──────────────────────
+    // All SPL withdrawals are batched into one tx so the user signs once
+    // Solana limit: ~1232 bytes per tx; we cap at 5 tokens per tx to stay safe
+    if (splAccts.length > 0) {
+      // Pre-fetch all ATAs and account infos before building txs
+      const splItems = [];
+      for (const acct of splAccts) {
+        const info = acct.account?.data?.parsed?.info;
+        if (!info) continue;
+        const rawAmount = BigInt(info.tokenAmount?.amount || '0');
+        if (rawAmount <= 0n) continue;
+        const mintPk = new PublicKey(info.mint);
+        const decimals = info.tokenAmount?.decimals || 0;
+        const tokenProgPk = (acct.account?.owner === TOKEN22_PROG_STR) ? TOKEN22_PK : TOKEN_PK;
+        const vaultTokenAcct = new PublicKey(acct.pubkey);
+        let recipientAta;
+        try {
+          const ex = await connection.getTokenAccountsByOwner(recoveryWalletPk, { mint: mintPk });
+          if (ex.value.length > 0) recipientAta = ex.value[0].pubkey;
+        } catch(_) {}
+        if (!recipientAta) recipientAta = await findATAWithProg(recoveryWalletPk, mintPk, tokenProgPk);
         const ataInfo = await connection.getAccountInfo(recipientAta);
-        if (!ataInfo) tx.add(createATAInstruction(recoveryWalletPk, recipientAta, recoveryWalletPk, mintPk, tokenProgPk));
+        splItems.push({ info, rawAmount, mintPk, decimals, tokenProgPk, vaultTokenAcct, recipientAta, needsAta: !ataInfo });
+      }
 
-        const amtBuf = new ArrayBuffer(8);
-        new DataView(amtBuf).setBigUint64(0, rawAmount, true);
-        const txData = new Uint8Array(16);
-        txData.set(disc, 0);
-        txData.set(new Uint8Array(amtBuf), 8);
+      // Chunk into batches of up to 5 to stay within tx size limit
+      const BATCH_SIZE = 5;
+      for (let batchStart = 0; batchStart < splItems.length; batchStart += BATCH_SIZE) {
+        const batch = splItems.slice(batchStart, batchStart + BATCH_SIZE);
+        const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(splItems.length / BATCH_SIZE);
+        const batchLabel = totalBatches > 1 ? ` (batch ${batchNum}/${totalBatches})` : '';
+        try {
+          const { blockhash } = await connection.getLatestBlockhash();
+          const tx = new Transaction({ recentBlockhash: blockhash, feePayer: recoveryWalletPk });
 
-        tx.add(new TransactionInstruction({ programId, keys: [
-          { pubkey: ghostPda,         isSigner: false, isWritable: true  },
-          { pubkey: ownerPk,          isSigner: false, isWritable: false },
-          { pubkey: vaultPda,         isSigner: false, isWritable: false },
-          { pubkey: recoveryWalletPk, isSigner: true,  isWritable: true  },
-          { pubkey: mintPk,           isSigner: false, isWritable: false },
-          { pubkey: vaultTokenAcct,   isSigner: false, isWritable: true  },
-          { pubkey: recipientAta,     isSigner: false, isWritable: true  },
-          { pubkey: tokenProgPk,      isSigner: false, isWritable: false },
-        ], data: txData }));
+          for (const item of batch) {
+            // Create recipient ATA if needed
+            if (item.needsAta) tx.add(createATAInstruction(recoveryWalletPk, item.recipientAta, recoveryWalletPk, item.mintPk, item.tokenProgPk));
 
-        showNotif('Sign to withdraw ' + (info.mint.slice(0,8)) + '...', '');
-        const signed = await ghostState.provider.signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-        const conf = await connection.confirmTransaction(sig, 'confirmed');
-        if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+            const amtBuf = new ArrayBuffer(8);
+            new DataView(amtBuf).setBigUint64(0, item.rawAmount, true);
+            const txData = new Uint8Array(16);
+            txData.set(disc, 0);
+            txData.set(new Uint8Array(amtBuf), 8);
 
-        const humanAmt = (Number(rawAmount) / Math.pow(10, decimals)).toLocaleString();
-        guardianWithdrawLog.push(humanAmt + ' ' + (info.symbol || info.mint.slice(0,6)));
-        guardianWithdrawSigs.push(sig);
-        successCount++;
-      } catch(tokenErr) {
-        console.error('[Ghost] Guardian withdraw failed for', info.mint, tokenErr);
-        showNotif('Failed for ' + info.mint.slice(0,8) + '...: ' + (tokenErr.message||tokenErr), 'error');
+            tx.add(new TransactionInstruction({ programId, keys: [
+              { pubkey: ghostPda,             isSigner: false, isWritable: true  },
+              { pubkey: ownerPk,              isSigner: false, isWritable: false },
+              { pubkey: vaultPda,             isSigner: false, isWritable: false },
+              { pubkey: recoveryWalletPk,     isSigner: true,  isWritable: true  },
+              { pubkey: item.mintPk,          isSigner: false, isWritable: false },
+              { pubkey: item.vaultTokenAcct,  isSigner: false, isWritable: true  },
+              { pubkey: item.recipientAta,    isSigner: false, isWritable: true  },
+              { pubkey: item.tokenProgPk,     isSigner: false, isWritable: false },
+            ], data: txData }));
+          }
+
+          showNotif('Sign to withdraw ' + batch.length + ' token' + (batch.length > 1 ? 's' : '') + batchLabel + '...', '');
+          const signed = await ghostState.provider.signTransaction(tx);
+          const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+          const conf = await connection.confirmTransaction(sig, 'confirmed');
+          if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+          for (const item of batch) {
+            const humanAmt = (Number(item.rawAmount) / Math.pow(10, item.decimals)).toLocaleString();
+            guardianWithdrawLog.push(humanAmt + ' ' + (item.info.symbol || item.info.mint.slice(0,6)));
+          }
+          guardianWithdrawSigs.push(sig);
+          successCount += batch.length;
+        } catch(batchErr) {
+          console.error('[Ghost] Guardian batch withdraw failed:', batchErr);
+          showNotif('⚠️ Batch withdraw failed' + batchLabel + ': ' + (batchErr.message || batchErr), 'error');
+        }
       }
     }
 
@@ -5225,13 +5196,17 @@ function vaultAssignableTokens() {
       if (vt.balance < 0) return false; // show dust amounts (uiAmount may round to 0)
       if (vt._unknownMeta) return false; // no real metadata — skip unknown tokens
       if (isProtocolMint(vt.mint)) return false; // GHOST/DBD — protocol-only, never vault-assignable
-      // Filter out tokens with no verified metadata (symbol is raw mint prefix or no name)
+      // Filter out tokens with no verified metadata
       const sym = vt.symbol || '';
       const mintStr = vt.mint || '';
-      // If symbol is a prefix slice of the mint address → no real metadata resolved
-      if (sym && mintStr && mintStr.toUpperCase().startsWith(sym.toUpperCase())) return false;
-      // If symbol ≤ 6 chars AND no name → almost certainly a raw mint slice fallback
-      if (sym.length <= 6 && !vt.name) return false;
+      // Known good symbols always pass (SOL, wSOL, USDC, USDT etc)
+      const KNOWN_GOOD = new Set(['SOL','wSOL','USDC','USDT','BONK','JUP','RAY','ORCA','mSOL','stSOL','JTO','PYTH','WIF','POPCAT','PNUT']);
+      if (!KNOWN_GOOD.has(sym)) {
+        // If symbol is a prefix slice of the mint address → no real metadata resolved
+        if (sym && mintStr && mintStr !== 'native' && mintStr.toUpperCase().startsWith(sym.toUpperCase())) return false;
+        // If symbol ≤ 6 chars AND no name → almost certainly a raw mint slice fallback
+        if (sym.length <= 6 && !vt.name && mintStr !== 'native') return false;
+      }
       // Sum only specific transfer/burn assignments (not whole-vault-share)
       const assigned = ghostState.ghost.beneficiaries
         .filter(b => b.action !== 'whole-vault-share' && (b.token === vt.symbol || b.token === vt.mint))
