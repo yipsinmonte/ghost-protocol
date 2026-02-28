@@ -1894,6 +1894,8 @@ async function connectWallet(name) {
     showNotif('Connecting to ' + name + '...', '');
     // Always disconnect first to force the wallet to show the approve popup
     try { await provider.disconnect(); } catch(e) {}
+    // Small delay so Phantom processes the disconnect before we call connect
+    await new Promise(r => setTimeout(r, 200));
     // onlyIfTrusted: false → always shows the approve popup
     const resp = await provider.connect({ onlyIfTrusted: false });
     const pubkey = resp.publicKey.toString();
@@ -2319,14 +2321,12 @@ async function fetchGhostAccount() {
     const data = await response.json();
     
     if (!data.result?.value) {
-      // No ghost account exists yet
       ghostState.ghost.status = 'none';
       updateDashboardUI();
       showNotif('No ghost found. Initialize one to get started.', '');
       return;
     }
     
-    // Decode account data
     const rawData = atob(data.result.value.data[0]);
     const bytes = new Uint8Array(rawData.length);
     for (let i = 0; i < rawData.length; i++) bytes[i] = rawData.charCodeAt(i);
@@ -2334,9 +2334,130 @@ async function fetchGhostAccount() {
     parseGhostAccount(bytes);
     updateDashboardUI();
     showNotif('✓ Ghost account loaded from chain', 'green');
+
+    // Pull on-chain tx history in the background (don't await — non-blocking)
+    fetchOnChainHistory().catch(e => console.warn('[Ghost] History fetch failed:', e));
   } catch (err) {
     console.error('Fetch ghost account error:', err);
     showNotif('Could not fetch ghost account', 'error');
+  }
+}
+
+// Fetch on-chain transaction signatures for the ghost PDA and rebuild activity + ping history
+async function fetchOnChainHistory() {
+  if (!ghostState.ghostPda) return;
+  try {
+    const res = await fetch(RPC_URL, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 'hist', method: 'getSignaturesForAddress',
+        params: [ghostState.ghostPda, { limit: 50 }]
+      })
+    });
+    const data = await res.json();
+    const sigs = data.result || [];
+    if (sigs.length === 0) return;
+
+    // Decode known discriminators to action labels
+    const DISC_LABELS = {
+      '33255588e28aafd3': '👻 Ghost summoned',
+      'ad005eec4985e199': '💓 Heartbeat sent',
+      '1690d0d70fa59d7a': '🛑 Awakening cancelled',
+      'b4222a2e9c00d3ee': '📤 Withdrew from vault',
+      '3d2a01f00aaaec0c': '📥 Deposited to vault',
+      'b43b71c9268e4f0d': '🔑 Recovery wallet set',
+    };
+
+    // Build from oldest to newest so unshift gives chronological newest-first
+    const newActivity = [];
+    const newPings = [];
+    let pingNum = 0;
+    let lastPingTs = null;
+
+    // sigs come newest-first from RPC; reverse to process chronologically
+    const chronoSigs = [...sigs].reverse();
+    for (const s of chronoSigs) {
+      if (s.err) continue;
+      const ts = s.blockTime ? s.blockTime * 1000 : Date.now();
+      const shortSig = s.signature.slice(0,4) + '...' + s.signature.slice(-4);
+      // Try to label by fetching parsed tx — expensive, skip for now; use memo if available
+      const label = '💓 Heartbeat sent'; // Default — we'll refine with parsed tx below
+      newActivity.unshift({ msg: shortSig, tx: shortSig, ts, sig: s.signature });
+    }
+
+    // Fetch parsed transactions in batch (up to 20 at a time for speed)
+    const batchSize = 20;
+    const allParsed = [];
+    for (let i = 0; i < chronoSigs.length; i += batchSize) {
+      const batch = chronoSigs.slice(i, i + batchSize);
+      try {
+        const txRes = await fetch(RPC_URL, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            jsonrpc:'2.0', id:'txb', method:'getTransactions',
+            params: [batch.map(s => s.signature), {encoding:'jsonParsed', maxSupportedTransactionVersion:0}]
+          })
+        });
+        const txData = await txRes.json();
+        if (Array.isArray(txData.result)) allParsed.push(...txData.result);
+      } catch(e) {}
+    }
+
+    // Rebuild activity and ping history from parsed txs
+    const builtActivity = [];
+    const builtPings = [];
+    pingNum = 0;
+    let prevPingTs = null;
+
+    for (let i = 0; i < allParsed.length; i++) {
+      const tx = allParsed[i];
+      if (!tx) continue;
+      const s = chronoSigs[i];
+      if (!s || s.err) continue;
+      const ts = (tx.blockTime || s.blockTime || 0) * 1000;
+      const shortSig = s.signature.slice(0,4) + '...' + s.signature.slice(-4);
+
+      // Read first instruction data to identify discriminator
+      let label = '📋 Transaction';
+      try {
+        const ixs = tx.transaction?.message?.instructions || [];
+        for (const ix of ixs) {
+          if (ix.programId === PROGRAM_ID) {
+            const rawData = ix.data; // base58 encoded
+            if (rawData) {
+              // Decode base58 to get first 8 bytes as hex
+              const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+              let n = 0n;
+              for (const ch of rawData) { const idx = B58.indexOf(ch); if(idx<0) break; n = n*58n+BigInt(idx); }
+              const bytes8 = [];
+              for (let b = 0; b < 8; b++) { bytes8.unshift(Number(n & 0xffn)); n >>= 8n; }
+              const hex = bytes8.map(b=>b.toString(16).padStart(2,'0')).join('');
+              label = DISC_LABELS[hex] || '📋 Transaction';
+              if (label === '💓 Heartbeat sent') {
+                pingNum++;
+                const gap = prevPingTs ? formatDuration(ts - prevPingTs) : '—';
+                builtPings.push({ num: pingNum, ts, tx: shortSig, gap });
+                prevPingTs = ts;
+              }
+              break;
+            }
+          }
+        }
+      } catch(e) {}
+      builtActivity.unshift({ msg: label, tx: shortSig, ts });
+    }
+
+    // Only update if we got useful data (don't wipe session activity if chain call failed)
+    if (builtActivity.length > 0) {
+      ghostState.activityLog = builtActivity;
+      renderActivityLog();
+    }
+    if (builtPings.length > 0) {
+      ghostState.pingHistory = builtPings.reverse(); // newest first
+      renderPingHistory();
+    }
+  } catch(e) {
+    console.warn('[Ghost] fetchOnChainHistory error:', e);
   }
 }
 
@@ -2941,12 +3062,17 @@ function updateCountdown() {
   const total = ghostState.ghost.intervalSeconds * 1000;
   const pct = Math.min(100, (elapsed / total) * 100).toFixed(1);
 
-  document.getElementById('dbCountdown').textContent = str;
-  document.getElementById('dbBigCountdown').textContent = str;
-  document.getElementById('dbProgressVal').textContent = pct + '% elapsed';
+  const cdEl = document.getElementById('dbCountdown'); if (cdEl) cdEl.textContent = str;
+  const bigEl = document.getElementById('dbBigCountdown'); if (bigEl) bigEl.textContent = str;
+  const pvEl = document.getElementById('dbProgressVal'); if (pvEl) pvEl.textContent = pct + '% elapsed';
   const fill = document.getElementById('dbProgressFill');
-  fill.style.width = pct + '%';
-  fill.className = 'db-progress-fill' + (parseFloat(pct) > 80 ? ' warn' : '');
+  if (fill) { fill.style.width = pct + '%'; fill.className = 'db-progress-fill' + (parseFloat(pct) > 80 ? ' warn' : ''); }
+  // Also keep "last ping" label in sync
+  const lastEl = document.getElementById('dbLastPing');
+  if (lastEl && ghostState.ghost.lastHeartbeat) {
+    const ago = Math.floor((Date.now() - ghostState.ghost.lastHeartbeat) / 60000);
+    lastEl.textContent = ago < 1 ? 'just now' : ago < 60 ? ago + 'm ago' : Math.floor(ago/60) < 24 ? Math.floor(ago/60) + 'h ago' : Math.floor(ago/1440) + 'd ago';
+  }
 }
 
 setInterval(updateCountdown, 30000);
@@ -3809,6 +3935,8 @@ async function scanGuardianAssignments() {
         const statusText = executed ? 'EXECUTED' : awakened ? '⚠️ AWAKENED' : '✅ ALIVE';
         const graceLeft = awakened ? Math.max(0, Math.floor((grace - silenceSeconds + interval)/86400)) : 0;
 
+        const inGrace = awakened && !executed && graceLeft > 0;
+
         cards.push(`
           <div style="background:#07070f;border:1px solid ${awakened?'rgba(255,170,51,0.35)':'rgba(102,51,255,0.2)'};padding:20px 22px;margin-bottom:12px" data-owner="${ownerB58}" data-awakened="${awakened}" data-executed="${executed}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
@@ -3821,19 +3949,23 @@ async function scanGuardianAssignments() {
                 <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:${statusColor}">${statusText}</div>
               </div>
             </div>
-            <div style="display:flex;gap:24px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#9090a8;margin-bottom:${awakened&&!executed?'16':'0'}px">
+            <div style="display:flex;gap:24px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#9090a8;margin-bottom:14px">
               <span>Last ping: <span style="color:#c0bce0">${daysSince}d ago</span></span>
               <span>Interval: <span style="color:#c0bce0">${Math.floor(interval/86400)}d</span></span>
               ${awakened&&!executed ? `<span>Grace left: <span style="color:#ffaa33">${graceLeft}d</span></span>` : `<span>Time left: <span style="color:#c0bce0">${daysLeft}d</span></span>`}
             </div>
-            ${!executed && awakened ? `
-            <div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid rgba(255,170,51,0.15)">
-              <button class="db-btn" style="flex:1;border-color:#ffaa33;color:#ffaa33;padding:10px" onclick="guardianCancelAwakening('${ownerB58}')">🛑 Cancel Awakening</button>
-              <button class="db-btn" style="flex:1;border-color:#c0a0ff;color:#c0a0ff;padding:10px" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>
-            </div>` : !executed ? `
-            <div style="padding-top:12px;border-top:1px solid rgba(102,51,255,0.1)">
-              <button class="db-btn" style="width:100%;border-color:#c0a0ff;color:#c0a0ff;padding:10px;opacity:0.6" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault (if authorized)</button>
-            </div>` : ''}
+            ${!executed ? `
+            <div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid rgba(102,51,255,0.12)">
+              ${inGrace
+                ? `<button class="db-btn" style="flex:1;border-color:#ffaa33;color:#ffaa33;padding:10px" onclick="guardianCancelAwakening('${ownerB58}')">🛑 Cancel Awakening</button>`
+                : `<button class="db-btn" style="flex:1;border-color:#555;color:#666;padding:10px;cursor:not-allowed;opacity:0.4" disabled title="Ghost is not in grace period">🛑 Cancel Awakening</button>`
+              }
+              ${awakened
+                ? `<button class="db-btn" style="flex:1;border-color:#c0a0ff;color:#c0a0ff;padding:10px" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>`
+                : `<button class="db-btn" style="flex:1;border-color:#555;color:#666;padding:10px;cursor:not-allowed;opacity:0.4" disabled title="Vault withdraw only available when ghost has awakened">📤 Withdraw Vault</button>`
+              }
+            </div>` : `
+            <div style="padding-top:12px;border-top:1px solid rgba(255,51,102,0.15);font-family:'Share Tech Mono',monospace;font-size:11px;color:#ff3366;letter-spacing:0.1em">⚠ EXECUTED — ghost protocol has run</div>`}
           </div>`);
       } catch(e) { /* skip malformed */ }
     }
@@ -3874,27 +4006,44 @@ async function guardianWithdrawAll(ownerAddress) {
     const [vaultPda] = await PublicKey.findProgramAddress(
       [new TextEncoder().encode('vault'), ownerPk.toBytes()], programId);
 
-    // Get all token accounts owned by the vault
-    const vaultAccounts = await connection.getTokenAccountsByOwner(vaultPda, { programId: TOKEN_PROG_PK });
-    if (vaultAccounts.value.length === 0) { showNotif('Vault is empty', 'error'); return; }
+    // Use jsonParsed encoding so we get clean mint + balance data
+    const [vaultSpl, vaultSpl22] = await Promise.all([
+      fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({jsonrpc:'2.0',id:'gv1',method:'getTokenAccountsByOwner',
+          params:[vaultPda.toBase58(), {programId: TOKEN_PROGRAM_STR}, {encoding:'jsonParsed'}]})
+      }).then(r=>r.json()),
+      fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({jsonrpc:'2.0',id:'gv2',method:'getTokenAccountsByOwner',
+          params:[vaultPda.toBase58(), {programId: TOKEN_2022_STR}, {encoding:'jsonParsed'}]})
+      }).then(r=>r.json())
+    ]);
+
+    const allVaultAccts = [
+      ...(vaultSpl.result?.value || []),
+      ...(vaultSpl22.result?.value || [])
+    ];
+
+    if (allVaultAccts.length === 0) { showNotif('Vault is empty', 'error'); return; }
 
     const disc = [180, 34, 37, 46, 156, 0, 211, 238]; // withdraw_from_vault discriminator
     let successCount = 0;
-    const total = vaultAccounts.value.length;
+    let skipCount = 0;
+    const total = allVaultAccts.length;
 
-    for (const { pubkey: vaultAta, account } of vaultAccounts.value) {
+    for (const acct of allVaultAccts) {
       try {
-        // Parse mint and amount from token account data
-        const data = account.data;
-        const mintBytes = data.slice(0, 32);
-        const mintPk = new PublicKey(mintBytes);
-        const mintStr = mintPk.toBase58();
-        const amountRaw = new DataView(data.buffer, data.byteOffset + 64, 8).getBigUint64(0, true);
-        if (amountRaw === 0n) { successCount++; continue; } // skip empty
-
+        const info = acct.account.data.parsed?.info;
+        if (!info) { skipCount++; continue; }
+        const balance = parseFloat(info.tokenAmount.uiAmountString || 0);
+        if (balance <= 0) { skipCount++; continue; }
+        const mintStr = info.mint;
+        const decimals = info.tokenAmount.decimals;
+        const amountRaw = BigInt(info.tokenAmount.amount);
+        const vaultAta = new PublicKey(acct.pubkey);
+        const mintPk = new PublicKey(mintStr);
         const isSOL = mintStr === WSOL_MINT_PK_STR;
 
-        // Get mint info for token program detection
+        // Detect token program
         let rawMintOwner = TOKEN_PROGRAM_STR;
         try { const mi = await connection.getAccountInfo(mintPk); rawMintOwner = mi?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
         const rawTokenProgPk = new PublicKey(rawMintOwner);
@@ -3923,7 +4072,13 @@ async function guardianWithdrawAll(ownerAddress) {
           tx.add(buildUnwrapIx(walletPk, wsolAcct));
           showNotif('Sign to withdraw SOL...', '');
           const signed = await ghostState.provider.signTransaction(tx); signed.partialSign(wsolKp);
-          const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+          let sig;
+          try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
+          catch(simErr) {
+            let logs=[]; try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){}
+            console.error('[Ghost] guardian SOL withdraw logs:', logs);
+            throw new Error(simErr.message + (logs.slice(-3).length ? ' | '+logs.slice(-3).join(' | ') : ''));
+          }
           await connection.confirmTransaction(sig, 'confirmed');
         } else {
           const ownerAta = await findATAWithProg(walletPk, mintPk, rawTokenProgPk);
@@ -3942,13 +4097,22 @@ async function guardianWithdrawAll(ownerAddress) {
           ], data: ixData }));
           showNotif('Sign to withdraw ' + mintStr.slice(0,6) + '...', '');
           const signed = await ghostState.provider.signTransaction(tx);
-          const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+          let sig;
+          try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
+          catch(simErr) {
+            let logs=[]; try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){}
+            console.error('[Ghost] guardian SPL withdraw logs:', logs);
+            throw new Error(simErr.message + (logs.slice(-3).length ? ' | '+logs.slice(-3).join(' | ') : ''));
+          }
           await connection.confirmTransaction(sig, 'confirmed');
         }
         successCount++;
-      } catch(err) { console.error('Guardian withdraw token error:', err); }
+      } catch(err) {
+        console.error('Guardian withdraw token error:', err);
+        showNotif('⚠️ Failed: ' + (err.message||err).slice(0,80), 'error');
+      }
     }
-    showNotif(`✅ Guardian withdrew ${successCount}/${total} assets`, successCount > 0 ? 'green' : 'error');
+    showNotif(`✅ Guardian withdrew ${successCount}/${total - skipCount} assets`, successCount > 0 ? 'green' : 'error');
     await scanGuardianAssignments();
   } catch(err) {
     showNotif('Guardian withdraw failed: ' + (err.message||err), 'error');
@@ -4381,7 +4545,7 @@ async function loadWalletTokens() {
     }
 
     // Fetch vault token balances from chain — source of truth regardless of session state
-    if (ghostState.ghost?.status === 'alive' || ghostState.ghost?.status === 'triggered') {
+    if (ghostState.ghost?.status && ghostState.ghost.status !== 'none') {
       try {
         const vaultPdaStr = ghostState.vaultPda;
         if (vaultPdaStr) {
