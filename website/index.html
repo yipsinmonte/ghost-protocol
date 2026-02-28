@@ -1559,16 +1559,20 @@ function saveSession() {
 
 function loadSession() {
   // Restore wallet identity + PDAs only; all chain state fetched fresh from RPC
+  // Returns false (no auto-restore) if user was never connected
   try {
     const lastWallet = localStorage.getItem('ghostLastWallet') || '';
-    const key = lastWallet ? _sessionKey(lastWallet) : null;
-    const raw = key ? localStorage.getItem(key) : null;
+    if (!lastWallet) return false; // never connected — don't auto-open dashboard
+    const key = _sessionKey(lastWallet);
+    const raw = localStorage.getItem(key);
     if (!raw) return false;
     const s = JSON.parse(raw);
-    if (!s.walletAddress && !s.publicKey) return false;
+    // Require both walletAddress and publicKey — absence means session is stale or corrupt
+    if (!s.walletAddress || !s.publicKey) return false;
     ghostState.walletName = s.walletName || '';
     ghostState.walletAddress = s.walletAddress || '';
     ghostState.publicKey = s.publicKey || '';
+    ghostState.connected = true;
     if (s.ghostPda) ghostState.ghostPda = s.ghostPda;
     if (s.vaultPda) ghostState.vaultPda = s.vaultPda;
     if (s.ghostStakeVault) ghostState.ghostStakeVault = s.ghostStakeVault;
