@@ -2417,9 +2417,26 @@ const GHOST_DISC_LABELS = {
   '51a633d59e549d6c': '\u2699\uFE0F Settings updated',
   'd9efe14bf40efc5b': 'Whole vault recipient set',
   '63a333690b0b3b22': 'Guardian Withdrawal',
+  // v1.4 instructions
+  '56e2173908f67822': '\u{1F5D1} All beneficiaries cleared',
+  '7e7adb46bc7ef37e': '\u270F\uFE0F Beneficiary updated',
+  '100a01cae999e4b4': '\u274C Guardian removed beneficiary',
+  'eb374480b1fbb34b': '\u{1F5D1} Guardian cleared all beneficiaries',
+  '62419b9a15df8b60': '\u{1F6D1} Guardian cancelled & cleared',
 };
-// Discriminators that indicate a guardian withdrawal (for icon tagging)
-const GUARDIAN_DISCS = new Set(['63a333690b0b3b22']);
+// Discriminators that indicate a guardian action (for angel icon tagging)
+const GUARDIAN_DISCS = new Set([
+  '63a333690b0b3b22', // recovery_withdraw
+  '100a01cae999e4b4',
+  'eb374480b1fbb34b',
+  '62419b9a15df8b60',
+]);
+// v1.4 discriminator constants (used to build instructions)
+const DISC_CLEAR_ALL_BENES       = [86, 226, 23, 57, 8, 246, 120, 34];
+const DISC_GUARDIAN_CLEAR_ALL    = [235, 55, 68, 128, 177, 251, 179, 75];
+const DISC_GUARDIAN_REMOVE_BENE  = [16, 10, 1, 202, 233, 153, 228, 180];
+const DISC_GUARDIAN_CANCEL_CLEAR = [98, 65, 155, 154, 21, 223, 139, 96];
+const DISC_UPDATE_BENEFICIARY    = [126, 122, 219, 70, 188, 126, 243, 126];
 function b58ToDiscHex(s) {
   const B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   let leading=0; for(const ch of s){if(ch==='1')leading++;else break;}
@@ -3635,68 +3652,132 @@ async function dbClearAllBeneficiaries() {
   const transferBenes = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
   if (transferBenes.length === 0) { showNotif('No beneficiaries to clear', ''); return; }
 
-  const _ok = await ghostConfirm({
-    icon: '🗑️', title: 'Clear All Beneficiaries',
-    message: 'Remove all ' + transferBenes.length + ' slot(s) in 1 transaction. If vault is empty they are cleared locally.',
-    okLabel: 'CLEAR ALL', danger: true
-  });
-  if (!_ok) return;
-
-  // Refresh from chain first — may already be empty
-  showNotif('Syncing chain state...', '');
-  try { await fetchGhostAccount(); } catch(_) {}
-
-  const slots = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
-  if (slots.length === 0) { showNotif('Already cleared on-chain', 'green'); renderBeneficiaries(); return; }
+  // Classify each slot as stale (no vault balance) or working (vault has funds)
+  // A working slot has a corresponding vault token with balance >= slot amount
+  function _isWorkingSlot(b) {
+    const vt = ghostState.vaultTokens.find(v => v.symbol === b.token || v.mint === b.mint);
+    return vt && vt.balance >= b.amount && b.amount > 0;
+  }
+  const staleSlots   = transferBenes.filter(b => !_isWorkingSlot(b));
+  const workingSlots = transferBenes.filter(b =>  _isWorkingSlot(b));
 
   const isDemo = !ghostState.provider || ghostState.walletName?.includes('demo');
-  const vaultEmpty = ghostState.vaultTokens.every(v => v.balance <= 0) ||
-    slots.every(b => { const vt = ghostState.vaultTokens.find(v => v.symbol === b.token || v.mint === b.mint); return !vt || vt.balance < b.amount; });
 
-  if (isDemo || vaultEmpty) {
-    // Local-only wipe — store cleared slot fingerprints so refresh doesn't re-show them
-    _saveClearedBeneficiaries(slots);
-    ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
+  // If there are working slots, warn the user — default to stale-only
+  let clearWorking = false;
+  if (workingSlots.length > 0) {
+    clearWorking = await ghostConfirm({
+      icon: '⚠️', title: 'Active Beneficiaries Detected',
+      message: staleSlots.length + ' stale slot(s) + ' + workingSlots.length + ' ACTIVE slot(s) found. Active slots have vault assets backing them. Clear ONLY stale slots, or everything?',
+      okLabel: 'CLEAR EVERYTHING', cancelLabel: 'STALE ONLY'
+    });
+    // ghostConfirm returns true for ok, false for cancel. false = stale only.
+  } else {
+    const _ok = await ghostConfirm({
+      icon: '🗑️', title: 'Clear ' + staleSlots.length + ' Stale Slot(s)',
+      message: 'Remove ' + staleSlots.length + ' stale slot(s) with no backing vault balance in 1 transaction.',
+      okLabel: 'CLEAR', danger: true
+    });
+    if (!_ok) return;
+  }
+
+  const toClear = clearWorking ? transferBenes : staleSlots;
+  if (toClear.length === 0) { showNotif('Nothing to clear', ''); return; }
+
+  // Refresh from chain to confirm state
+  showNotif('Syncing chain state...', '');
+  try { await fetchGhostAccount(); } catch(_) {}
+  const freshSlots = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+  if (freshSlots.length === 0) { showNotif('Already cleared on-chain', 'green'); renderBeneficiaries(); return; }
+
+  const finalToClear = clearWorking
+    ? freshSlots
+    : freshSlots.filter(b => !_isWorkingSlot(b));
+
+  if (finalToClear.length === 0) {
+    showNotif('No stale slots found — all slots have active vault backing', '');
+    renderBeneficiaries(); return;
+  }
+
+  if (isDemo) {
+    _saveClearedBeneficiaries(finalToClear);
+    ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(
+      b => b.action === 'whole-vault-share' || (clearWorking ? false : _isWorkingSlot(b))
+    );
     _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
-    showNotif('Cleared ' + slots.length + ' stale slot(s) locally', 'green');
+    showNotif('Cleared ' + finalToClear.length + ' slot(s) [demo]', 'green');
     return;
   }
 
-  // Build 1 transaction with N remove_beneficiary(index=0) instructions
-  // Anchor processes them sequentially: each pops slot 0, next slot becomes 0
+  // On-chain clear using v1.4 clear_all_beneficiaries (single instruction, no loop)
+  // If clearing ONLY stale: use N remove_beneficiary(0) for just those slots
+  // If clearing ALL: use the new clear_all_beneficiaries instruction (one ix, atomic)
   try {
-    showNotif('Sending batch clear (' + slots.length + ' slots)...', '');
+    showNotif('Sending on-chain clear...', '');
     const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
     const walletPk = new PublicKey(ghostState.publicKey);
     const ghostPda = new PublicKey(ghostState.ghostPda);
-    const disc = [67, 27, 24, 153, 135, 64, 202, 77];
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-    for (let i = 0; i < slots.length; i++) {
-      const d = new Uint8Array(9); d.set(disc, 0); d[8] = 0; // always slot 0
+
+    if (clearWorking || finalToClear.length === freshSlots.length) {
+      // Clear ALL slots — use single clear_all_beneficiaries instruction (v1.4)
       tx.add(new TransactionInstruction({
         programId: new PublicKey(PROGRAM_ID),
         keys: [{ pubkey: ghostPda, isSigner:false, isWritable:true }, { pubkey: walletPk, isSigner:true, isWritable:true }],
-        data: d
+        data: new Uint8Array(DISC_CLEAR_ALL_BENES)
       }));
+    } else {
+      // Clear only the stale slots — still use remove_beneficiary(0) loop
+      // We must remove from highest index down to avoid shifting issues... actually
+      // contract shifts array down after each remove, so always target index 0 for N removes
+      // But we only want to remove specific slots, so map stale slots to their on-chain indices
+      // Sort stale slots by their position in freshSlots (ascending), remove from end to start
+      const staleIndices = finalToClear.map(b => {
+        return freshSlots.findIndex(f =>
+          (f.fullAddr && f.fullAddr === b.fullAddr) ||
+          (f.recipient === b.recipient && f.amount === b.amount && f.mint === b.mint)
+        );
+      }).filter(i => i >= 0).sort((a,b) => b - a); // descending — remove from end first
+
+      const removeDisc = [67, 27, 24, 153, 135, 64, 202, 77]; // remove_beneficiary disc
+      for (const idx of staleIndices) {
+        const d = new Uint8Array(9); d.set(removeDisc, 0); d[8] = idx;
+        tx.add(new TransactionInstruction({
+          programId: new PublicKey(PROGRAM_ID),
+          keys: [{ pubkey: ghostPda, isSigner:false, isWritable:true }, { pubkey: walletPk, isSigner:true, isWritable:true }],
+          data: d
+        }));
+      }
     }
+
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     const conf = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error(JSON.stringify(conf.value.err));
 
-    ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
+    // Update local state
+    if (clearWorking || finalToClear.length === freshSlots.length) {
+      ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
+    } else {
+      ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(
+        b => b.action === 'whole-vault-share' || _isWorkingSlot(b)
+      );
+    }
     _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
-    addActivityRow('🗑️ All beneficiaries cleared', sig.slice(0,4)+'...'+sig.slice(-4));
-    showNotif('All ' + slots.length + ' slot(s) cleared in 1 transaction!', 'green');
+    addActivityRow('🗑️ Cleared ' + finalToClear.length + ' beneficiar' + (finalToClear.length===1?'y':'ies'), sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif('Cleared ' + finalToClear.length + ' slot(s) on-chain!', 'green');
+
   } catch(err) {
-    console.warn('[Ghost] Batch clear failed:', err.message, '— falling back to local wipe');
-    // Fallback: wipe locally and persist so refresh doesn't re-show
-    _saveClearedBeneficiaries(slots);
-    ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
+    console.warn('[Ghost] Clear failed:', err.message);
+    // Fallback: local wipe with fingerprint persistence
+    _saveClearedBeneficiaries(finalToClear);
+    ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(
+      b => b.action === 'whole-vault-share' || (!clearWorking && _isWorkingSlot(b))
+    );
     _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
-    showNotif('Cleared locally — on-chain removal failed (' + (err.message||'unknown') + ')', '');
+    showNotif('Cleared locally (on-chain failed: ' + (err.message||'unknown') + ')', '');
   }
 }
 
@@ -4739,12 +4820,51 @@ async function guardianWithdrawAll(ownerAddress) {
       const _summary = guardianWithdrawLog.length > 0 ? guardianWithdrawLog.join(' + ') : successCount + ' asset' + (successCount>1?'s':'');
       addActivityRow('Guardian Withdrawal · by ' + _gShort, _lastSig.slice(0,4)+'...'+_lastSig.slice(-4), 'angel');
       showNotif('Guardian withdrew ' + successCount + ' asset' + (successCount > 1 ? 's' : '') + '!', 'green');
-      // Reload ghost account from chain — reflects cleared beneficiaries after withdrawal
+      // Reload ghost account from chain
       try { await fetchGhostAccount(); } catch(_) {}
-      // Persist fingerprints so stale slots don't reappear on refresh
-      const _staleBenes = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
-      if (_staleBenes.length > 0) _saveClearedBeneficiaries(_staleBenes);
-      // Force-wipe local non-whole-vault beneficiaries — vault is now empty
+
+      // v1.4: fire guardian_clear_all_beneficiaries on-chain to remove stale slots
+      const _guardianBenes = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+      if (_guardianBenes.length > 0 && ghostState.provider) {
+        try {
+          showNotif('Clearing beneficiary slots on-chain...', '');
+          const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+          const _gwConn = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+          const _gwWallet = new PublicKey(ghostState.publicKey);
+          // owner pubkey is in the ghost account we loaded
+          const _gwOwnerStr = ghostState.ghost.ownerPubkey || ghostState.ghost.owner;
+          if (_gwOwnerStr) {
+            const _gwOwner = new PublicKey(_gwOwnerStr);
+            const [_gwGhostPda] = await PublicKey.findProgramAddress(
+              [new TextEncoder().encode('ghost'), _gwOwner.toBytes()], new PublicKey(PROGRAM_ID)
+            );
+            const { blockhash: _gwBh } = await _gwConn.getLatestBlockhash();
+            const _gwTx = new Transaction({ recentBlockhash: _gwBh, feePayer: _gwWallet });
+            _gwTx.add(new TransactionInstruction({
+              programId: new PublicKey(PROGRAM_ID),
+              keys: [
+                { pubkey: _gwGhostPda, isSigner:false, isWritable:true },
+                { pubkey: _gwOwner,    isSigner:false, isWritable:false }, // owner UncheckedAccount
+                { pubkey: _gwWallet,   isSigner:true,  isWritable:true },  // recovery_wallet signer
+              ],
+              data: new Uint8Array(DISC_GUARDIAN_CLEAR_ALL)
+            }));
+            const _gwSigned = await ghostState.provider.signTransaction(_gwTx);
+            const _gwSig = await _gwConn.sendRawTransaction(_gwSigned.serialize(), { skipPreflight: true });
+            await _gwConn.confirmTransaction(_gwSig, 'confirmed');
+            addActivityRow('🗑️ Guardian cleared all beneficiaries', _gwSig.slice(0,4)+'...'+_gwSig.slice(-4), 'angel');
+            showNotif('Beneficiaries cleared on-chain!', 'green');
+          }
+        } catch(_clearErr) {
+          console.warn('[Ghost] guardian_clear_all_beneficiaries failed (non-fatal):', _clearErr.message);
+          // Fall back to local fingerprint wipe
+          _saveClearedBeneficiaries(_guardianBenes);
+        }
+      } else if (_guardianBenes.length > 0) {
+        _saveClearedBeneficiaries(_guardianBenes);
+      }
+
+      // Wipe local beneficiaries regardless
       ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
       _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
       await scanGuardianAssignments();
