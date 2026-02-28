@@ -1890,8 +1890,8 @@ async function connectWallet(name) {
   }
   try {
     showNotif('Connecting to ' + name + '...', '');
-    // Always fully disconnect first so the wallet demands a fresh signature
-    try { await provider.disconnect(); } catch(e) {}
+    // If already connected to this provider, disconnect first to force re-auth
+    if (provider.isConnected) { try { await provider.disconnect(); } catch(e) {} }
     // onlyIfTrusted: false → always shows the approve popup
     const resp = await provider.connect({ onlyIfTrusted: false });
     const pubkey = resp.publicKey.toString();
@@ -2756,8 +2756,6 @@ async function initializeGhost() {
 }
 function openDashboard() {
   if (!ghostState.connected) { openModal(); return; }
-  // Real wallet with no provider = session restored but not re-authenticated yet
-  if (!ghostState.walletName?.includes('demo') && !ghostState.provider) { openModal(); return; }
   document.getElementById('dashboardPanel').classList.add('open');
   document.body.style.overflow = 'hidden';
   updateDashboardUI(); // handles none vs alive routing
@@ -2825,19 +2823,43 @@ document.addEventListener('DOMContentLoaded', () => {
   const btn = document.getElementById('walletBtn');
   document.getElementById('navDashboardLink')?.classList.add('visible');
   document.getElementById('navDisconnectBtn').style.display = 'inline-block';
-  if (!isDemo) {
-    // Real wallet: provider is gone after refresh — require re-auth before dashboard access
-    if (btn) { btn.textContent = '● ' + ghostState.walletAddress + ' — reconnect'; btn.classList.add('connected'); btn.onclick = openModal; }
-    const panelAddr = document.getElementById('panelWalletAddr');
-    if (panelAddr) panelAddr.textContent = ghostState.walletAddress;
-    return; // don't open dashboard — wait for wallet sign
-  }
-  // Demo: restore silently
-  if (btn) { btn.textContent = '● ' + ghostState.walletAddress + ' [demo]'; btn.classList.add('connected'); btn.onclick = openDashboard; }
+  // Restore UI immediately regardless of wallet type
   const panelAddr = document.getElementById('panelWalletAddr');
-  if (panelAddr) panelAddr.textContent = ghostState.walletAddress + ' (demo)';
+  if (btn) {
+    btn.textContent = '● ' + ghostState.walletAddress + (isDemo ? ' [demo]' : '');
+    btn.classList.add('connected');
+    btn.onclick = openDashboard;
+  }
+  if (panelAddr) panelAddr.textContent = ghostState.walletAddress + (isDemo ? ' (demo)' : '');
+
   setTimeout(async () => {
+    // Re-derive PDAs if missing
     if (!ghostState.ghostPda && ghostState.publicKey) { try { await deriveAndSetPDAs(ghostState.publicKey); } catch(e) {} }
+
+    if (!isDemo) {
+      // Try to silently re-attach provider (onlyIfTrusted:true = no popup if already approved)
+      const walletName = ghostState.walletName;
+      let provider = null;
+      if (walletName === 'Phantom') provider = window.phantom?.solana || window.solana;
+      else if (walletName === 'Solflare') provider = window.solflare;
+      else if (walletName === 'Backpack') provider = window.backpack?.solana;
+      if (!provider) provider = window.phantom?.solana || window.solflare || window.solana;
+      if (provider) {
+        try {
+          const resp = await provider.connect({ onlyIfTrusted: true });
+          ghostState.provider = provider;
+          // Attach account change listener
+          const _onAccountChange = () => { showNotif('👻 Wallet account changed — please reconnect.', ''); disconnectWallet(); };
+          try { provider.off?.('accountChanged', _onAccountChange); provider.on?.('accountChanged', _onAccountChange); } catch(e) {}
+        } catch(e) {
+          // User hasn't approved yet or extension not available — they'll need to click connect
+          ghostState.provider = null;
+        }
+      }
+      // Fetch fresh ghost state from chain
+      if (ghostState.ghostPda) { try { await fetchGhostAccount(); } catch(e) {} }
+    }
+
     openDashboard();
     if (ghostState.ghost.status !== 'none' && lastPage !== 'init') dbShowPage(lastPage, document.getElementById('nav-' + lastPage));
     loadWalletTokens();
@@ -2990,6 +3012,7 @@ async function sendPing() {
     addActivityRow('💓 Heartbeat sent', shortSig);
     addPingToHistory(shortSig);
     updateCountdown();
+    saveSession();
     showNotif('💓 Heartbeat confirmed! TX: ' + shortSig, 'green');
   } catch (err) {
     console.error('Ping error:', err);
@@ -5013,20 +5036,17 @@ async function dbWithdrawAll() {
       const amountRaw = BigInt(Math.round(amount * 1e9));
       const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
       const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+      // Combine wSOL account creation + withdraw + unwrap into ONE tx (1 sign total)
       const wsolKp = Keypair.generate(); const wsolAcct = wsolKp.publicKey;
       const space = 165; const rent = await connection.getMinimumBalanceForRentExemption(space);
-      const { blockhash: initBh } = await connection.getLatestBlockhash();
-      const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
-      initTx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
-      const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
-      initTx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK, keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }], data: initData }));
-      showNotif('Sign to create wSOL account...', '');
-      const initSigned = await ghostState.provider.signTransaction(initTx); initSigned.partialSign(wsolKp);
-      const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: true });
-      const initConf = await connection.confirmTransaction(initSig, 'confirmed');
-      if (initConf.value?.err) throw new Error('wSOL init failed: ' + JSON.stringify(initConf.value.err));
       const { blockhash } = await connection.getLatestBlockhash();
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+      // 1. Create wSOL account
+      tx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
+      // 2. InitializeAccount3 (no rent-sysvar needed)
+      const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
+      tx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK, keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }], data: initData }));
+      // 3. Withdraw from vault
       tx.add(new TransactionInstruction({ programId, keys: [
         { pubkey: ghostPda,     isSigner: false, isWritable: false },
         { pubkey: vaultPda,     isSigner: false, isWritable: false },
@@ -5036,9 +5056,11 @@ async function dbWithdrawAll() {
         { pubkey: vaultAta,     isSigner: false, isWritable: true  },
         { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
       ], data }));
+      // 4. Unwrap wSOL → native SOL
       tx.add(buildUnwrapIx(walletPk, wsolAcct));
       showNotif('Sign to withdraw SOL...', '');
       const signed = await ghostState.provider.signTransaction(tx);
+      signed.partialSign(wsolKp);
       let sig;
       try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
       catch(simErr) {
@@ -5591,33 +5613,25 @@ async function dbWithdrawAsset(vaultIdx) {
       const space = 165;
       const rent = await connection.getMinimumBalanceForRentExemption(space);
 
-      // Phase 1: create + init wSOL account (separate tx, needs keypair co-sig)
-      const { blockhash: initBh } = await connection.getLatestBlockhash();
-      const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
-      initTx.add(SystemProgram.createAccount({
+      // Combine create + init + withdraw + unwrap into ONE tx (1 sign total)
+      const { blockhash } = await connection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+      // 1. Create wSOL account
+      tx.add(SystemProgram.createAccount({
         fromPubkey: walletPk, newAccountPubkey: wsolAcct,
         lamports: rent, space, programId: TOKEN_PROG_PK
       }));
+      // 2. InitializeAccount3
       const initData = new Uint8Array(33);
-      initData[0] = 18; // InitializeAccount3
-      initData.set(walletPk.toBytes(), 1); // owner = wallet
-      initTx.add(new TransactionInstruction({
+      initData[0] = 18;
+      initData.set(walletPk.toBytes(), 1);
+      tx.add(new TransactionInstruction({
         programId: TOKEN_PROG_PK,
         keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true },
                { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }],
         data: initData
       }));
-      showNotif('Creating wSOL receive account...', '');
-      const initSigned = await ghostState.provider.signTransaction(initTx);
-      initSigned.partialSign(wsolKp);
-      const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: true });
-      const initConf = await connection.confirmTransaction(initSig, 'confirmed');
-      if (initConf.value?.err) throw new Error('wSOL init failed: ' + JSON.stringify(initConf.value.err));
-      console.log('[Ghost] wSOL receive account created:', wsolAcct.toBase58());
-
-      // Phase 2: withdraw_from_vault into wSOL account + close (unwrap) in one tx
-      const { blockhash } = await connection.getLatestBlockhash();
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+      // 3. Withdraw from vault
       tx.add(new TransactionInstruction({ programId,
         keys: [
           { pubkey: ghostPda,    isSigner: false, isWritable: false },
@@ -5628,12 +5642,14 @@ async function dbWithdrawAsset(vaultIdx) {
           { pubkey: vaultAta,    isSigner: false, isWritable: true  },
           { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
         ], data }));
-      tx.add(buildUnwrapIx(walletPk, wsolAcct)); // close → lamports → wallet
+      // 4. Unwrap → native SOL
+      tx.add(buildUnwrapIx(walletPk, wsolAcct));
       tx.instructions.forEach((ix, i) =>
         console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
       );
       showNotif('Withdrawing SOL...', '');
       const signed = await ghostState.provider.signTransaction(tx);
+      signed.partialSign(wsolKp); // keypair co-signs the createAccount ix
       let sig;
       try {
         sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
