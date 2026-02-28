@@ -3291,15 +3291,17 @@ function renderActivityLog() {
     return;
   }
   const _angelSvg = '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;vertical-align:middle;margin-right:5px;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 4px rgba(200,180,255,0.95)) drop-shadow(0 0 8px rgba(160,120,255,0.6))"><ellipse cx="12" cy="4" rx="5" ry="1.5" fill="none" stroke="#e8dcff" stroke-width="1.2"/><circle cx="12" cy="8.5" r="3.2" fill="#cdbfff"/><path d="M4.5 11.5 Q1.5 9 2.5 6 Q4 3.5 7 5 Q9 6.2 8.5 9.5" fill="#ddd0ff" opacity="0.8"/><path d="M19.5 11.5 Q22.5 9 21.5 6 Q20 3.5 17 5 Q15 6.2 15.5 9.5" fill="#ddd0ff" opacity="0.8"/><path d="M7.5 13.5 Q4 16 5 19.5 Q6.5 22 9.5 20 Q11 19 12 17" fill="#c8b8ff" opacity="0.75"/><path d="M16.5 13.5 Q20 16 19 19.5 Q17.5 22 14.5 20 Q13 19 12 17" fill="#c8b8ff" opacity="0.75"/><ellipse cx="12" cy="14.5" rx="2.8" ry="4" fill="#b8a4ff" opacity="0.85"/></svg></span>';
+  const _chestSvg = '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;vertical-align:middle;margin-right:5px;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 4px rgba(255,200,60,0.7)) drop-shadow(0 0 8px rgba(255,160,0,0.4))"><rect x="3" y="16" width="30" height="17" rx="2" fill="#7c4d00" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="8" rx="2" fill="#a06000" stroke="#f0a020" stroke-width="1.2"/><rect x="2" y="8" width="32" height="11" rx="3" fill="#c07800" stroke="#f0b030" stroke-width="1.2"/><rect x="13" y="19" width="10" height="7" rx="1.5" fill="#f0a020" stroke="#ffd060" stroke-width="0.8"/><circle cx="18" cy="22.5" r="2" fill="#ffd060" stroke="#fff8d0" stroke-width="0.5"/></svg></span>';
   log.innerHTML = ghostState.activityLog.map(entry => {
     const d = new Date(entry.ts);
     const timeStr = d.toLocaleDateString('en-GB', {day:'numeric',month:'short'}) + ' ' + d.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
     const fullSig = entry.tx||'';
     const short = fullSig.length>12 ? fullSig.slice(0,4)+'...'+fullSig.slice(-4) : fullSig;
     const cpBtn = fullSig ? '<button onclick="copyAddr(\'' + fullSig + '\')" title="Copy tx signature" style="background:none;border:1px solid rgba(102,51,255,0.25);color:#8888bb;font-size:10px;padding:1px 5px;cursor:pointer;margin-left:4px;font-family:\'Share Tech Mono\',monospace;vertical-align:middle;line-height:1.4">\u29C9</button>' : '';
-    const iconHtml = entry.icon === 'angel' ? _angelSvg : '';
-    const rowBg = entry.icon === 'angel' ? ' style="background:rgba(160,120,255,0.05)"' : '';
-    const tdStyle = entry.icon === 'angel' ? ' style="display:flex;align-items:center;border-left:2px solid rgba(160,120,255,0.3);padding-left:10px"' : '';
+    let iconHtml = entry.icon === 'angel' ? _angelSvg : '';
+    if (!iconHtml && entry.msg && /vault|Vault|Deposited|Withdrew|recipient set/i.test(entry.msg)) iconHtml = _chestSvg;
+    const rowBg = '';
+    const tdStyle = iconHtml ? ' style="display:flex;align-items:center"' : '';
     return '<tr' + rowBg + '><td' + tdStyle + '>' + iconHtml + entry.msg + '</td><td style="white-space:nowrap;color:#9090b8">' + timeStr + '</td><td style="white-space:nowrap"><span class="addr-short">' + short + '</span>' + cpBtn + '</td></tr>';
   }).join('');
 }
