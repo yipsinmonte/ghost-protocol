@@ -4955,47 +4955,59 @@ async function dbDeposit() {
     const mintPk     = new PublicKey(mintStr);
 
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const WSOL_MINT_PK = new PublicKey('So11111111111111111111111111111111111111112');
 
-    // Detect token program from mint owner
-    const mintInfo = await connection.getAccountInfo(mintPk);
-    const mintOwnerStr = mintInfo?.owner?.toBase58() || TOKEN_PROGRAM_STR;
-    const tokenProgPk = new PublicKey(mintOwnerStr);
+    // For SOL: work with wSOL mint + classic token program
+    const depositMintPk   = isSOL ? WSOL_MINT_PK : mintPk;
+    const depositMintStr  = isSOL ? 'So11111111111111111111111111111111111111112' : mintStr;
+    const tokenProgPk     = isSOL
+      ? new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+      : new PublicKey((await connection.getAccountInfo(mintPk))?.owner?.toBase58() || TOKEN_PROGRAM_STR);
 
-    const ownerAta = mintStr === TOKEN_PROGRAM_STR
-      ? await findATA(walletPk, mintPk)
-      : (await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk })).value[0]?.pubkey || await findATA(walletPk, mintPk);
-    // For $GHOST token, vault is the PDA stake vault; for others use vaultPda ATA
+    // Owner source token account
+    const ownerAta = isSOL
+      ? await findATA(walletPk, WSOL_MINT_PK)  // wSOL ATA (will be created + funded in wrap step)
+      : depositMintStr === TOKEN_PROGRAM_STR
+        ? await findATA(walletPk, depositMintPk)
+        : (await connection.getTokenAccountsByOwner(walletPk, { mint: depositMintPk })).value[0]?.pubkey
+          || await findATA(walletPk, depositMintPk);
+
+    // Vault destination token account
     const ghostMintStr = ghostState.ghost?.mint || GHOST_MINT;
-    const vaultAta = (mintStr === ghostMintStr)
+    const vaultAta = (depositMintStr === ghostMintStr)
       ? await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode('stake_vault'), new PublicKey(ghostState.publicKey).toBytes()],
+          [new TextEncoder().encode('stake_vault'), walletPk.toBytes()],
           new PublicKey(PROGRAM_ID)
         ).then(([pk]) => pk)
-      : await findATAWithProg(vaultPda, mintPk, tokenProgPk);
+      : await findATAWithProg(vaultPda, depositMintPk, tokenProgPk);
+
+    console.log('[Ghost] deposit mint:', depositMintPk.toBase58(), 'tokenProg:', tokenProgPk.toBase58());
+    console.log('[Ghost] ownerAta:', ownerAta.toBase58(), 'vaultAta:', vaultAta.toBase58());
 
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
-    // For SOL: wrap to wSOL first
+    // Always create vault token account if it doesn't exist
+    const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
+    console.log('[Ghost] vaultAta:', vaultAta.toBase58(), 'exists:', !!vaultAtaInfo);
+    if (!vaultAtaInfo) {
+      console.log('[Ghost] Creating vault ATA for mint:', depositMintPk.toBase58(), 'owner:', vaultPda.toBase58(), 'tokenProg:', tokenProgPk.toBase58());
+      tx.add(buildCreateATAIx(walletPk, vaultAta, vaultPda, depositMintPk, tokenProgPk));
+    }
+
+    // For SOL: wrap to wSOL — create owner wSOL ATA + fund it
     let effectiveOwnerAta = ownerAta;
     if (isSOL) {
       const lamports = Math.round(amount * 1e9);
       const { instructions: wrapIxs, wsolAta } = await buildWrapSOLInstructions(walletPk, lamports);
       wrapIxs.forEach(ix => tx.add(ix));
       effectiveOwnerAta = wsolAta;
-    }
-
-    // Create vault token account if it doesn't exist (for non-GHOST tokens)
-    const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
-    if (!vaultAtaInfo) {
-      // Create vault ATA using idempotent ATA instruction
-      const createVaultAtaIx = buildCreateATAIx(walletPk, vaultAta, vaultPda, mintPk, tokenProgPk);
-      tx.add(createVaultAtaIx);
+      console.log('[Ghost] SOL wrap ATA:', wsolAta.toBase58(), 'vault wSOL ATA:', vaultAta.toBase58());
     }
 
     // deposit_to_vault discriminator: sha256("global:deposit_to_vault")[0:8]
     const disc = [18, 62, 110, 8, 26, 106, 248, 151];
-    const amountRaw = BigInt(Math.round(amount * Math.pow(10, t.decimals)));
+    const amountRaw = BigInt(Math.round(amount * Math.pow(10, isSOL ? 9 : t.decimals)));
     const buf = new ArrayBuffer(8);
     new DataView(buf).setBigUint64(0, amountRaw, true);
     const data = new Uint8Array(16);
@@ -5003,12 +5015,12 @@ async function dbDeposit() {
 
     tx.add(new TransactionInstruction({ programId,
       keys: [
-        { pubkey: ghostPda,         isSigner: false, isWritable: false },
-        { pubkey: walletPk,         isSigner: true,  isWritable: true  },
-        { pubkey: mintPk,           isSigner: false, isWritable: false },
-        { pubkey: effectiveOwnerAta,isSigner: false, isWritable: true  },
-        { pubkey: vaultAta,         isSigner: false, isWritable: true  },
-        { pubkey: tokenProgPk,      isSigner: false, isWritable: false },
+        { pubkey: ghostPda,          isSigner: false, isWritable: false },
+        { pubkey: walletPk,          isSigner: true,  isWritable: true  },
+        { pubkey: depositMintPk,     isSigner: false, isWritable: false },
+        { pubkey: effectiveOwnerAta, isSigner: false, isWritable: true  },
+        { pubkey: vaultAta,          isSigner: false, isWritable: true  },
+        { pubkey: tokenProgPk,       isSigner: false, isWritable: false },
       ], data }));
 
     const signed = await ghostState.provider.signTransaction(tx);
