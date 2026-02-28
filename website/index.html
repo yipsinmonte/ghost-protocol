@@ -3972,36 +3972,36 @@ function createATAInstruction(payer, ata, owner, mint, tokenProgram) {
   return new solanaWeb3.TransactionInstruction({
     programId: ASSOC_TOKEN_PROGRAM_ID_PK(),
     keys,
-    data: new Uint8Array([1]) // idempotent create
+    data: new Uint8Array(0) // standard create (empty buffer) — idempotent [1] fails on some nodes
   });
 }
 
 // Wrap native SOL into wSOL ATA
-// Returns array of instructions to prepend to your transaction
-async function buildWrapSOLInstructions(walletPubkey, lamports) {
+// Returns { instructions, wsolAta } — no extra keypair needed
+async function buildWrapSOLInstructions(walletPubkey, lamports, connection) {
   const mintPk = new solanaWeb3.PublicKey(WSOL_MINT);
   const wsolAta = await deriveATA(walletPubkey, mintPk);
   const instructions = [];
 
-  // 1. Idempotent create-ATA (no-op if already exists)
-  instructions.push(createATAInstruction(walletPubkey, wsolAta, walletPubkey, mintPk, TOKEN_PROGRAM_ID_PK()));
+  // Create wSOL ATA if it doesn't exist (standard create, empty data buffer)
+  const existing = connection ? await connection.getAccountInfo(wsolAta) : null;
+  if (!existing) {
+    instructions.push(createATAInstruction(walletPubkey, wsolAta, walletPubkey, mintPk, TOKEN_PROGRAM_ID_PK()));
+  }
 
-  // 2. Transfer native SOL into the wSOL ATA
+  // Transfer native SOL into the wSOL ATA
   instructions.push(solanaWeb3.SystemProgram.transfer({
-    fromPubkey: walletPubkey,
-    toPubkey: wsolAta,
-    lamports: Number(lamports),
+    fromPubkey: walletPubkey, toPubkey: wsolAta, lamports: Number(lamports),
   }));
 
-  // 3. SyncNative — tells the token program the lamports are now the balance
-  // SyncNative discriminator = [17] (single byte instruction for Token Program)
+  // SyncNative — tell token program the lamports are now the balance
   instructions.push(new solanaWeb3.TransactionInstruction({
     programId: TOKEN_PROGRAM_ID_PK(),
     keys: [{ pubkey: wsolAta, isSigner: false, isWritable: true }],
     data: new Uint8Array([17]) // SyncNative opcode
   }));
 
-  return { instructions, wsolAta };
+  return { instructions, wsolAta, kp: null };
 }
 
 // Unwrap wSOL ATA back to native SOL by closing the account
@@ -4897,7 +4897,7 @@ function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk, tokenProgId) {
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: tokenProg,               isSigner: false, isWritable: false },
     ],
-    data: new Uint8Array([1]) // idempotent create
+    data: new Uint8Array(0) // standard create (empty buffer)
   });
 }
 
@@ -5110,7 +5110,7 @@ async function dbDeposit() {
     let effectiveOwnerAta = ownerAta;
     if (isSOL) {
       const lamports = Math.round(amount * 1e9);
-      const { instructions: wrapIxs, wsolAta } = await buildWrapSOLInstructions(walletPk, lamports);
+      const { instructions: wrapIxs, wsolAta } = await buildWrapSOLInstructions(walletPk, lamports, connection);
       showNotif('Wrapping SOL...', '');
       const { blockhash: wrapBh } = await connection.getLatestBlockhash();
       const wrapTx = new Transaction({ recentBlockhash: wrapBh, feePayer: walletPk });
