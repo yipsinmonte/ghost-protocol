@@ -1895,17 +1895,14 @@ async function connectWallet(name) {
     // Force fresh connection — disconnect first, then reconnect
     try { await provider.disconnect(); } catch(e) {}
     await new Promise(r => setTimeout(r, 300));
-    // Connect to get the public key
     const resp = await provider.connect({ onlyIfTrusted: false });
-    // Force wallet approval popup by requesting a sign (user must manually approve)
-    // This prevents silent auto-connect on cached sessions
+    // Force wallet sign popup — prevents silent auto-connect on cached trusted sessions
     try {
-      const msg = new TextEncoder().encode('Sign to authenticate with GHOST Protocol\n' + new Date().toISOString());
+      const msg = new TextEncoder().encode('Authenticate with GHOST Protocol\n' + new Date().toISOString());
       await provider.signMessage(msg, 'utf8');
     } catch(signErr) {
-      // User rejected sign = treat as cancelled connection
       try { await provider.disconnect(); } catch(e) {}
-      throw new Error('Authentication cancelled — please sign the message to connect.');
+      throw new Error('Sign cancelled — please approve the authentication message to connect.');
     }
     const pubkey = resp.publicKey.toString();
     ghostState.connected = true;
@@ -2370,9 +2367,9 @@ const GHOST_DISC_LABELS = {
 function b58ToDiscHex(s) {
   const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   let leading = 0;
-  for (const c of s) { if (c === '1') leading++; else break; }
+  for (const ch of s) { if (ch === '1') leading++; else break; }
   let num = 0n;
-  for (const ch of s.slice(leading)) { const i = B58.indexOf(ch); if(i<0) break; num = num*58n+BigInt(i); }
+  for (const ch of s.slice(leading)) { const i = B58.indexOf(ch); if (i < 0) break; num = num * 58n + BigInt(i); }
   const bytes = [];
   while (num > 0n) { bytes.unshift(Number(num & 0xffn)); num >>= 8n; }
   const full = [...new Array(leading).fill(0), ...bytes];
@@ -2383,53 +2380,51 @@ function b58ToDiscHex(s) {
 async function fetchOnChainHistory() {
   if (!ghostState.ghostPda) return;
   try {
-    // Collect signatures from BOTH ghost PDA and vault PDA (deposits/withdraws appear on vault)
+    // Collect sigs from BOTH ghost PDA and vault PDA
     const addresses = [ghostState.ghostPda];
     if (ghostState.vaultPda) addresses.push(ghostState.vaultPda);
 
-    const allSigResults = await Promise.all(addresses.map(addr =>
+    const sigResults = await Promise.all(addresses.map(addr =>
       fetch(RPC_URL, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({jsonrpc:'2.0', id:'hist',
-          method:'getSignaturesForAddress',
-          params:[addr, {limit:50, commitment:'confirmed'}]})
-      }).then(r=>r.json()).catch(()=>({result:[]}))
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'hist',
+          method: 'getSignaturesForAddress',
+          params: [addr, { limit: 50, commitment: 'confirmed' }] })
+      }).then(r => r.json()).catch(() => ({ result: [] }))
     ));
 
-    // Deduplicate and sort newest-first
+    // Deduplicate + sort newest-first
     const sigMap = new Map();
-    for (const res of allSigResults) {
-      for (const s of (res.result || [])) {
+    for (const res of sigResults)
+      for (const s of (res.result || []))
         if (!s.err && !sigMap.has(s.signature)) sigMap.set(s.signature, s);
-      }
-    }
-    const allSigs = [...sigMap.values()].sort((a,b) => (b.blockTime||0) - (a.blockTime||0));
+
+    const allSigs = [...sigMap.values()].sort((a, b) => (b.blockTime || 0) - (a.blockTime || 0));
     if (allSigs.length === 0) return;
 
-    // Fetch up to 40 parsed transactions via Helius getParsedTransactions (batch)
+    // Batch-fetch parsed transactions (Helius supports getParsedTransactions)
     const sigs40 = allSigs.slice(0, 40).map(s => s.signature);
     let txList = [];
     try {
-      const batchRes = await fetch(RPC_URL, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          jsonrpc:'2.0', id:'batch',
-          method:'getParsedTransactions',
-          params:[sigs40, {maxSupportedTransactionVersion:0, commitment:'confirmed'}]
-        })
+      const res = await fetch(RPC_URL, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'batch',
+          method: 'getParsedTransactions',
+          params: [sigs40, { maxSupportedTransactionVersion: 0, commitment: 'confirmed' }] })
       });
-      const batchData = await batchRes.json();
-      txList = Array.isArray(batchData.result) ? batchData.result : [];
-    } catch(e) { console.warn('[Ghost] batch fetch failed:', e); }
+      const d = await res.json();
+      txList = Array.isArray(d.result) ? d.result : [];
+    } catch(e) { console.warn('[Ghost] batch fetch error:', e); }
 
-    // Fall back to individual getTransaction calls if batch returned nothing
+    // Fall back to individual calls if batch returned nothing
     if (txList.filter(Boolean).length === 0) {
-      for (const sig of sigs40.slice(0,20)) {
+      for (const sig of sigs40.slice(0, 20)) {
         try {
           const r = await fetch(RPC_URL, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({jsonrpc:'2.0', id:'tx', method:'getTransaction',
-              params:[sig, {encoding:'jsonParsed', maxSupportedTransactionVersion:0}]})
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ jsonrpc: '2.0', id: 'tx',
+              method: 'getTransaction',
+              params: [sig, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }] })
           });
           const d = await r.json();
           txList.push(d.result || null);
@@ -2437,55 +2432,84 @@ async function fetchOnChainHistory() {
       }
     }
 
-    // Helper: scan all ixs (top-level + inner) for our program's discriminator
-    function extractLabel(tx) {
+    // Extract label + token detail from a parsed tx
+    function labelFromTx(tx) {
       if (!tx) return null;
       const top = tx.transaction?.message?.instructions || [];
       const inner = (tx.meta?.innerInstructions || []).flatMap(g => g.instructions || []);
+      let baseLabel = null;
+      let isDeposit = false, isWithdraw = false;
+
       for (const ix of [...top, ...inner]) {
         if (ix.programId === PROGRAM_ID && ix.data) {
           try {
             const hex = b58ToDiscHex(ix.data);
-            if (GHOST_DISC_LABELS[hex]) return GHOST_DISC_LABELS[hex];
+            if (GHOST_DISC_LABELS[hex]) {
+              baseLabel = GHOST_DISC_LABELS[hex];
+              isDeposit  = hex === '123e6e081a6af897';
+              isWithdraw = hex === 'b422252e9c00d3ee';
+              break;
+            }
           } catch(e) {}
         }
       }
-      return null;
+
+      if (!baseLabel) return null;
+
+      // For deposits/withdraws, try to read the token transfer from inner SPL instructions
+      if (isDeposit || isWithdraw) {
+        for (const ix of inner) {
+          const parsed = ix.parsed;
+          // Look for spl-token transfer or transferChecked
+          if (parsed && (parsed.type === 'transfer' || parsed.type === 'transferChecked')) {
+            const info = parsed.info || {};
+            const amt  = info.tokenAmount?.uiAmountString || info.amount;
+            const mintAddr = info.mint || info.tokenAmount?.mint || '';
+            // Try to resolve symbol from known vault/wallet tokens
+            const known = [...(ghostState.vaultTokens || []), ...(ghostState.walletTokens || [])]
+              .find(t => t.mint === mintAddr);
+            const sym = known?.symbol
+              || (mintAddr === WSOL_MINT_PK_STR ? 'SOL' : mintAddr ? mintAddr.slice(0,6) : '');
+            if (amt && sym) {
+              const numAmt = parseFloat(amt);
+              const fmtAmt = numAmt >= 1000
+                ? numAmt.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                : numAmt.toPrecision(4).replace(/\.?0+$/, '');
+              return (isDeposit ? '📥 Deposited ' : '📤 Withdrew ') + fmtAmt + ' ' + sym;
+            }
+          }
+        }
+        // Fallback: no transfer detail found
+        return baseLabel;
+      }
+
+      return baseLabel;
     }
 
-    // Build activity list (newest-first) and ping list (chronological → reversed for display)
     const builtActivity = [];
     const rawPings = [];
 
     for (let i = 0; i < txList.length; i++) {
-      const tx = txList[i];
-      const s = allSigs[i];
+      const tx  = txList[i];
+      const s   = allSigs[i];
       if (!s) continue;
-      const ts = ((tx?.blockTime || s.blockTime) || 0) * 1000;
+      const ts  = ((tx?.blockTime || s.blockTime) || 0) * 1000;
       if (!ts) continue;
-      const shortSig = s.signature.slice(0,4) + '...' + s.signature.slice(-4);
-      const label = extractLabel(tx) || '📋 On-chain action';
+      const shortSig = s.signature.slice(0, 4) + '...' + s.signature.slice(-4);
+      const label    = labelFromTx(tx) || '📋 On-chain action';
       builtActivity.push({ msg: label, tx: shortSig, ts });
       if (label === '💓 Heartbeat sent') rawPings.push({ ts, shortSig });
     }
 
-    // Build ping history in chronological order with gap tracking
-    const chronoPings = rawPings.sort((a,b) => a.ts - b.ts);
-    const builtPings = chronoPings.map((p, i) => {
-      const prev = chronoPings[i-1];
-      const gap = prev ? formatDuration(p.ts - prev.ts) : '—';
-      return { num: i+1, ts: p.ts, tx: p.shortSig, gap };
+    const chronoPings = rawPings.sort((a, b) => a.ts - b.ts);
+    const builtPings  = chronoPings.map((p, i) => {
+      const prev = chronoPings[i - 1];
+      return { num: i + 1, ts: p.ts, tx: p.shortSig, gap: prev ? formatDuration(p.ts - prev.ts) : '—' };
     });
 
-    if (builtActivity.length > 0) {
-      ghostState.activityLog = builtActivity;       // already newest-first
-      renderActivityLog();
-    }
-    if (builtPings.length > 0) {
-      ghostState.pingHistory = [...builtPings].reverse(); // newest-first for display
-      renderPingHistory();
-    }
-    console.log(`[Ghost] History loaded: ${builtActivity.length} txs, ${builtPings.length} pings`);
+    if (builtActivity.length > 0) { ghostState.activityLog = builtActivity; renderActivityLog(); }
+    if (builtPings.length  > 0) { ghostState.pingHistory = [...builtPings].reverse(); renderPingHistory(); }
+    console.log(`[Ghost] History: ${builtActivity.length} txs, ${builtPings.length} pings`);
   } catch(e) {
     console.warn('[Ghost] fetchOnChainHistory error:', e);
   }
@@ -2560,9 +2584,9 @@ function parseGhostAccount(bytes) {
 
     ghostState.ghost.intervalSeconds = interval;
     ghostState.ghost.gracePeriodSeconds = grace;
-    // Keep the fresher value — session may have a ping not yet on-chain or just confirmed
+    // Use chain value as authoritative; fall back to session only if chain returns 0
     const chainHeartbeatMs = lastBeat * 1000;
-    ghostState.ghost.lastHeartbeat = Math.max(ghostState.ghost.lastHeartbeat || 0, chainHeartbeatMs) || chainHeartbeatMs;
+    ghostState.ghost.lastHeartbeat = chainHeartbeatMs || ghostState.ghost.lastHeartbeat || 0;
     if (recoveryWalletPubkey) ghostState.ghost.recoveryWallet = recoveryWalletPubkey;
     ghostState.ghost.awakened = awakened;
     ghostState.ghost.awakenedAt = awakenedAt ? awakenedAt * 1000 : null;
@@ -3105,7 +3129,7 @@ function updateCountdown() {
   }
 }
 
-setInterval(updateCountdown, 10000); // tick every 10s for accurate display
+setInterval(updateCountdown, 30000);
 
 // ─── Ping ──────────────────────────────────────────────────────
 async function sendPing() {
@@ -3990,7 +4014,7 @@ async function scanGuardianAssignments() {
                 ? `<button class="db-btn" style="flex:1;border-color:#ffaa33;color:#ffaa33;padding:10px" onclick="guardianCancelAwakening('${ownerB58}')">🛑 Cancel Awakening</button>`
                 : `<button class="db-btn" style="flex:1;border-color:#555;color:#666;padding:10px;cursor:not-allowed;opacity:0.4" disabled title="Ghost is not in grace period">🛑 Cancel Awakening</button>`
               }
-              <button class="db-btn" style="flex:1;border-color:#c0a0ff;color:#c0a0ff;padding:10px" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>
+              <button class="db-btn" style="flex:1;background:rgba(192,160,255,0.12);border-color:#c0a0ff;color:#e8d8ff;padding:10px;font-weight:600" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>
             </div>` : `
             <div style="padding-top:12px;border-top:1px solid rgba(255,51,102,0.15);font-family:'Share Tech Mono',monospace;font-size:11px;color:#ff3366;letter-spacing:0.1em">⚠ EXECUTED — ghost protocol has run</div>`}
           </div>`);
@@ -4017,102 +4041,101 @@ async function guardianWithdrawAll(ownerAddress) {
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     showNotif('⚠️ Connect your real wallet to use guardian withdraw', 'error'); return;
   }
-  showNotif('Fetching vault assets...', '');
+  showNotif('⟳ Fetching vault assets...', '');
   try {
-    const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = solanaWeb3;
-    const walletPk = new PublicKey(ghostState.publicKey);
-    const ownerPk = new PublicKey(ownerAddress);
+    const { PublicKey, Transaction, TransactionInstruction, Keypair, SystemProgram } = solanaWeb3;
+    const walletPk  = new PublicKey(ghostState.publicKey);
+    const ownerPk   = new PublicKey(ownerAddress);
     const programId = new PublicKey(PROGRAM_ID);
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const WSOL_MINT_PK  = new PublicKey(WSOL_MINT_PK_STR);
     const TOKEN_PROG_PK = new PublicKey(TOKEN_PROGRAM_STR);
-    const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
+    const disc = [180, 34, 37, 46, 156, 0, 211, 238]; // withdraw_from_vault
 
-    // Derive ghost + vault PDAs from the owner's key
+    // Derive PDAs from owner (not guardian)
     const [ghostPda] = await PublicKey.findProgramAddress(
       [new TextEncoder().encode('ghost'), ownerPk.toBytes()], programId);
     const [vaultPda] = await PublicKey.findProgramAddress(
       [new TextEncoder().encode('vault'), ownerPk.toBytes()], programId);
 
-    // Use jsonParsed encoding so we get clean mint + balance data
+    // Fetch vault token accounts via jsonParsed (clean data)
     const [vaultSpl, vaultSpl22] = await Promise.all([
-      fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({jsonrpc:'2.0',id:'gv1',method:'getTokenAccountsByOwner',
-          params:[vaultPda.toBase58(), {programId: TOKEN_PROGRAM_STR}, {encoding:'jsonParsed'}]})
-      }).then(r=>r.json()),
-      fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({jsonrpc:'2.0',id:'gv2',method:'getTokenAccountsByOwner',
-          params:[vaultPda.toBase58(), {programId: TOKEN_2022_STR}, {encoding:'jsonParsed'}]})
-      }).then(r=>r.json())
+      fetch(RPC_URL, { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'gv1', method: 'getTokenAccountsByOwner',
+          params: [vaultPda.toBase58(), { programId: TOKEN_PROGRAM_STR }, { encoding: 'jsonParsed' }] })
+      }).then(r => r.json()),
+      fetch(RPC_URL, { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'gv2', method: 'getTokenAccountsByOwner',
+          params: [vaultPda.toBase58(), { programId: TOKEN_2022_STR }, { encoding: 'jsonParsed' }] })
+      }).then(r => r.json())
     ]);
 
-    const allVaultAccts = [
+    const allAccts = [
       ...(vaultSpl.result?.value || []),
       ...(vaultSpl22.result?.value || [])
-    ];
+    ].filter(a => {
+      const bal = parseFloat(a.account.data.parsed?.info?.tokenAmount?.uiAmountString || 0);
+      return bal > 0;
+    });
 
-    if (allVaultAccts.length === 0) { showNotif('Vault is empty', 'error'); return; }
+    if (allAccts.length === 0) { showNotif('Vault is empty or no SPL tokens found', 'error'); return; }
 
-    const disc = [180, 34, 37, 46, 156, 0, 211, 238]; // withdraw_from_vault discriminator
+    // Separate SOL (wSOL) from regular SPL
+    const solAccts = allAccts.filter(a => a.account.data.parsed?.info?.mint === WSOL_MINT_PK_STR);
+    const splAccts = allAccts.filter(a => a.account.data.parsed?.info?.mint !== WSOL_MINT_PK_STR);
+
     let successCount = 0;
-    let skipCount = 0;
-    const total = allVaultAccts.length;
+    const totalAssets = allAccts.length;
 
-    for (const acct of allVaultAccts) {
+    // ── SPL tokens: batch up to 3 per tx ─────────────────────────
+    // Pre-fetch metadata for all SPL tokens
+    const splMeta = await Promise.all(splAccts.map(async acct => {
+      const info       = acct.account.data.parsed.info;
+      const mintStr    = info.mint;
+      const mintPk     = new PublicKey(mintStr);
+      const amountRaw  = BigInt(info.tokenAmount.amount);
+      const balance    = parseFloat(info.tokenAmount.uiAmountString);
+      const decimals   = info.tokenAmount.decimals;
+      const vaultAta   = new PublicKey(acct.pubkey);
+
+      // Detect token program by checking mint account owner
+      let rawMintOwner = TOKEN_PROGRAM_STR;
+      try { const mi = await connection.getAccountInfo(mintPk); rawMintOwner = mi?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
+      const rawTokenProgPk = new PublicKey(rawMintOwner);
+
+      // Derive guardian's ATA for this mint (guardian receives the tokens)
+      let ownerAta;
+      if (rawMintOwner === TOKEN_PROGRAM_STR) {
+        ownerAta = await findATA(walletPk, mintPk);
+      } else {
+        ownerAta = await findATAWithProg(walletPk, mintPk, rawTokenProgPk);
+      }
+      const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
+
+      // Resolve symbol for notif
+      const knownTok = [...(ghostState.vaultTokens || []), ...(ghostState.walletTokens || [])].find(t => t.mint === mintStr);
+      const sym = knownTok?.symbol || mintStr.slice(0, 6);
+
+      return { mintPk, mintStr, amountRaw, balance, decimals, vaultAta, rawTokenProgPk, ownerAta, ownerAtaMissing: !ownerAtaInfo, sym };
+    }));
+
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
+      const batch = splMeta.slice(i, i + BATCH_SIZE);
       try {
-        const info = acct.account.data.parsed?.info;
-        if (!info) { skipCount++; continue; }
-        const balance = parseFloat(info.tokenAmount.uiAmountString || 0);
-        if (balance <= 0) { skipCount++; continue; }
-        const mintStr = info.mint;
-        const decimals = info.tokenAmount.decimals;
-        const amountRaw = BigInt(info.tokenAmount.amount);
-        const vaultAta = new PublicKey(acct.pubkey);
-        const mintPk = new PublicKey(mintStr);
-        const isSOL = mintStr === WSOL_MINT_PK_STR;
+        const { blockhash } = await connection.getLatestBlockhash();
+        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+        const kps = []; // extra keypairs for manual token accounts
 
-        // Detect token program
-        let rawMintOwner = TOKEN_PROGRAM_STR;
-        try { const mi = await connection.getAccountInfo(mintPk); rawMintOwner = mi?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
-        const rawTokenProgPk = new PublicKey(rawMintOwner);
+        for (const m of batch) {
+          const { mintPk, amountRaw, vaultAta, rawTokenProgPk, ownerAta, ownerAtaMissing } = m;
+          const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+          const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
 
-        const amountBuf = new ArrayBuffer(8); new DataView(amountBuf).setBigUint64(0, amountRaw, true);
-        const ixData = new Uint8Array(16); ixData.set(disc, 0); ixData.set(new Uint8Array(amountBuf), 8);
-
-        if (isSOL) {
-          const Keypair = solanaWeb3.Keypair;
-          const wsolKp = Keypair.generate(); const wsolAcct = wsolKp.publicKey;
-          const space = 165; const rent = await connection.getMinimumBalanceForRentExemption(space);
-          const { blockhash } = await connection.getLatestBlockhash();
-          const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-          tx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
-          const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
-          tx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK, keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }], data: initData }));
-          tx.add(new TransactionInstruction({ programId, keys: [
-            { pubkey: ghostPda,     isSigner: false, isWritable: false },
-            { pubkey: vaultPda,     isSigner: false, isWritable: false },
-            { pubkey: walletPk,     isSigner: true,  isWritable: true  },
-            { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
-            { pubkey: wsolAcct,     isSigner: false, isWritable: true  },
-            { pubkey: vaultAta,     isSigner: false, isWritable: true  },
-            { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
-          ], data: ixData }));
-          tx.add(buildUnwrapIx(walletPk, wsolAcct));
-          showNotif('Sign to withdraw SOL...', '');
-          const signed = await ghostState.provider.signTransaction(tx); signed.partialSign(wsolKp);
-          let sig;
-          try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
-          catch(simErr) {
-            let logs=[]; try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){}
-            console.error('[Ghost] guardian SOL withdraw logs:', logs);
-            throw new Error(simErr.message + (logs.slice(-3).length ? ' | '+logs.slice(-3).join(' | ') : ''));
+          if (ownerAtaMissing) {
+            // Use idempotent ATA create (safest approach)
+            tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, rawTokenProgPk));
           }
-          await connection.confirmTransaction(sig, 'confirmed');
-        } else {
-          const ownerAta = await findATAWithProg(walletPk, mintPk, rawTokenProgPk);
-          const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
-          const { blockhash } = await connection.getLatestBlockhash();
-          const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-          if (!ownerAtaInfo) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, rawTokenProgPk));
           tx.add(new TransactionInstruction({ programId, keys: [
             { pubkey: ghostPda,      isSigner: false, isWritable: false },
             { pubkey: vaultPda,      isSigner: false, isWritable: false },
@@ -4121,30 +4144,116 @@ async function guardianWithdrawAll(ownerAddress) {
             { pubkey: ownerAta,      isSigner: false, isWritable: true  },
             { pubkey: vaultAta,      isSigner: false, isWritable: true  },
             { pubkey: rawTokenProgPk,isSigner: false, isWritable: false },
-          ], data: ixData }));
-          showNotif('Sign to withdraw ' + mintStr.slice(0,6) + '...', '');
-          const signed = await ghostState.provider.signTransaction(tx);
-          let sig;
-          try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
-          catch(simErr) {
-            let logs=[]; try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){}
-            console.error('[Ghost] guardian SPL withdraw logs:', logs);
-            throw new Error(simErr.message + (logs.slice(-3).length ? ' | '+logs.slice(-3).join(' | ') : ''));
-          }
-          await connection.confirmTransaction(sig, 'confirmed');
+          ], data }));
         }
-        successCount++;
+
+        showNotif('Sign to withdraw: ' + batch.map(m => m.sym).join(', ') + '...', '');
+        const signed = await ghostState.provider.signTransaction(tx);
+        for (const kp of kps) signed.partialSign(kp);
+
+        let sig;
+        try {
+          sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+        } catch(simErr) {
+          let logs = [];
+          try { logs = await simErr.getLogs?.(connection) || []; } catch(_) {}
+          if (!logs.length) { try { const s = await connection.simulateTransaction(tx); logs = s.value.logs || []; } catch(_) {} }
+          console.error('[Ghost] guardian SPL withdraw logs:', logs);
+          throw new Error('TX failed: ' + simErr.message + (logs.length ? ' | ' + logs.slice(-4).join(' | ') : ''));
+        }
+        const conf = await connection.confirmTransaction(sig, 'confirmed');
+        if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+        successCount += batch.length;
+        addActivityRow('📤 Guardian withdrew ' + batch.map(m => m.balance.toLocaleString() + ' ' + m.sym).join(', '),
+          sig.slice(0,4) + '...' + sig.slice(-4));
       } catch(err) {
-        console.error('Guardian withdraw token error:', err);
-        showNotif('⚠️ Failed: ' + (err.message||err).slice(0,80), 'error');
+        console.error('Guardian SPL batch error:', err);
+        showNotif('⚠️ SPL batch failed: ' + (err.message || err).slice(0, 100), 'error');
       }
     }
-    showNotif(`✅ Guardian withdrew ${successCount}/${total - skipCount} assets`, successCount > 0 ? 'green' : 'error');
+
+    // ── SOL (wSOL): one tx per account, needs keypair co-sign ────
+    for (const acct of solAccts) {
+      try {
+        const info      = acct.account.data.parsed.info;
+        const amountRaw = BigInt(info.tokenAmount.amount);
+        const balance   = parseFloat(info.tokenAmount.uiAmountString);
+        const vaultAta  = new PublicKey(acct.pubkey);
+
+        const wsolKp   = Keypair.generate();
+        const wsolAcct = wsolKp.publicKey;
+        const space    = 165;
+        const rent     = await connection.getMinimumBalanceForRentExemption(space);
+        const { blockhash } = await connection.getLatestBlockhash();
+        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+
+        const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+        const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+
+        // 1. Create temp wSOL account
+        tx.add(SystemProgram.createAccount({
+          fromPubkey: walletPk, newAccountPubkey: wsolAcct,
+          lamports: rent, space, programId: TOKEN_PROG_PK
+        }));
+        // 2. InitializeAccount3
+        const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
+        tx.add(new TransactionInstruction({
+          programId: TOKEN_PROG_PK,
+          keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true },
+                 { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }],
+          data: initData
+        }));
+        // 3. Withdraw from vault
+        tx.add(new TransactionInstruction({ programId, keys: [
+          { pubkey: ghostPda,     isSigner: false, isWritable: false },
+          { pubkey: vaultPda,     isSigner: false, isWritable: false },
+          { pubkey: walletPk,     isSigner: true,  isWritable: true  },
+          { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
+          { pubkey: wsolAcct,     isSigner: false, isWritable: true  },
+          { pubkey: vaultAta,     isSigner: false, isWritable: true  },
+          { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
+        ], data }));
+        // 4. Unwrap → native SOL
+        tx.add(buildUnwrapIx(walletPk, wsolAcct));
+
+        showNotif('Sign to withdraw ' + balance.toLocaleString() + ' SOL...', '');
+        const signed = await ghostState.provider.signTransaction(tx);
+        signed.partialSign(wsolKp);
+
+        let sig;
+        try {
+          sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+        } catch(simErr) {
+          let logs = [];
+          try { logs = await simErr.getLogs?.(connection) || []; } catch(_) {}
+          if (!logs.length) { try { const s = await connection.simulateTransaction(tx); logs = s.value.logs || []; } catch(_) {} }
+          console.error('[Ghost] guardian SOL withdraw logs:', logs);
+          throw new Error('TX failed: ' + simErr.message + (logs.length ? ' | ' + logs.slice(-4).join(' | ') : ''));
+        }
+        const conf = await connection.confirmTransaction(sig, 'confirmed');
+        if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+        successCount++;
+        addActivityRow('📤 Guardian withdrew ' + balance.toLocaleString() + ' SOL',
+          sig.slice(0,4) + '...' + sig.slice(-4));
+      } catch(err) {
+        console.error('Guardian SOL withdraw error:', err);
+        showNotif('⚠️ SOL withdraw failed: ' + (err.message || err).slice(0, 100), 'error');
+      }
+    }
+
+    showNotif(
+      successCount > 0
+        ? `✅ Guardian withdrew ${successCount}/${totalAssets} asset${totalAssets > 1 ? 's' : ''}`
+        : `❌ Guardian withdraw failed — check console for details`,
+      successCount > 0 ? 'green' : 'error'
+    );
     await scanGuardianAssignments();
   } catch(err) {
-    showNotif('Guardian withdraw failed: ' + (err.message||err), 'error');
+    console.error('guardianWithdrawAll outer error:', err);
+    showNotif('Guardian withdraw failed: ' + (err.message || err), 'error');
   }
 }
+
 
 async function checkIfRecoveryWallet() {
   if (!ghostState.publicKey) return;
@@ -4623,20 +4732,17 @@ async function loadWalletTokens() {
               }
             }
             // Remove vault tokens that no longer have on-chain balance
-            // (ghostMint is NOT stored in ghost object — never keep stale entries)
             ghostState.vaultTokens = ghostState.vaultTokens.filter(v =>
               freshVault.find(f => f.mint === v.mint)
             );
-            // Fetch metadata for vault tokens not in wallet (e.g. token was deposited then wallet balance went to 0)
+            // Fetch metadata for vault-only tokens (e.g. deposited and no longer held in wallet)
             const vaultOnlyMints = freshVault
-              .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint))
-              .filter(v => !v.name) // only if we don't already have name
+              .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint) && !v.name)
               .map(v => v.mint);
             if (vaultOnlyMints.length > 0) {
-              fetchTokenMetadata(ghostState.vaultTokens, vaultOnlyMints).then(() => {
-                renderVaultOverview();
-                renderVaultHoldings();
-              }).catch(() => {});
+              fetchTokenMetadata(ghostState.vaultTokens, vaultOnlyMints)
+                .then(() => { renderVaultOverview(); renderVaultHoldings(); })
+                .catch(() => {});
             }
           }
           console.log('[Ghost] Vault tokens from chain:', ghostState.vaultTokens.map(v => v.symbol + ':' + v.balance));
