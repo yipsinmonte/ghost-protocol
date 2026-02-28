@@ -3628,7 +3628,7 @@ function updateSharePreview() {
   if (!pct || pct <= 0) { el.textContent = ''; return; }
   // Show what this share would receive from current vault
   const lines = ghostState.vaultTokens
-    .filter(v => v.balance > 0)
+    .filter(v => v.balance >= 0)  // include dust amounts
     .map(v => {
       const amt = (v.balance * pct / 100);
       const price = getTokenPrice(v);
@@ -4450,10 +4450,14 @@ async function loadWalletTokens() {
           for (const acct of vaultAccts) {
             const info = acct.account.data.parsed?.info;
             if (!info) continue;
-            const balance = parseFloat(info.tokenAmount.uiAmountString || 0);
-            if (balance <= 0) continue;
+            // Use raw integer amount to detect presence — uiAmountString can round to "0"
+            // for small balances (e.g. 1 raw unit of a 9-decimal token = 0.000000001)
+            const rawAmount = BigInt(info.tokenAmount.amount || '0');
+            if (rawAmount <= 0n) continue;
+            const decimals = info.tokenAmount.decimals || 0;
+            // Compute balance from raw amount to avoid floating-point rounding to zero
+            const balance = Number(rawAmount) / Math.pow(10, decimals);
             const mint = info.mint;
-            // Find metadata from wallet tokens or existing vault tokens
             const meta = ghostState.walletTokens.find(t => t.mint === mint)
                       || ghostState.vaultTokens.find(t => t.mint === mint)
                       || {};
@@ -4461,7 +4465,7 @@ async function loadWalletTokens() {
               symbol: meta.symbol || mint.slice(0,6),
               mint,
               balance,
-              decimals: info.tokenAmount.decimals,
+              decimals,
               logoUrl: meta.logoUrl || null,
               name: meta.name || null
             });
@@ -4608,7 +4612,7 @@ function vaultAssignableTokens() {
 
   return ghostState.vaultTokens
     .filter(vt => {
-      if (vt.balance <= 0) return false;
+      if (vt.balance < 0) return false; // show dust amounts (uiAmount may round to 0)
       // Sum only specific transfer/burn assignments (not whole-vault-share)
       const assigned = ghostState.ghost.beneficiaries
         .filter(b => b.action !== 'whole-vault-share' && (b.token === vt.symbol || b.token === vt.mint))
