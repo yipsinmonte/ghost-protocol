@@ -3941,19 +3941,23 @@ async function deriveATA(ownerPubkey, mintPubkey) {
 }
 
 // Build instruction to create ATA if it doesn't exist
-function createATAInstruction(payer, ata, owner, mint) {
+function createATAInstruction(payer, ata, owner, mint, tokenProgram) {
+  const { PublicKey } = solanaWeb3;
+  const RENT = new PublicKey('SysvarRent111111111111111111111111111111111');
+  const tokenProg = tokenProgram || TOKEN_PROGRAM_ID_PK();
   const keys = [
-    { pubkey: payer,  isSigner: true,  isWritable: true  },
-    { pubkey: ata,    isSigner: false, isWritable: true  },
-    { pubkey: owner,  isSigner: false, isWritable: false },
-    { pubkey: mint,   isSigner: false, isWritable: false },
-    { pubkey: SYSTEM_PROGRAM_ID_PK(),  isSigner: false, isWritable: false },
-    { pubkey: TOKEN_PROGRAM_ID_PK(),   isSigner: false, isWritable: false },
+    { pubkey: payer,                   isSigner: true,  isWritable: true  },
+    { pubkey: ata,                     isSigner: false, isWritable: true  },
+    { pubkey: owner,                   isSigner: false, isWritable: false },
+    { pubkey: mint,                    isSigner: false, isWritable: false },
+    { pubkey: SYSTEM_PROGRAM_ID_PK(), isSigner: false, isWritable: false },
+    { pubkey: tokenProg,               isSigner: false, isWritable: false },
+    { pubkey: RENT,                    isSigner: false, isWritable: false },
   ];
   return new solanaWeb3.TransactionInstruction({
     programId: ASSOC_TOKEN_PROGRAM_ID_PK(),
     keys,
-    data: new Uint8Array([1]) // idempotent create
+    data: new Uint8Array([1]) // idempotent create — safe if already exists
   });
 }
 
@@ -3965,7 +3969,7 @@ async function buildWrapSOLInstructions(walletPubkey, lamports) {
   const instructions = [];
 
   // 1. Idempotent create-ATA (no-op if already exists)
-  instructions.push(createATAInstruction(walletPubkey, wsolAta, walletPubkey, mintPk));
+  instructions.push(createATAInstruction(walletPubkey, wsolAta, walletPubkey, mintPk, TOKEN_PROGRAM_ID_PK()));
 
   // 2. Transfer native SOL into the wSOL ATA
   instructions.push(solanaWeb3.SystemProgram.transfer({
@@ -4832,7 +4836,7 @@ function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk, tokenProgId) {
       { pubkey: tokenProg,        isSigner: false, isWritable: false },
       { pubkey: RENT_SYSVAR,      isSigner: false, isWritable: false },
     ],
-    data: new Uint8Array([0]) // standard create
+    data: new Uint8Array([1]) // idempotent create — safe if already exists
   });
 }
 
@@ -5009,7 +5013,8 @@ async function dbDeposit() {
 
     const signed = await ghostState.provider.signTransaction(tx);
     const sig    = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-    await connection.confirmTransaction(sig, 'confirmed');
+    const conf   = await connection.confirmTransaction(sig, 'confirmed');
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
     _applyDeposit();
     const shortSig = sig.slice(0,4)+'...'+sig.slice(-4);
