@@ -4987,7 +4987,20 @@ async function dbDeposit() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
-    // Always create vault token account if it doesn't exist
+    // Ensure vault PDA is funded (needs lamports to own token accounts)
+    const vaultPdaInfo = await connection.getAccountInfo(vaultPda);
+    console.log('[Ghost] vaultPda:', vaultPda.toBase58(), 'lamports:', vaultPdaInfo?.lamports ?? 0);
+    if (!vaultPdaInfo || vaultPdaInfo.lamports === 0) {
+      const minRent = await connection.getMinimumBalanceForRentExemption(0);
+      console.log('[Ghost] Funding vault PDA with rent:', minRent);
+      tx.add(solanaWeb3.SystemProgram.transfer({
+        fromPubkey: walletPk,
+        toPubkey: vaultPda,
+        lamports: minRent
+      }));
+    }
+
+    // Create vault token account if it doesn't exist
     const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
     console.log('[Ghost] vaultAta:', vaultAta.toBase58(), 'exists:', !!vaultAtaInfo);
     if (!vaultAtaInfo) {
