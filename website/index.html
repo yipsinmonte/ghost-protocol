@@ -2344,7 +2344,6 @@ async function fetchGhostAccount() {
 }
 
 // Fetch on-chain transaction signatures for the ghost PDA and rebuild activity + ping history
-// sha256("global:<ix_name>")[0:8] discriminators — computed, not guessed
 const GHOST_DISC_LABELS = {
   '33ff88e28aafaed3': '\u{1F47B} Ghost summoned',
   'ad005eec4985e199': '\u{1F493} Heartbeat sent',
@@ -2356,7 +2355,6 @@ const GHOST_DISC_LABELS = {
   '431b18998740ca4d': '\u274C Beneficiary removed',
   '51a633d59e549d6c': '\u2699\uFE0F Settings updated',
 };
-// Decode base58 ix.data -> hex of first 8 bytes (Anchor discriminator)
 function b58ToDiscHex(s) {
   const B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   let leading=0; for(const ch of s){if(ch==='1')leading++;else break;}
@@ -2369,7 +2367,6 @@ function b58ToDiscHex(s) {
 async function fetchOnChainHistory() {
   if (!ghostState.ghostPda) return;
   try {
-    // Fetch from BOTH ghost PDA and vault PDA (deposits/withdrawals hit vault PDA)
     const addresses = [ghostState.ghostPda];
     if (ghostState.vaultPda) addresses.push(ghostState.vaultPda);
     const sigResults = await Promise.all(addresses.map(addr =>
@@ -2384,7 +2381,6 @@ async function fetchOnChainHistory() {
         if (!s.err && !sigMap.has(s.signature)) sigMap.set(s.signature,s);
     const allSigs = [...sigMap.values()].sort((a,b)=>(b.blockTime||0)-(a.blockTime||0));
     if (allSigs.length===0) return;
-    // Batch fetch via Helius getParsedTransactions
     const sigs40 = allSigs.slice(0,40).map(s=>s.signature);
     let txList = [];
     try {
@@ -2393,7 +2389,6 @@ async function fetchOnChainHistory() {
           params:[sigs40,{maxSupportedTransactionVersion:0,commitment:'confirmed'}]})});
       const d = await res.json(); txList = Array.isArray(d.result)?d.result:[];
     } catch(e) {}
-    // Fallback to single getTransaction calls
     if (txList.filter(Boolean).length===0) {
       for (const sig of sigs40.slice(0,20)) {
         try {
@@ -2414,16 +2409,12 @@ async function fetchOnChainHistory() {
           try {
             const hex=b58ToDiscHex(ix.data);
             if (GHOST_DISC_LABELS[hex]) {
-              baseLabel=GHOST_DISC_LABELS[hex];
-              isDeposit=hex==='123e6e081a6af897';
-              isWithdraw=hex==='b422252e9c00d3ee';
-              break;
+              baseLabel=GHOST_DISC_LABELS[hex]; isDeposit=hex==='123e6e081a6af897'; isWithdraw=hex==='b422252e9c00d3ee'; break;
             }
           } catch(e){}
         }
       }
       if (!baseLabel) return null;
-      // For deposits/withdrawals enrich with token + amount from inner SPL transfer
       if (isDeposit||isWithdraw) {
         for (const ix of inner) {
           const p=ix.parsed;
@@ -2450,7 +2441,7 @@ async function fetchOnChainHistory() {
       const ts=((tx?.blockTime||s.blockTime)||0)*1000;
       if (!ts) continue;
       const label=labelFromTx(tx)||'\u{1F4CB} On-chain action';
-      builtActivity.push({msg:label, tx:s.signature, ts}); // store full sig
+      builtActivity.push({msg:label, tx:s.signature, ts});
       if (label==='\u{1F493} Heartbeat sent') rawPings.push({ts,sig:s.signature});
     }
     const chronoPings=rawPings.sort((a,b)=>a.ts-b.ts);
@@ -2534,13 +2525,11 @@ function parseGhostAccount(bytes) {
 
     ghostState.ghost.intervalSeconds = interval;
     ghostState.ghost.gracePeriodSeconds = grace;
-    // Chain is authoritative — always use on-chain lastBeat when non-zero
-    // Math.max was wrong: stale session timestamps could be numerically larger than chain
+    // Chain is authoritative — always use on-chain value when non-zero
     const chainHeartbeatMs = lastBeat * 1000;
     if (chainHeartbeatMs > 0) {
       ghostState.ghost.lastHeartbeat = chainHeartbeatMs;
     }
-    // else leave session value in place (ping sent moments ago, not yet on-chain)
     if (recoveryWalletPubkey) ghostState.ghost.recoveryWallet = recoveryWalletPubkey;
     ghostState.ghost.awakened = awakened;
     ghostState.ghost.awakenedAt = awakenedAt ? awakenedAt * 1000 : null;
@@ -3174,7 +3163,7 @@ if (!ghostState.activityLog) ghostState.activityLog = []; // [{msg, tx, ts}]
 
 function addActivityRow(msg, tx) {
   const ts = Date.now();
-  ghostState.activityLog.unshift({ msg, tx: tx||'', ts }); // tx = full signature string
+  ghostState.activityLog.unshift({ msg, tx: tx||'', ts });
   renderActivityLog();
   saveSession();
 }
@@ -3191,7 +3180,7 @@ function renderActivityLog() {
     const timeStr = d.toLocaleDateString('en-GB', {day:'numeric',month:'short'}) + ' ' + d.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
     const fullSig = entry.tx||'';
     const short = fullSig.length>12 ? fullSig.slice(0,4)+'...'+fullSig.slice(-4) : fullSig;
-    const cpBtn = fullSig ? `<button onclick="copyAddr('${fullSig}')" title="Copy full signature" style="background:none;border:1px solid rgba(102,51,255,0.25);color:#8888bb;font-size:10px;padding:1px 5px;cursor:pointer;margin-left:4px;font-family:'Share Tech Mono',monospace;vertical-align:middle;line-height:1.4">\u29C9</button>` : '';
+    const cpBtn = fullSig ? `<button onclick="copyAddr('${fullSig}')" title="Copy tx signature" style="background:none;border:1px solid rgba(102,51,255,0.25);color:#8888bb;font-size:10px;padding:1px 5px;cursor:pointer;margin-left:4px;font-family:'Share Tech Mono',monospace;vertical-align:middle;line-height:1.4">\u29C9</button>` : '';
     return `<tr><td>${entry.msg}</td><td style="white-space:nowrap;color:#9090b8">${timeStr}</td><td style="white-space:nowrap"><span class="addr-short">${short}</span>${cpBtn}</td></tr>`;
   }).join('');
 }
@@ -3971,7 +3960,7 @@ async function scanGuardianAssignments() {
                 ? `<button class="db-btn" style="flex:1;border-color:#ffaa33;color:#ffaa33;padding:10px" onclick="guardianCancelAwakening('${ownerB58}')">🛑 Cancel Awakening</button>`
                 : `<button class="db-btn" style="flex:1;border-color:#555;color:#666;padding:10px;cursor:not-allowed;opacity:0.4" disabled title="Ghost is not in grace period">🛑 Cancel Awakening</button>`
               }
-              <button class="db-btn" style="flex:1;background:rgba(0,220,170,0.1);border-color:rgba(0,220,170,0.55);color:#80ffd8;padding:10px;font-weight:600;letter-spacing:0.05em;box-shadow:0 0 12px rgba(0,200,150,0.15)" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>
+              <button class="db-btn" style="flex:1;background:rgba(0,220,170,0.1);border-color:rgba(0,220,170,0.55);color:#80ffd8;padding:10px;font-weight:600;box-shadow:0 0 12px rgba(0,200,150,0.15)" onclick="guardianWithdrawAll('${ownerB58}')">📤 Withdraw Vault</button>
             </div>` : `
             <div style="padding-top:12px;border-top:1px solid rgba(255,51,102,0.15);font-family:'Share Tech Mono',monospace;font-size:11px;color:#ff3366;letter-spacing:0.1em">⚠ EXECUTED — ghost protocol has run</div>`}
           </div>`);
@@ -3995,22 +3984,10 @@ async function guardianCancelAwakening(ownerAddress) {
 }
 
 async function guardianWithdrawAll(ownerAddress) {
-  // CONTRACT LIMITATION: withdraw_from_vault uses seeds = [b"ghost", signer.key()].
-  // The program derives the expected ghost PDA from the TX signer's key.
-  // Recovery wallet != owner, so the PDA derived from recovery wallet != owner's ghost PDA.
-  // This causes ConstraintSeeds error (0x7d6): Left=owner's ghost, Right=guardian's ghost.
-  //
-  // FIX REQUIRED IN RUST: Add a separate recovery_withdraw instruction that accepts
-  // the owner's pubkey as an explicit account and validates ghost.recovery_wallet == signer.
-  // Until the contract is upgraded this button cannot complete on-chain.
-  showNotif('⚠️ Guardian vault withdrawal requires a contract upgrade. The current withdraw_from_vault instruction requires the signer to be the vault owner. A recovery_withdraw instruction will be added in the next contract deployment.', 'error');
-  console.warn('[Ghost] guardian withdraw blocked: ConstraintSeeds mismatch.
-' +
-    'withdraw_from_vault seeds ghost from signer.key() — signer must be vault owner.
-' +
-    'Need recovery_withdraw instruction seeded from owner param, validating ghost.recovery_wallet == signer.
-' +
-    'Owner address:', ownerAddress);
+  // BLOCKED: withdraw_from_vault seeds ghost PDA from signer.key() — signer must be owner.
+  // Recovery wallet triggers ConstraintSeeds (0x7d6). Needs recovery_withdraw ix in Phase II.
+  showNotif('\u26a0\uFE0F Guardian withdraw requires a contract upgrade (recovery_withdraw instruction — Phase II).', 'error');
+  console.warn('[Ghost] guardian withdraw blocked: ConstraintSeeds — ghost PDA seeded from signer.key(), recovery wallet != owner. Owner:', ownerAddress);
 }
 
 
@@ -4491,12 +4468,9 @@ async function loadWalletTokens() {
               }
             }
             // Remove vault tokens that no longer have on-chain balance
-            // ghostMint field was never set on ghost obj — this condition always false,
-            // dropping all tokens not in freshVault even when balance present
             ghostState.vaultTokens = ghostState.vaultTokens.filter(v =>
               freshVault.find(f => f.mint === v.mint)
             );
-            // Fetch metadata for vault-only tokens (deposited, no longer held in wallet)
             const vaultOnlyMints = freshVault
               .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint) && !v.name)
               .map(v => v.mint);
