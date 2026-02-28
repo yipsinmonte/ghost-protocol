@@ -2506,7 +2506,8 @@ async function fetchOnChainHistory() {
             const amt=info.tokenAmount?.uiAmountString||info.amount;
             const mint=info.mint||'';
             const known=[...(ghostState.vaultTokens||[]),...(ghostState.walletTokens||[])].find(t=>t.mint===mint);
-            const sym=known?.symbol||(mint===WSOL_MINT_PK_STR?'SOL':mint?mint.slice(0,6):'');
+            const _wsolMint='So11111111111111111111111111111111111111112';
+            const sym=known?.symbol||((mint===_wsolMint||mint==='native')?'SOL':mint?mint.slice(0,6):'');
             if (amt&&sym) {
               const n=parseFloat(amt);
               const fmt=n>=1000?n.toLocaleString(undefined,{maximumFractionDigits:2}):parseFloat(n.toPrecision(4)).toString();
@@ -3616,18 +3617,85 @@ function renderBeneficiaries() {
 }
 
 async function dbClearAllBeneficiaries() {
-  const _ok = await ghostConfirm({ icon:'🗑️', title:'Clear All Beneficiaries', message:'Remove all beneficiary assignments from your on-chain record? This sends a transaction for each active slot.', okLabel:'CLEAR ALL', danger:true });
+  const transferBenes = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+  if (transferBenes.length === 0) { showNotif('No beneficiaries to clear', ''); return; }
+
+  const _ok = await ghostConfirm({
+    icon: '🗑️', title: 'Clear All Beneficiaries',
+    message: 'Remove all ' + transferBenes.length + ' beneficiary slot(s) from your on-chain record? If the vault is empty (e.g. after guardian withdrawal) slots are wiped locally.',
+    okLabel: 'CLEAR ALL', danger: true
+  });
   if (!_ok) return;
-  const benes = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share' && b._fromChain);
-  if (benes.length === 0) { showNotif('No on-chain beneficiaries to clear', ''); return; }
-  let removed = 0;
-  for (let i = 0; i < ghostState.ghost.beneficiaries.length; i++) {
-    const b = ghostState.ghost.beneficiaries[i];
-    if (b.action === 'whole-vault-share') continue;
-    try { await dbRemoveBeneficiary(i, true); removed++; i--; } catch(e) { console.warn('Failed to remove slot', i, e); }
+
+  // Step 1: Refresh from chain — may already be empty after guardian withdrawal
+  showNotif('Checking on-chain state...', '');
+  try { await fetchGhostAccount(); } catch(_) {}
+
+  const stillHas = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+  if (stillHas.length === 0) {
+    showNotif('Beneficiaries already cleared on-chain', 'green');
+    renderBeneficiaries(); return;
   }
-  if (removed > 0) showNotif('Cleared ' + removed + ' beneficiar' + (removed===1?'y':'ies'), 'green');
-  else showNotif('No beneficiaries removed', 'error');
+
+  // Step 2: Attempt on-chain remove for each slot (index always 0 since array shifts after each remove)
+  // Skip slots where vault balance is 0 (would get error 6012) — wipe those locally
+  let onChainRemoved = 0, localWiped = 0;
+  const toProcess = [...ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share')];
+
+  for (let attempt = 0; attempt < toProcess.length; attempt++) {
+    // Always target index 0 on-chain (first non-whole-vault slot shifts down after each removal)
+    const entry = ghostState.ghost.beneficiaries.find(b => b.action !== 'whole-vault-share');
+    if (!entry) break;
+    const localIdx = ghostState.ghost.beneficiaries.indexOf(entry);
+
+    // Check if vault has enough balance — if not, just wipe locally
+    const vt = ghostState.vaultTokens.find(v => v.symbol === entry.token || v.mint === entry.mint);
+    const vaultHasFunds = vt && vt.balance >= entry.amount;
+
+    if (!ghostState.provider || ghostState.walletName?.includes('demo') || !vaultHasFunds) {
+      // Local-only wipe (vault empty or demo mode)
+      ghostState.ghost.beneficiaries.splice(localIdx, 1);
+      localWiped++;
+      continue;
+    }
+
+    // Try on-chain remove at slot 0
+    try {
+      showNotif('Removing slot ' + (attempt + 1) + ' of ' + toProcess.length + '...', '');
+      const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+      const walletPk = new PublicKey(ghostState.publicKey);
+      const ghostPda = new PublicKey(ghostState.ghostPda);
+      const disc = [67, 27, 24, 153, 135, 64, 202, 77];
+      const data = new Uint8Array(9);
+      data.set(disc, 0);
+      data[8] = 0; // always remove slot 0 — shifts after each removal
+      const ix = new TransactionInstruction({ programId: new PublicKey(PROGRAM_ID),
+        keys: [{ pubkey: ghostPda, isSigner:false, isWritable:true }, { pubkey: walletPk, isSigner:true, isWritable:true }],
+        data });
+      const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+      const { blockhash } = await connection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+      tx.add(ix);
+      const signed = await ghostState.provider.signTransaction(tx);
+      const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+      const conf = await connection.confirmTransaction(sig, 'confirmed');
+      if (conf.value?.err) throw new Error(JSON.stringify(conf.value.err));
+      ghostState.ghost.beneficiaries.splice(localIdx, 1);
+      onChainRemoved++;
+    } catch(err) {
+      console.warn('[Ghost] Clear slot failed:', err.message);
+      // Error 6012 = InsufficientVaultBalance — wipe locally, vault already empty
+      ghostState.ghost.beneficiaries.splice(localIdx, 1);
+      localWiped++;
+    }
+  }
+
+  _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
+  const total = onChainRemoved + localWiped;
+  const msg = onChainRemoved > 0
+    ? 'Cleared ' + onChainRemoved + ' on-chain' + (localWiped > 0 ? ' + ' + localWiped + ' local' : '')
+    : 'Cleared ' + localWiped + ' stale slot(s) locally — vault was empty';
+  showNotif(msg, 'green');
 }
 
 async function dbAddBeneficiary(action) {
@@ -4628,13 +4696,11 @@ async function guardianWithdrawAll(ownerAddress) {
       const _summary = guardianWithdrawLog.length > 0 ? guardianWithdrawLog.join(' + ') : successCount + ' asset' + (successCount>1?'s':'');
       addActivityRow('Guardian Withdrawal · by ' + _gShort, _lastSig.slice(0,4)+'...'+_lastSig.slice(-4), 'angel');
       showNotif('Guardian withdrew ' + successCount + ' asset' + (successCount > 1 ? 's' : '') + '!', 'green');
-      // Reload ghost account from chain — clears beneficiaries if contract cleared them on withdrawal
-      try {
-        await fetchGhostAccount();
-        ghostState.ghost.beneficiaries = [];
-        renderBeneficiaries();
-        renderVaultHoldings();
-      } catch(_) {}
+      // Reload ghost account from chain — reflects cleared beneficiaries after withdrawal
+      try { await fetchGhostAccount(); } catch(_) {}
+      // Force-wipe local non-whole-vault beneficiaries — vault is now empty
+      ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
+      _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
       await scanGuardianAssignments();
     } else {
       showNotif('No assets were successfully withdrawn', 'error');
