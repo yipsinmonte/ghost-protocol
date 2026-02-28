@@ -4826,7 +4826,7 @@ function dbDepositAll() {
   setTimeout(fetchPumpFunData, 300);
 }
 
-function dbWithdrawAll() {
+async function dbWithdrawAll() {
   if (ghostState.ghost.status === 'awakened') { showNotif('⚠️ Withdrawals blocked while awakened', 'error'); return; }
   const wholeVaultActive = ghostState.ghost.beneficiaries.some(b => b.action === 'whole-vault-share');
   if (wholeVaultActive) {
@@ -4835,34 +4835,105 @@ function dbWithdrawAll() {
   }
   const tokens = [...ghostState.vaultTokens];
   if (tokens.length === 0) { showNotif('Vault is empty', 'error'); return; }
-  let count = 0;
-  for (const vt of tokens) {
-    const amount = vt.balance;
-    const symbol = vt.symbol;
-    const mint = vt.mint;
-    const wt = ghostState.walletTokens.find(w => w.mint === mint);
-    if (wt) {
-      wt.balance += amount;
-    } else {
-      ghostState.walletTokens.push({ symbol, mint, balance: amount, decimals: vt.decimals, logoUrl: vt.logoUrl || null });
+
+  // ── Demo mode ──────────────────────────────────────────────────
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    let count = 0;
+    for (const vt of tokens) {
+      const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
+      if (wt) { wt.balance += vt.balance; } else {
+        ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl || null });
+      }
+      addActivityRow('📤 Withdrew ' + vt.balance.toLocaleString() + ' ' + vt.symbol + ' [demo]', randomTx());
+      count++;
     }
-    addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' ' + symbol, randomTx());
-    count++;
+    ghostState.vaultTokens = [];
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0);
+    buildPickerDropdown('deposit', depositPool);
+    buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]);
+    buildPickerDropdown('burn', vaultAssignableTokens());
+    ghostState.selectedTokens.deposit = null;
+    if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
+    renderVaultHoldings(); renderVaultOverview();
+    showNotif('📤 Withdrew all ' + count + ' asset' + (count > 1 ? 's' : '') + ' from vault! [demo]', 'green');
+    saveSession();
+    return;
   }
-  ghostState.vaultTokens = [];
 
-  // Rebuild deposit picker with returned tokens
-  const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0);
-  buildPickerDropdown('deposit', depositPool);
-  buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]);
-  buildPickerDropdown('burn', vaultAssignableTokens());
-  ghostState.selectedTokens.deposit = null;
-  if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
+  // ── On-chain: send one withdraw_from_vault tx per token ────────
+  const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+  const walletPk  = new PublicKey(ghostState.publicKey);
+  const ghostPda  = new PublicKey(ghostState.ghostPda);
+  const vaultPda  = new PublicKey(ghostState.vaultPda);
+  const programId = new PublicKey(PROGRAM_ID);
+  const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
+  const disc = [180, 34, 37, 46, 156, 0, 211, 238]; // withdraw_from_vault discriminator
+  const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 
-  renderVaultHoldings();
-  renderVaultOverview();
-  showNotif('📤 Withdrew all ' + count + ' asset' + (count > 1 ? 's' : '') + ' from vault!', 'green');
-  saveSession();
+  let successCount = 0;
+  showNotif('Withdrawing ' + tokens.length + ' asset' + (tokens.length > 1 ? 's' : '') + ' from vault...', '');
+
+  for (const vt of tokens) {
+    try {
+      const isSOL  = (vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
+      const mintStr = effectiveMint(vt.mint);
+      const mintPk  = isSOL ? null : new PublicKey(mintStr);
+      const displaySym = isSOL ? 'SOL' : vt.symbol;
+      const amount = vt.balance;
+
+      const ownerAta = await findATA(walletPk, mintPk);
+      const vaultAta = await findATA(vaultPda, mintPk);
+
+      const amountRaw = BigInt(Math.round(amount * Math.pow(10, vt.decimals)));
+      const buf = new ArrayBuffer(8);
+      new DataView(buf).setBigUint64(0, amountRaw, true);
+      const data = new Uint8Array(16);
+      data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+
+      const { blockhash } = await connection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+      tx.add(new TransactionInstruction({ programId,
+        keys: [
+          { pubkey: ghostPda,   isSigner: false, isWritable: false },
+          { pubkey: vaultPda,   isSigner: false, isWritable: false },
+          { pubkey: walletPk,   isSigner: true,  isWritable: true  },
+          { pubkey: ownerAta,   isSigner: false, isWritable: true  },
+          { pubkey: vaultAta,   isSigner: false, isWritable: true  },
+          { pubkey: TOKEN_PROG, isSigner: false, isWritable: false },
+        ], data }));
+      if (isSOL) tx.add(buildUnwrapIx(walletPk, ownerAta));
+
+      const signed = await ghostState.provider.signTransaction(tx);
+      const sig    = await connection.sendRawTransaction(signed.serialize());
+      await connection.confirmTransaction(sig, 'confirmed');
+
+      // Apply to local state only after confirmed on-chain
+      const walletMint = isSOL ? 'native' : vt.mint;
+      const wt = ghostState.walletTokens.find(w => w.mint === walletMint);
+      if (wt) { wt.balance += amount; } else {
+        ghostState.walletTokens.push({ symbol: displaySym, mint: walletMint, balance: amount, decimals: vt.decimals, logoUrl: vt.logoUrl || null });
+      }
+      const idx = ghostState.vaultTokens.indexOf(vt);
+      if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
+      addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' ' + displaySym, sig.slice(0,4)+'...'+sig.slice(-4));
+      successCount++;
+    } catch(err) {
+      console.error('Withdraw all error for ' + vt.symbol + ':', err);
+      showNotif('⚠️ Failed to withdraw ' + vt.symbol + ': ' + (err.message || err), 'error');
+    }
+  }
+
+  if (successCount > 0) {
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0);
+    buildPickerDropdown('deposit', depositPool);
+    buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]);
+    buildPickerDropdown('burn', vaultAssignableTokens());
+    ghostState.selectedTokens.deposit = null;
+    if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
+    renderVaultHoldings(); renderVaultOverview();
+    showNotif('✅ Withdrew ' + successCount + '/' + tokens.length + ' asset' + (successCount > 1 ? 's' : '') + ' from vault!', 'green');
+    saveSession();
+  }
 }
 
 // ─── Comma-formatted amount helpers ─────────────────────────────
