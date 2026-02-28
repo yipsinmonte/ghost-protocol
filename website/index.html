@@ -2408,8 +2408,8 @@ async function fetchGhostAccount() {
 const GHOST_DISC_LABELS = {
   '33ff88e28aafaed3': '\u{1F47B} Ghost summoned',
   'ad005eec4985e199': '\u{1F493} Heartbeat sent',
-  '123e6e081a6af897': '\u{1F4E5} Deposited to vault',
-  'b422252e9c00d3ee': '\u{1F4E4} Withdrew from vault',
+  '123e6e081a6af897': '\u2795 Deposited to vault',
+  'b422252e9c00d3ee': '\u2796 Withdrew from vault',
   '1690d0d70fa59d7a': '\u{1F6D1} Awakening cancelled',
   'd39335ad64b4f231': '\u{1F511} Recovery wallet updated',
   '69d66a8db4a67bee': '\u{1F3AF} Beneficiary added',
@@ -2511,7 +2511,7 @@ async function fetchOnChainHistory() {
             if (amt&&sym) {
               const n=parseFloat(amt);
               const fmt=n>=1000?n.toLocaleString(undefined,{maximumFractionDigits:2}):parseFloat(n.toPrecision(4)).toString();
-              return (isDeposit?'\u{1F4E5} Deposited ':'\u{1F4E4} Withdrew ')+fmt+' '+sym;
+              return (isDeposit?'\u2795 +':'\u2796 −')+fmt+' '+sym;
             }
           }
         }
@@ -2691,12 +2691,13 @@ function parseGhostAccount(bytes) {
       } else {
         mintSym = '?'; mintDec = 6;
       }
-      _chainBenefs.push({
+      const _benef = {
         recipient: isBurn ? '(burn)' : short, fullAddr: isBurn ? null : recipFull,
         amount: Number(amtRaw) / Math.pow(10, mintDec),
         token: mintSym, mint: mintPk,
         action: isBurn ? 'burn' : 'transfer', executed: execByte === 1, _fromChain: true,
-      });
+      };
+      if (!_isClearedLocally(_benef)) _chainBenefs.push(_benef);
     }
     // Chain is authoritative — replace all; whole-vault-share re-added below from wholeVaultRecipient
     ghostState.ghost.beneficiaries = [..._chainBenefs];
@@ -3622,80 +3623,96 @@ async function dbClearAllBeneficiaries() {
 
   const _ok = await ghostConfirm({
     icon: '🗑️', title: 'Clear All Beneficiaries',
-    message: 'Remove all ' + transferBenes.length + ' beneficiary slot(s) from your on-chain record? If the vault is empty (e.g. after guardian withdrawal) slots are wiped locally.',
+    message: 'Remove all ' + transferBenes.length + ' slot(s) in 1 transaction. If vault is empty they are cleared locally.',
     okLabel: 'CLEAR ALL', danger: true
   });
   if (!_ok) return;
 
-  // Step 1: Refresh from chain — may already be empty after guardian withdrawal
-  showNotif('Checking on-chain state...', '');
+  // Refresh from chain first — may already be empty
+  showNotif('Syncing chain state...', '');
   try { await fetchGhostAccount(); } catch(_) {}
 
-  const stillHas = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
-  if (stillHas.length === 0) {
-    showNotif('Beneficiaries already cleared on-chain', 'green');
-    renderBeneficiaries(); return;
+  const slots = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+  if (slots.length === 0) { showNotif('Already cleared on-chain', 'green'); renderBeneficiaries(); return; }
+
+  const isDemo = !ghostState.provider || ghostState.walletName?.includes('demo');
+  const vaultEmpty = ghostState.vaultTokens.every(v => v.balance <= 0) ||
+    slots.every(b => { const vt = ghostState.vaultTokens.find(v => v.symbol === b.token || v.mint === b.mint); return !vt || vt.balance < b.amount; });
+
+  if (isDemo || vaultEmpty) {
+    // Local-only wipe — store cleared slot fingerprints so refresh doesn't re-show them
+    _saveClearedBeneficiaries(slots);
+    ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
+    _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
+    showNotif('Cleared ' + slots.length + ' stale slot(s) locally', 'green');
+    return;
   }
 
-  // Step 2: Attempt on-chain remove for each slot (index always 0 since array shifts after each remove)
-  // Skip slots where vault balance is 0 (would get error 6012) — wipe those locally
-  let onChainRemoved = 0, localWiped = 0;
-  const toProcess = [...ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share')];
-
-  for (let attempt = 0; attempt < toProcess.length; attempt++) {
-    // Always target index 0 on-chain (first non-whole-vault slot shifts down after each removal)
-    const entry = ghostState.ghost.beneficiaries.find(b => b.action !== 'whole-vault-share');
-    if (!entry) break;
-    const localIdx = ghostState.ghost.beneficiaries.indexOf(entry);
-
-    // Check if vault has enough balance — if not, just wipe locally
-    const vt = ghostState.vaultTokens.find(v => v.symbol === entry.token || v.mint === entry.mint);
-    const vaultHasFunds = vt && vt.balance >= entry.amount;
-
-    if (!ghostState.provider || ghostState.walletName?.includes('demo') || !vaultHasFunds) {
-      // Local-only wipe (vault empty or demo mode)
-      ghostState.ghost.beneficiaries.splice(localIdx, 1);
-      localWiped++;
-      continue;
-    }
-
-    // Try on-chain remove at slot 0
-    try {
-      showNotif('Removing slot ' + (attempt + 1) + ' of ' + toProcess.length + '...', '');
-      const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
-      const walletPk = new PublicKey(ghostState.publicKey);
-      const ghostPda = new PublicKey(ghostState.ghostPda);
-      const disc = [67, 27, 24, 153, 135, 64, 202, 77];
-      const data = new Uint8Array(9);
-      data.set(disc, 0);
-      data[8] = 0; // always remove slot 0 — shifts after each removal
-      const ix = new TransactionInstruction({ programId: new PublicKey(PROGRAM_ID),
+  // Build 1 transaction with N remove_beneficiary(index=0) instructions
+  // Anchor processes them sequentially: each pops slot 0, next slot becomes 0
+  try {
+    showNotif('Sending batch clear (' + slots.length + ' slots)...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const disc = [67, 27, 24, 153, 135, 64, 202, 77];
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    for (let i = 0; i < slots.length; i++) {
+      const d = new Uint8Array(9); d.set(disc, 0); d[8] = 0; // always slot 0
+      tx.add(new TransactionInstruction({
+        programId: new PublicKey(PROGRAM_ID),
         keys: [{ pubkey: ghostPda, isSigner:false, isWritable:true }, { pubkey: walletPk, isSigner:true, isWritable:true }],
-        data });
-      const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
-      const { blockhash } = await connection.getLatestBlockhash();
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-      tx.add(ix);
-      const signed = await ghostState.provider.signTransaction(tx);
-      const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-      const conf = await connection.confirmTransaction(sig, 'confirmed');
-      if (conf.value?.err) throw new Error(JSON.stringify(conf.value.err));
-      ghostState.ghost.beneficiaries.splice(localIdx, 1);
-      onChainRemoved++;
-    } catch(err) {
-      console.warn('[Ghost] Clear slot failed:', err.message);
-      // Error 6012 = InsufficientVaultBalance — wipe locally, vault already empty
-      ghostState.ghost.beneficiaries.splice(localIdx, 1);
-      localWiped++;
+        data: d
+      }));
     }
-  }
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    if (conf.value?.err) throw new Error(JSON.stringify(conf.value.err));
 
-  _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
-  const total = onChainRemoved + localWiped;
-  const msg = onChainRemoved > 0
-    ? 'Cleared ' + onChainRemoved + ' on-chain' + (localWiped > 0 ? ' + ' + localWiped + ' local' : '')
-    : 'Cleared ' + localWiped + ' stale slot(s) locally — vault was empty';
-  showNotif(msg, 'green');
+    ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
+    _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
+    addActivityRow('🗑️ All beneficiaries cleared', sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif('All ' + slots.length + ' slot(s) cleared in 1 transaction!', 'green');
+  } catch(err) {
+    console.warn('[Ghost] Batch clear failed:', err.message, '— falling back to local wipe');
+    // Fallback: wipe locally and persist so refresh doesn't re-show
+    _saveClearedBeneficiaries(slots);
+    ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action === 'whole-vault-share');
+    _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
+    showNotif('Cleared locally — on-chain removal failed (' + (err.message||'unknown') + ')', '');
+  }
+}
+
+// Store fingerprints of locally-wiped beneficiaries so parseGhostAccount can suppress them
+// Keyed per wallet+ghost PDA to avoid cross-wallet contamination
+function _clearedBeneKey() { return 'ghostClearedBenes_' + (ghostState.ghostPda || ghostState.publicKey || 'x'); }
+function _saveClearedBeneficiaries(slots) {
+  try {
+    const existing = _loadClearedBeneficiaries();
+    // Fingerprint = fullAddr + ':' + amount + ':' + mint (enough to identify stale slot)
+    const newFps = slots.map(b => (b.fullAddr||b.recipient||'?') + ':' + b.amount + ':' + (b.mint||''));
+    const merged = [...new Set([...existing, ...newFps])];
+    localStorage.setItem(_clearedBeneKey(), JSON.stringify({ fps: merged, ts: Date.now() }));
+  } catch(_) {}
+}
+function _loadClearedBeneficiaries() {
+  try {
+    const raw = localStorage.getItem(_clearedBeneKey());
+    if (!raw) return [];
+    const p = JSON.parse(raw);
+    // Expire after 7 days — after that the chain should have confirmed state
+    if (Date.now() - (p.ts||0) > 7 * 86400000) { localStorage.removeItem(_clearedBeneKey()); return []; }
+    return p.fps || [];
+  } catch(_) { return []; }
+}
+function _isClearedLocally(b) {
+  const fps = _loadClearedBeneficiaries();
+  if (fps.length === 0) return false;
+  const fp = (b.fullAddr||b.recipient||'?') + ':' + b.amount + ':' + (b.mint||'');
+  return fps.includes(fp);
 }
 
 async function dbAddBeneficiary(action) {
@@ -3941,7 +3958,6 @@ async function dbRemoveBeneficiary(index, _silent) {
     _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
     const _removedAddr = entry.fullAddr ? entry.fullAddr.slice(0,4)+'...'+entry.fullAddr.slice(-4) : (entry.recipient||'');
     addActivityRow('❌ Beneficiary removed · ' + _removedAddr, sig.slice(0,4)+'...'+sig.slice(-4));
-    saveSession();
     showNotif('Beneficiary removed on-chain!', 'green');
   } catch(err) {
     console.error('Remove beneficiary error:', err);
@@ -5821,7 +5837,7 @@ function dbDepositAll() {
     } else {
       ghostState.vaultTokens.push({ symbol, mint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl || null, name: t.name || null });
     }
-    addActivityRow('📥 Deposited ' + amount.toLocaleString() + ' ' + symbol, randomTx());
+    addActivityRow('➕ ' + amount.toLocaleString() + ' ' + symbol, randomTx());
     count++;
   }
   if (count === 0) { showNotif('Nothing to deposit', 'error'); return; }
@@ -5865,7 +5881,7 @@ async function dbWithdrawAll() {
       if (wt) { wt.balance += vt.balance; } else {
         ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl || null });
       }
-      addActivityRow('📤 Withdrew ' + vt.balance.toLocaleString() + ' ' + vt.symbol + ' [demo]', randomTx());
+      addActivityRow('➖ ' + vt.balance.toLocaleString() + ' ' + vt.symbol + ' [demo]', randomTx());
       count++;
     }
     ghostState.vaultTokens = [];
@@ -5950,7 +5966,7 @@ async function dbWithdrawAll() {
         const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
         if (wt) { wt.balance += vt.balance; } else { ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl || null }); }
         const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
-        addActivityRow('📤 Withdrew ' + vt.balance.toLocaleString() + ' ' + vt.symbol, sig.slice(0,4)+'...'+sig.slice(-4));
+        addActivityRow('➖ ' + vt.balance.toLocaleString() + ' ' + vt.symbol, sig.slice(0,4)+'...'+sig.slice(-4));
         successCount++;
       }
     } catch(err) {
@@ -6006,7 +6022,7 @@ async function dbWithdrawAll() {
       const wt = ghostState.walletTokens.find(w => w.mint === 'native');
       if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
       const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
-      addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4));
+      addActivityRow('➖ ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4));
       successCount++;
     } catch(err) { console.error('SOL withdraw error:', err); showNotif('⚠️ SOL withdraw failed: ' + (err.message || err), 'error'); }
   }
@@ -6257,7 +6273,7 @@ async function dbDeposit() {
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     _applyDeposit();
-    addActivityRow('📥 Deposited ' + amount.toLocaleString() + ' ' + displaySym + ' [demo]', randomTx());
+    addActivityRow('➕ ' + amount.toLocaleString() + ' ' + displaySym + ' [demo]', randomTx());
     showNotif('✅ Deposited ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to vault! [demo]', 'green');
     return;
   }
@@ -6448,7 +6464,7 @@ async function dbDeposit() {
 
     _applyDeposit();
     const shortSig = sig.slice(0,4)+'...'+sig.slice(-4);
-    addActivityRow('📥 Deposited ' + amount.toLocaleString() + ' ' + displaySym, shortSig);
+    addActivityRow('➕ ' + amount.toLocaleString() + ' ' + displaySym, shortSig);
     showNotif('✅ Deposited ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to vault!', 'green');
     // Refresh vault from chain after short delay to pick up any token metadata the local state missed
     setTimeout(() => fetchGhostAccount().catch(()=>{}), 1800);
@@ -6500,7 +6516,7 @@ async function dbWithdrawAsset(vaultIdx) {
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     _applyWithdraw();
-    addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' ' + displaySym + ' [demo]', randomTx());
+    addActivityRow('➖ ' + amount.toLocaleString() + ' ' + displaySym + ' [demo]', randomTx());
     showNotif('✅ Withdrew ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' [demo]', 'green');
     return;
   }
@@ -6606,7 +6622,7 @@ async function dbWithdrawAsset(vaultIdx) {
       const conf = await connection.confirmTransaction(sig, 'confirmed');
       if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
       _applyWithdraw();
-      addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4));
+      addActivityRow('➖ ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4));
       showNotif('✅ Withdrew ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' SOL to wallet!', 'green');
       return;
     }
@@ -6658,7 +6674,7 @@ async function dbWithdrawAsset(vaultIdx) {
     const conf = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
     _applyWithdraw();
-    addActivityRow('📤 Withdrew ' + amount.toLocaleString() + ' ' + displaySym, sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('➖ ' + amount.toLocaleString() + ' ' + displaySym, sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif('✅ Withdrew ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to wallet!', 'green');
   } catch(err) {
     console.error('Withdraw error:', err);
