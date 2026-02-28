@@ -177,6 +177,7 @@
   /* ─── WALLET MODAL ────────────────────────────────────── */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 500; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
   .modal-overlay.open { display: flex; }
+  #ghostConfirmModal { z-index: 99998 !important; }
   .modal { background: var(--deep); border: 1px solid rgba(102,51,255,0.3); padding: 48px; max-width: 420px; width: 90%; position: relative; }
   .modal-close { position: absolute; top: 16px; right: 20px; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; font-family: 'Share Tech Mono', monospace; }
   .modal-close:hover { color: var(--white); }
@@ -670,18 +671,6 @@
 </div>
 
 <!-- ─── GHOST CONFIRM MODAL ─────────────────────────────────── -->
-<div class="modal-overlay" id="ghostConfirmModal" onclick="if(event.target===this)_ghostConfirmReject()">
-  <div class="modal" style="max-width:400px;padding:40px 36px">
-    <div id="ghostConfirmIcon" style="font-size:30px;margin-bottom:14px;text-align:center;line-height:1"></div>
-    <h3 id="ghostConfirmTitle" style="margin-bottom:10px;font-size:20px"></h3>
-    <p id="ghostConfirmMsg" style="margin-bottom:28px;font-size:13px;line-height:1.6;color:#c0bce0"></p>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button onclick="_ghostConfirmReject()" style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.1em;color:#c0bce0;background:none;border:1px solid rgba(192,188,224,0.2);padding:9px 20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.borderColor='rgba(192,188,224,0.45)'" onmouseout="this.style.borderColor='rgba(192,188,224,0.2)'">CANCEL</button>
-      <button id="ghostConfirmOkBtn" onclick="_ghostConfirmAccept()" style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.1em;padding:9px 22px;cursor:pointer;transition:all 0.2s">CONFIRM</button>
-    </div>
-  </div>
-</div>
-
 <!-- ─── DASHBOARD PANEL ─────────────────────────────────────── -->
 <div class="dashboard-panel" id="dashboardPanel">
 
@@ -1545,43 +1534,44 @@ const ghostState = {
 };
 
 // ─── Session persistence (survives refresh, not new tab) ────────
+function _sessionKey(addr) {
+  // Per-wallet key so switching wallets loads correct state
+  return 'ghostSession_' + (addr || ghostState.publicKey || ghostState.walletAddress || 'anon');
+}
 function saveSession() {
+  // Only persist wallet identity + PDAs + UI prefs
+  // All chain state (beneficiaries, vault tokens, activity log) is rebuilt from RPC on connect
   try {
+    const key = _sessionKey();
     const s = {
-      connected: ghostState.connected,
       walletName: ghostState.walletName,
       walletAddress: ghostState.walletAddress,
       publicKey: ghostState.publicKey,
-      ghost: ghostState.ghost,
-      vaultTokens: ghostState.vaultTokens,
-      walletTokens: ghostState.walletTokens,
-      recoveryWallets: ghostState.recoveryWallets,
-      activityLog: ghostState.activityLog || [],
       ghostPda: ghostState.ghostPda,
       vaultPda: ghostState.vaultPda,
+      ghostStakeVault: ghostState.ghostStakeVault || null,
       lastPage: _currentPage || 'overview',
     };
-    sessionStorage.setItem('ghostSession', JSON.stringify(s));
+    localStorage.setItem(key, JSON.stringify(s));
+    localStorage.setItem('ghostLastWallet', ghostState.publicKey || ghostState.walletAddress || '');
   } catch(e) {}
 }
 
 function loadSession() {
+  // Restore wallet identity + PDAs only; all chain state fetched fresh from RPC
   try {
-    const raw = sessionStorage.getItem('ghostSession');
+    const lastWallet = localStorage.getItem('ghostLastWallet') || '';
+    const key = lastWallet ? _sessionKey(lastWallet) : null;
+    const raw = key ? localStorage.getItem(key) : null;
     if (!raw) return false;
     const s = JSON.parse(raw);
-    if (!s.connected || !s.walletAddress) return false;
-    ghostState.connected = true;
-    ghostState.walletName = s.walletName;
-    ghostState.walletAddress = s.walletAddress;
-    ghostState.publicKey = s.publicKey;
-    ghostState.ghost = s.ghost || ghostState.ghost;
-    ghostState.vaultTokens = s.vaultTokens || [];
-    ghostState.walletTokens = s.walletTokens || [];
-    ghostState.recoveryWallets = s.recoveryWallets || [];
-    if (s.activityLog) ghostState.activityLog = s.activityLog;
+    if (!s.walletAddress && !s.publicKey) return false;
+    ghostState.walletName = s.walletName || '';
+    ghostState.walletAddress = s.walletAddress || '';
+    ghostState.publicKey = s.publicKey || '';
     if (s.ghostPda) ghostState.ghostPda = s.ghostPda;
     if (s.vaultPda) ghostState.vaultPda = s.vaultPda;
+    if (s.ghostStakeVault) ghostState.ghostStakeVault = s.ghostStakeVault;
     return s.lastPage || 'overview';
   } catch(e) { return false; }
 }
@@ -1646,6 +1636,14 @@ function tokenColor(symbol) {
 
 // GHOST_MINT declared before fetchAllPrices to avoid TDZ error
 const GHOST_MINT = 'k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump';
+// DBD is the placeholder pump.fun token used during development, to be replaced by $GHOST
+// It is only valid for: initial stake (initializeGhost) and 50% burn-back on abandonGhost
+// It must NOT appear in vault holdings, bene picker, deposit, or guardian withdraw
+const DBD_MINT = 'DBDr6LXRx8cHvdgzGmZkD2Hf8JkDhU3VvqvhVvQpump';
+function isProtocolMint(mint) {
+  if (!mint) return false;
+  return mint === GHOST_MINT || mint === DBD_MINT;
+}
 
 async function fetchAllPrices() {
   // Jupiter Price API v3 via api.jup.ag (authenticated)
@@ -1900,15 +1898,15 @@ function ghostConfirm({ icon='👻', title='Confirm', message='', okLabel='CONFI
     } else {
       btn.style.cssText = 'font-family:\'Share Tech Mono\',monospace;font-size:11px;letter-spacing:0.1em;padding:9px 22px;cursor:pointer;background:rgba(102,51,255,0.15);border:1px solid rgba(102,51,255,0.5);color:#c0a0ff;transition:all 0.2s';
     }
-    document.getElementById('ghostConfirmModal').classList.add('open');
+    const _gcm = document.getElementById('ghostConfirmModal'); _gcm.style.display='flex';
   });
 }
 function _ghostConfirmAccept() {
-  document.getElementById('ghostConfirmModal').classList.remove('open');
+  document.getElementById('ghostConfirmModal').style.display='none';
   if (_ghostConfirmResolve) { _ghostConfirmResolve(true); _ghostConfirmResolve = null; }
 }
 function _ghostConfirmReject() {
-  document.getElementById('ghostConfirmModal').classList.remove('open');
+  document.getElementById('ghostConfirmModal').style.display='none';
   if (_ghostConfirmResolve) { _ghostConfirmResolve(false); _ghostConfirmResolve = null; }
 }
 document.getElementById('walletModal').addEventListener('click', function(e) {
@@ -2412,7 +2410,7 @@ const GHOST_DISC_LABELS = {
   '69d66a8db4a67bee': '\u{1F3AF} Beneficiary added',
   '431b18998740ca4d': '\u274C Beneficiary removed',
   '51a633d59e549d6c': '\u2699\uFE0F Settings updated',
-  'd9efe14bf40efc5b': '\u{1F47B} Whole vault recipient set',
+  'd9efe14bf40efc5b': 'Whole vault recipient set',
   '63a333690b0b3b22': '\u{1F47C} Guardian withdrawal',
 };
 // Discriminators that indicate a guardian withdrawal (for icon tagging)
@@ -2461,17 +2459,35 @@ async function fetchOnChainHistory() {
         } catch(e){txList.push(null);}
       }
     }
+    // Decode a base58-encoded pubkey from raw instruction bytes at offset, returns short form
+    function ixPubkeyShort(data58, byteOffset) {
+      try {
+        const B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        let leading=0; for(const ch of data58){if(ch==='1')leading++;else break;}
+        let num=0n; for(const ch of data58.slice(leading)){const i=B58.indexOf(ch);if(i<0)break;num=num*58n+BigInt(i);}
+        const bytes=[]; while(num>0n){bytes.unshift(Number(num&0xffn));num>>=8n;}
+        const full=[...new Array(leading).fill(0),...bytes];
+        const pkBytes=full.slice(byteOffset, byteOffset+32);
+        if(pkBytes.length<32||pkBytes.every(b=>b===0)) return null;
+        let n=0n; for(const b of pkBytes) n=n*256n+BigInt(b);
+        let r=''; let t=n; while(t>0n){const rem=Number(t%58n);r=B58[rem]+r;t=t/58n;}
+        const leadOnes='1'.repeat(pkBytes.findIndex(b=>b!==0)||0);
+        const pk=leadOnes+r;
+        return pk.length>8 ? pk.slice(0,4)+'...'+pk.slice(-4) : pk;
+      } catch(_){return null;}
+    }
     function labelFromTx(tx) {
       if (!tx) return null;
       const top = tx.transaction?.message?.instructions||[];
       const inner = (tx.meta?.innerInstructions||[]).flatMap(g=>g.instructions||[]);
-      let baseLabel=null, isDeposit=false, isWithdraw=false;
+      let baseLabel=null, isDeposit=false, isWithdraw=false, matchHex=null, matchIx=null;
       for (const ix of [...top,...inner]) {
         if (ix.programId===PROGRAM_ID && ix.data) {
           try {
             const hex=b58ToDiscHex(ix.data);
             if (GHOST_DISC_LABELS[hex]) {
-              baseLabel=GHOST_DISC_LABELS[hex]; isDeposit=hex==='123e6e081a6af897'; isWithdraw=hex==='b422252e9c00d3ee'; break;
+              baseLabel=GHOST_DISC_LABELS[hex]; matchHex=hex; matchIx=ix;
+              isDeposit=hex==='123e6e081a6af897'; isWithdraw=hex==='b422252e9c00d3ee'; break;
             }
           } catch(e){}
         }
@@ -2493,6 +2509,23 @@ async function fetchOnChainHistory() {
             }
           }
         }
+      }
+      // Beneficiary added/removed — decode recipient pubkey from ix data (disc=8 bytes, recipient=next 32)
+      if (matchIx && (matchHex==='69d66a8db4a67bee'||matchHex==='431b18998740ca4d')) {
+        const short = ixPubkeyShort(matchIx.data, 8);
+        if (short) return baseLabel + ' · ' + short;
+      }
+      // Whole vault recipient set — decode recipient from ix data (disc=8, Option tag=1, pubkey=32 → offset 9)
+      if (matchIx && matchHex==='d9efe14bf40efc5b') {
+        const short = ixPubkeyShort(matchIx.data, 9);
+        if (short) return 'Whole vault → ' + short;
+        return 'Whole vault recipient set';
+      }
+      // Guardian withdrawal — show signer wallet
+      if (matchHex==='63a333690b0b3b22') {
+        const feePayer = tx.transaction?.message?.accountKeys?.[0]?.pubkey || tx.transaction?.message?.accountKeys?.[0] || '';
+        const feeShort = feePayer && feePayer.length>8 ? feePayer.slice(0,4)+'...'+feePayer.slice(-4) : '';
+        return '\u{1F47C} Guardian Withdrawal' + (feeShort?' · by '+feeShort:'');
       }
       return baseLabel;
     }
@@ -2521,7 +2554,12 @@ async function fetchOnChainHistory() {
       const prev=chronoPings[i-1];
       return {num:i+1,ts:p.ts,tx:p.sig,gap:prev?formatDuration(p.ts-prev.ts):'\u2014'};
     });
-    if (builtActivity.length>0){ghostState.activityLog=builtActivity;renderActivityLog();}
+    if (builtActivity.length>0){
+      const _chainSigs = new Set(builtActivity.map(e=>e.tx).filter(Boolean));
+      const _localOnly = (ghostState.activityLog||[]).filter(e => e._local && e.tx && !_chainSigs.has(e.tx));
+      ghostState.activityLog = [..._localOnly, ...builtActivity];
+      renderActivityLog();
+    }
     if (builtPings.length>0){ghostState.pingHistory=[...builtPings].reverse();renderPingHistory();}
     console.log('[Ghost] History: '+builtActivity.length+' txs, '+builtPings.length+' pings');
   } catch(e){console.warn('[Ghost] fetchOnChainHistory error:',e);}
@@ -2611,9 +2649,57 @@ function parseGhostAccount(bytes) {
     ghostState.ghost.beneficiaryCount = benefCount;
     ghostState.ghost.registeredAt = registeredAt > 0 ? registeredAt * 1000 : null;
 
+    // Decode beneficiaries[10] from chain bytes
+    // Rust layout: recipient(32) + amount(u64=8) + token_mint(Option<Pubkey>=33) + action(u8=1) + executed(bool=1) = 75 bytes × 10 = 750
+    const _B58c = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    function _bDecodePk(pkBytes) {
+      let n = 0n;
+      for (const b of pkBytes) n = n * 256n + BigInt(b);
+      let r = ''; let t = n;
+      while (t > 0n) { r = _B58c[Number(t % 58n)] + r; t = t / 58n; }
+      const leadIdx = pkBytes.findIndex(b => b !== 0);
+      return '1'.repeat(leadIdx < 0 ? 0 : leadIdx) + r;
+    }
+    const _chainBeneficiaries = [];
+    for (let _bi = 0; _bi < 10; _bi++) {
+      const recipBytes = bytes.slice(offset, offset + 32); offset += 32;
+      const amtRaw = view.getBigUint64(offset, true); offset += 8;
+      const mintTag = bytes[offset]; offset += 1;
+      let mintPk = null;
+      if (mintTag === 1) { mintPk = _bDecodePk(bytes.slice(offset, offset + 32)); }
+      offset += 32; // always skip 32 bytes whether Some or None
+      const actionByte = bytes[offset]; offset += 1;
+      const executedByte = bytes[offset]; offset += 1;
+      const hasRecip = recipBytes.some(b => b !== 0);
+      const hasAmt = amtRaw > 0n;
+      if (!hasRecip && !hasAmt) continue; // empty slot
+      const recipFull = hasRecip ? _bDecodePk(recipBytes) : null;
+      const short = recipFull ? recipFull.slice(0,4) + '...' + recipFull.slice(-4) : '(burn)';
+      const isBurn = actionByte === 1;
+      // Resolve symbol from already-loaded vault tokens if possible
+      const _knownTok = mintPk ? (ghostState.vaultTokens || []).find(t => t.mint === mintPk) : null;
+      const mintSym = _knownTok?.symbol || (mintPk ? mintPk.slice(0, 6) : '?');
+      const mintDec = _knownTok?.decimals ?? 6;
+      const humanAmt = Number(amtRaw) / Math.pow(10, mintDec);
+      _chainBeneficiaries.push({
+        recipient: isBurn ? '(burn)' : short,
+        fullAddr: isBurn ? null : recipFull,
+        amount: humanAmt,
+        token: mintSym,
+        mint: mintPk,
+        action: isBurn ? 'burn' : 'transfer',
+        executed: executedByte === 1,
+        _fromChain: true,
+      });
+    }
+    // Chain is authoritative: replace any cached beneficiaries with on-chain data
+    // Keep only whole-vault-share entries (decoded separately below from wholeVaultRecipient)
+    ghostState.ghost.beneficiaries = [
+      ..._chainBeneficiaries,
+      ...((ghostState.ghost.beneficiaries || []).filter(b => b.action === 'whole-vault-share')),
+    ];
+
     // v1.3: whole_vault_recipient at byte offset 894 (after 8 disc + 886 fields)
-    // At this point `offset` = 144 (past beneficiary_count). Skip beneficiaries[10] = 750 bytes.
-    offset += 750; // now at 894
     try {
       const wvTag = bytes[offset]; offset++;
       let wholeVaultRecipient = null;
@@ -2633,22 +2719,31 @@ function parseGhostAccount(bytes) {
       if (wholeVaultRecipient) {
         const short = wholeVaultRecipient.slice(0,4) + '...' + wholeVaultRecipient.slice(-4);
         ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: wholeVaultRecipient, pct: 100 }];
-        if (!ghostState.ghost.beneficiaries.some(b => b.action === 'whole-vault-share')) {
-          ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
-          ghostState.ghost.beneficiaries.push({
-            recipient: short, fullAddr: wholeVaultRecipient,
-            sharePct: 100, amount: 0, token: 'VAULT x100%',
-            action: 'whole-vault-share', executed: false
-          });
-        }
+        // Chain is authoritative — always rebuild whole-vault-share entry from on-chain data
+        ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+        ghostState.ghost.beneficiaries.push({
+          recipient: short, fullAddr: wholeVaultRecipient,
+          sharePct: 100, amount: 0, token: 'VAULT x100%',
+          action: 'whole-vault-share', executed: false
+        });
       } else {
         ghostState.ghost.wholeVaultRecipient = null;
+        // Chain says no whole-vault recipient — clear any stale session entry
+        ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
+        ghostState.ghost.wholeVaultShares = [];
       }
     } catch(_) { ghostState.ghost.wholeVaultRecipient = null; }
 
     if (executed) ghostState.ghost.status = 'executed';
     else if (awakened) ghostState.ghost.status = 'awakened';
     else ghostState.ghost.status = 'alive';
+    // Update overview beneficiary count whenever chain state is parsed
+    const _countEl = document.getElementById('dbBenefCount');
+    if (_countEl) {
+      const _wv = ghostState.ghost.beneficiaries.filter(b=>b.action==='whole-vault-share').length;
+      const _tr = ghostState.ghost.beneficiaries.filter(b=>b.action!=='whole-vault-share').length;
+      _countEl.textContent = _tr + (_wv > 0 ? 1 : 0);
+    }
 
     // Populate recovery wallet from on-chain state if present
     if (recoveryWalletPubkey && !ghostState.recoveryWallets.find(w => w.address === recoveryWalletPubkey)) {
@@ -3151,7 +3246,7 @@ function dbShowPage(pageId, navEl) {
   if (pageId === 'settings') syncSettingsDisplay();
   if (pageId === 'recovery') renderRecoveryWallets();
   if (pageId === 'heartbeat') renderPingHistory();
-  if (pageId === 'overview') { renderVaultOverview(); renderPingHistory(); renderActivityLog(); }
+  if (pageId === 'overview') { renderVaultOverview(); renderPingHistory(); renderActivityLog(); renderBeneficiaries(); }
 }
 
 // ─── Countdown ─────────────────────────────────────────────────
@@ -3277,10 +3372,12 @@ async function sendPing() {
 if (!ghostState.activityLog) ghostState.activityLog = []; // [{msg, tx, ts}]
 
 function addActivityRow(msg, tx) {
+  // Mark as _local so it shows immediately; fetchOnChainHistory will replace it
+  // with the authoritative on-chain version once the tx is confirmed and indexed
   const ts = Date.now();
-  ghostState.activityLog.unshift({ msg, tx: tx||'', ts });
+  ghostState.activityLog.unshift({ msg, tx: tx||'', ts, _local: true });
   renderActivityLog();
-  saveSession();
+  // Don't save to localStorage — chain history is the source of truth
 }
 
 function renderActivityLog() {
@@ -3299,7 +3396,7 @@ function renderActivityLog() {
     const short = fullSig.length>12 ? fullSig.slice(0,4)+'...'+fullSig.slice(-4) : fullSig;
     const cpBtn = fullSig ? '<button onclick="copyAddr(\'' + fullSig + '\')" title="Copy tx signature" style="background:none;border:1px solid rgba(102,51,255,0.25);color:#8888bb;font-size:10px;padding:1px 5px;cursor:pointer;margin-left:4px;font-family:\'Share Tech Mono\',monospace;vertical-align:middle;line-height:1.4">\u29C9</button>' : '';
     let iconHtml = entry.icon === 'angel' ? _angelSvg : '';
-    if (!iconHtml && entry.msg && /vault|Vault|Deposited|Withdrew|recipient set/i.test(entry.msg)) iconHtml = _chestSvg;
+    if (!iconHtml && entry.msg && /whole vault|Whole vault|whole-vault|Whole Vault/i.test(entry.msg)) iconHtml = _chestSvg;
     const rowBg = '';
     const tdStyle = iconHtml ? ' style="display:flex;align-items:center"' : '';
     return '<tr' + rowBg + '><td' + tdStyle + '>' + iconHtml + entry.msg + '</td><td style="white-space:nowrap;color:#9090b8">' + timeStr + '</td><td style="white-space:nowrap"><span class="addr-short">' + short + '</span>' + cpBtn + '</td></tr>';
@@ -3488,7 +3585,9 @@ function renderBeneficiaries() {
   const slotEl = document.getElementById('dbBSlots');
   if (slotEl) slotEl.textContent = slots;
   const countEl = document.getElementById('dbBenefCount');
-  if (countEl) countEl.textContent = transfers.length;
+  // Show whole vault share as 1 beneficiary in overview count
+  const totalBeneCount = transfers.length + (wholeShares.length > 0 ? 1 : 0);
+  if (countEl) countEl.textContent = totalBeneCount;
   // Show lock notice + disable add buttons when whole vault is active
   const lockNotice = document.getElementById('wholeVaultLockNotice');
   if (lockNotice) lockNotice.style.display = wholeShares.length > 0 ? 'block' : 'none';
@@ -3673,7 +3772,7 @@ async function dbAddBeneficiary(action) {
     renderVaultHoldings();
     document.getElementById(amountInput).value = '';
     if (!isBurn) document.getElementById('newRecipient').value = '';
-    addActivityRow(isBurn ? '🔥 Burn instruction on-chain' : '📋 Beneficiary added on-chain', shortSig);
+    addActivityRow(isBurn ? '🔥 Burn instruction on-chain' : '🎯 Beneficiary added on-chain', shortSig);
     const mergeNote2 = mergedFromWhole ? ' · whole-vault assignment replaced' : '';
     showNotif(isBurn ? '🔥 Burn instruction confirmed!' : ('✅ Beneficiary added on-chain!' + mergeNote2), 'green');
   } catch(err) {
@@ -3740,7 +3839,7 @@ async function dbRemoveBeneficiary(index) {
 
     ghostState.ghost.beneficiaries.splice(index, 1);
     _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
-    addActivityRow('Beneficiary removed on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('❌ Beneficiary removed on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
     saveSession();
     showNotif('Beneficiary removed on-chain!', 'green');
   } catch(err) {
@@ -3891,7 +3990,7 @@ async function dbSaveWholeVaultPlan() {
 
     ghostState.ghost.wholeVaultRecipient = recipient;
     _applyWholeVaultLocally(share);
-    addActivityRow('Whole vault -> ' + share.addr + ' on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('👻 Whole vault → ' + share.addr + ' set on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif('Whole vault recipient set on-chain!', 'green');
   } catch(err) {
     console.error('set_whole_vault_recipient error:', err);
@@ -3940,7 +4039,7 @@ async function dbClearWholeVaultRecipient(skipConfirm) {
 
     ghostState.ghost.wholeVaultRecipient = null;
     _clearWholeVaultLocally();
-    addActivityRow('Whole vault recipient cleared on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('👻 Whole vault recipient cleared on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif('Whole vault recipient cleared on-chain!', 'green');
   } catch(err) {
     console.error('clear whole vault error:', err);
@@ -4320,13 +4419,12 @@ async function guardianWithdrawAll(ownerAddress) {
       ...await fetchTAs(vaultPda, TOKEN_PROG_STR),
       ...await fetchTAs(vaultPda, TOKEN22_PROG_STR)
     ];
-    // Exclude staked GHOST (stake_vault PDA) and GHOST mint entirely
-    const GHOST_MINT_STR = 'k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump';
+    // Exclude staked GHOST (stake_vault PDA), GHOST mint, and DBD mint entirely
     const WSOL_MINT_STR_G = 'So11111111111111111111111111111111111111112';
     const allAccts = allAcctsRaw.filter(a => {
-      if (a.pubkey === ownerStakeVaultKey) return false; // staked GHOST — off limits
+      if (a.pubkey === ownerStakeVaultKey) return false; // staked GHOST — protocol-locked
       const mint = a.account?.data?.parsed?.info?.mint;
-      if (mint === GHOST_MINT_STR) return false; // GHOST token — always excluded
+      if (mint && isProtocolMint(mint)) return false; // GHOST/DBD — protocol-only
       return true;
     });
 
@@ -4944,8 +5042,13 @@ async function loadWalletTokens() {
           // Exclude the ghost_stake_vault token account — holds protocol-locked staked $GHOST
           // Users cannot withdraw this until they abandon ghost; it should not appear in vault UI
           const _stakeVaultKey = ghostState.ghostStakeVault;
-          const userAccts = _stakeVaultKey ? deduped.filter(a => a.pubkey !== _stakeVaultKey) : deduped;
-          console.log('[Ghost] Vault accts:', deduped.length, 'after excluding stake vault:', userAccts.length);
+          const userAccts = deduped.filter(a => {
+            if (_stakeVaultKey && a.pubkey === _stakeVaultKey) return false; // staked GHOST — protocol-locked
+            const _mint = a.account?.data?.parsed?.info?.mint;
+            if (_mint && isProtocolMint(_mint)) return false; // GHOST/DBD — protocol-only tokens
+            return true;
+          });
+          console.log('[Ghost] Vault accts:', deduped.length, 'after excluding stake vault + protocol mints:', userAccts.length);
           vaultAccts.splice(0, vaultAccts.length, ...userAccts);
           if (true) { // keep original block structure
           // Rebuild vaultTokens from on-chain data
@@ -4964,13 +5067,16 @@ async function loadWalletTokens() {
             const meta = ghostState.walletTokens.find(t => t.mint === mint)
                       || ghostState.vaultTokens.find(t => t.mint === mint)
                       || {};
+            const _rawSym = meta.symbol || mint.slice(0,6);
             freshVault.push({
-              symbol: meta.symbol || mint.slice(0,6),
+              symbol: _rawSym,
               mint,
               balance,
               decimals,
               logoUrl: meta.logoUrl || null,
-              name: meta.name || null
+              name: meta.name || null,
+              // Mark as unknown if symbol is just a mint slice (no real metadata yet)
+              _unknownMeta: !meta.symbol && !meta.name
             });
           }
           if (freshVault.length > 0 || vaultAccts.length >= 0) {
@@ -5117,10 +5223,15 @@ function vaultAssignableTokens() {
   return ghostState.vaultTokens
     .filter(vt => {
       if (vt.balance < 0) return false; // show dust amounts (uiAmount may round to 0)
-      if (vt.mint === GHOST_MINT) return false; // GHOST is staked, not in user vault
-      // Filter out tokens with no proper symbol (raw mint-slice fallback = unrecognized token)
+      if (vt._unknownMeta) return false; // no real metadata — skip unknown tokens
+      if (isProtocolMint(vt.mint)) return false; // GHOST/DBD — protocol-only, never vault-assignable
+      // Filter out tokens with no verified metadata (symbol is raw mint prefix or no name)
       const sym = vt.symbol || '';
-      if (sym.length <= 6 && sym === vt.mint?.slice(0, sym.length)) return false; // raw mint slice = unknown
+      const mintStr = vt.mint || '';
+      // If symbol is a prefix slice of the mint address → no real metadata resolved
+      if (sym && mintStr && mintStr.toUpperCase().startsWith(sym.toUpperCase())) return false;
+      // If symbol ≤ 6 chars AND no name → almost certainly a raw mint slice fallback
+      if (sym.length <= 6 && !vt.name) return false;
       // Sum only specific transfer/burn assignments (not whole-vault-share)
       const assigned = ghostState.ghost.beneficiaries
         .filter(b => b.action !== 'whole-vault-share' && (b.token === vt.symbol || b.token === vt.mint))
@@ -5141,7 +5252,7 @@ const WHOLE_VAULT_TOKEN = { symbol: 'Whole Vault', mint: '__whole_vault__', bala
 function populateAllPickers() {
   const t = ghostState.walletTokens;
   // Deposit picker: wallet tokens with balance > 0
-  const depositTokens = t.filter(tok => tok.balance > 0 && tok.mint !== GHOST_MINT); // GHOST routes to stake_vault, not user vault
+  const depositTokens = t.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint)); // GHOST/DBD — protocol-only, not depositable
   buildPickerDropdown('deposit', depositTokens);
   // Bene picker: assignable vault tokens + whole vault option at bottom
   const assignable = vaultAssignableTokens();
@@ -5490,7 +5601,7 @@ function renderVaultHoldings() {
     <div class="vault-asset-row" data-mint="${t.mint}" style="${isFullyAssigned ? 'opacity:0.78;background:rgba(160,128,255,0.025)' : ''}">
       <div class="vault-asset-icon" style="background:none;overflow:hidden" data-logo="${t.mint}">${tokenLogoEl(t.symbol, 36, t.logoUrl||null)}</div>
       <div class="vault-asset-info">
-        <div class="vault-asset-symbol" style="display:flex;align-items:center">${t.symbol}${badge}</div>
+        <div class="vault-asset-symbol" style="display:flex;align-items:center;gap:8px">${t.symbol}${badge}<button onclick="excludeVaultMint('${t.mint}')" title="Hide this token from vault" style="background:none;border:none;color:#50406a;font-size:10px;cursor:pointer;padding:1px 3px;font-family:'Share Tech Mono',monospace;line-height:1;flex-shrink:0" onmouseover="this.style.color='#ff6688'" onmouseout="this.style.color='#50406a'">✕ hide</button></div>
         <div class="vault-asset-bal" data-bal="${t.mint}">${t.balance.toLocaleString(undefined,{maximumFractionDigits:6})} ${t.symbol} in vault${usdStr}${freeNote}</div>
       </div>
       <div class="vault-asset-actions">
@@ -5618,7 +5729,7 @@ async function dbWithdrawAll() {
       count++;
     }
     ghostState.vaultTokens = [];
-    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && tok.mint !== GHOST_MINT);
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
     buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', vaultAssignableTokens());
     ghostState.selectedTokens.deposit = null;
     if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
@@ -5761,7 +5872,7 @@ async function dbWithdrawAll() {
   }
 
   if (successCount > 0) {
-    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && tok.mint !== GHOST_MINT);
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
     buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', vaultAssignableTokens());
     ghostState.selectedTokens.deposit = null;
     if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
@@ -5986,7 +6097,7 @@ async function dbDeposit() {
       t.balance.toLocaleString(undefined, {maximumFractionDigits:6}) + ' ' + displaySym;
     document.getElementById('depositAmt').value = '';
     document.getElementById('depositAmtDisplay').value = '';
-    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && tok.mint !== GHOST_MINT);
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
     buildPickerDropdown('deposit', depositPool);
     if (!ghostState.selectedTokens.deposit || ghostState.selectedTokens.deposit.balance <= 0) {
       ghostState.selectedTokens.deposit = null;
@@ -6681,6 +6792,19 @@ async function dbAbandon() {
 }
 </script>
 
+</div>
+
+<!-- ─── GHOST CONFIRM MODAL (must be last in DOM to beat dashboard stacking context) ── -->
+<div id="ghostConfirmModal" onclick="if(event.target===this)_ghostConfirmReject()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;justify-content:center;align-items:center;backdrop-filter:blur(5px)">
+  <div style="background:#0d0d1a;border:1px solid rgba(102,51,255,0.45);max-width:400px;width:90%;padding:40px 36px;position:relative">
+    <div id="ghostConfirmIcon" style="font-size:30px;margin-bottom:14px;text-align:center;line-height:1"></div>
+    <h3 id="ghostConfirmTitle" style="margin-bottom:10px;font-size:20px;font-family:'Syne',sans-serif;color:#f0f0f8;font-weight:700"></h3>
+    <p id="ghostConfirmMsg" style="margin-bottom:28px;font-size:13px;line-height:1.6;color:#c0bce0;font-family:'Share Tech Mono',monospace"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="_ghostConfirmReject()" style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.1em;color:#c0bce0;background:none;border:1px solid rgba(192,188,224,0.2);padding:9px 20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.borderColor='rgba(192,188,224,0.45)'" onmouseout="this.style.borderColor='rgba(192,188,224,0.2)'">CANCEL</button>
+      <button id="ghostConfirmOkBtn" onclick="_ghostConfirmAccept()" style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.1em;padding:9px 22px;cursor:pointer;transition:all 0.2s">CONFIRM</button>
+    </div>
+  </div>
 </div>
 </body>
 </html>
