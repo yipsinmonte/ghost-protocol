@@ -2415,7 +2415,7 @@ const GHOST_DISC_LABELS = {
   '431b18998740ca4d': '\u274C Beneficiary removed',
   '51a633d59e549d6c': '\u2699\uFE0F Settings updated',
   'd9efe14bf40efc5b': 'Whole vault recipient set',
-  '63a333690b0b3b22': '\u{1F47C} Guardian withdrawal',
+  '63a333690b0b3b22': 'Guardian Withdrawal',
 };
 // Discriminators that indicate a guardian withdrawal (for icon tagging)
 const GUARDIAN_DISCS = new Set(['63a333690b0b3b22']);
@@ -2522,10 +2522,14 @@ async function fetchOnChainHistory() {
       // Whole vault recipient set — decode recipient from ix data (disc=8, Option tag=1, pubkey=32 → offset 9)
       if (matchIx && matchHex==='d9efe14bf40efc5b') {
         const short = ixPubkeyShort(matchIx.data, 9);
-        if (short) return 'Whole vault → ' + short;
+        if (short) return 'Whole vault recipient → ' + short;
         return 'Whole vault recipient set';
       }
-      if (matchHex==='63a333690b0b3b22') { return 'Guardian Withdrawal'; }
+      if (matchHex==='63a333690b0b3b22') {
+        const _fp = tx.transaction?.message?.accountKeys?.[0]?.pubkey || tx.transaction?.message?.accountKeys?.[0] || '';
+        const _fps = typeof _fp === 'string' && _fp.length > 8 ? _fp.slice(0,4)+'...'+_fp.slice(-4) : '';
+        return 'Guardian Withdrawal' + (_fps ? ' · by ' + _fps : '');
+      }
       return baseLabel;
     }
     const builtActivity=[], rawPings=[];
@@ -2657,6 +2661,7 @@ function parseGhostAccount(bytes) {
       const li = pkBytes.findIndex(b => b !== 0);
       return '1'.repeat(li < 0 ? 0 : li) + r;
     }
+    const _SOL_MINT = 'So11111111111111111111111111111111111111112';
     const _chainBenefs = [];
     for (let _bi = 0; _bi < 10; _bi++) {
       const recipBytes = bytes.slice(offset, offset + 32); offset += 32;
@@ -2667,15 +2672,27 @@ function parseGhostAccount(bytes) {
       offset += 32; // always advance 32 (Borsh fixed-size Option<Pubkey>)
       const actionByte = bytes[offset]; offset += 1;
       const execByte = bytes[offset]; offset += 1;
-      if (!recipBytes.some(b => b !== 0) && amtRaw === 0n) continue; // empty slot
-      const recipFull = recipBytes.some(b => b !== 0) ? _bDecodePk(recipBytes) : null;
+      // Empty slot: no recipient AND no amount AND no mint
+      const hasRecip = recipBytes.some(b => b !== 0);
+      if (!hasRecip && amtRaw === 0n && !mintPk) continue;
+      const recipFull = hasRecip ? _bDecodePk(recipBytes) : null;
       const isBurn = actionByte === 1;
       const short = recipFull ? recipFull.slice(0,4) + '...' + recipFull.slice(-4) : '(burn)';
-      const _kt = mintPk ? ((ghostState.vaultTokens||[]).find(t=>t.mint===mintPk)||(ghostState.walletTokens||[]).find(t=>t.mint===mintPk)) : null;
+      // Resolve symbol: SOL native mint → 'SOL', lookup in known tokens, fallback to first 6 chars
+      let mintSym, mintDec;
+      if (mintPk === _SOL_MINT || mintPk === 'native') {
+        mintSym = 'SOL'; mintDec = 9;
+      } else if (mintPk) {
+        const _kt = (ghostState.vaultTokens||[]).find(t=>t.mint===mintPk) || (ghostState.walletTokens||[]).find(t=>t.mint===mintPk);
+        mintSym = _kt?.symbol || mintPk.slice(0,6);
+        mintDec = _kt?.decimals ?? 6;
+      } else {
+        mintSym = '?'; mintDec = 6;
+      }
       _chainBenefs.push({
         recipient: isBurn ? '(burn)' : short, fullAddr: isBurn ? null : recipFull,
-        amount: Number(amtRaw) / Math.pow(10, _kt?.decimals ?? 6),
-        token: _kt?.symbol || (mintPk ? mintPk.slice(0,6) : '?'), mint: mintPk,
+        amount: Number(amtRaw) / Math.pow(10, mintDec),
+        token: mintSym, mint: mintPk,
         action: isBurn ? 'burn' : 'transfer', executed: execByte === 1, _fromChain: true,
       });
     }
@@ -3433,7 +3450,16 @@ function renderBeneficiaries() {
       }
       if (!hasWholeVault) {
         for (const b of all.filter(x => x.action !== 'whole-vault-share')) {
-          if (allocationByToken[b.token]) allocationByToken[b.token].assigned += b.amount;
+          // Match by symbol first, then by mint (handles SOL where mint=So111... but sym='SOL')
+          if (allocationByToken[b.token]) {
+            allocationByToken[b.token].assigned += b.amount;
+          } else if (b.mint) {
+            // Try to find a vault token by mint address
+            const _vtByMint = ghostState.vaultTokens.find(v => v.mint === b.mint);
+            if (_vtByMint && allocationByToken[_vtByMint.symbol]) {
+              allocationByToken[_vtByMint.symbol].assigned += b.amount;
+            }
+          }
         }
       }
       const wholeRecipient = wholeShares[0]?.recipient || '';
@@ -3840,7 +3866,8 @@ async function dbRemoveBeneficiary(index) {
 
     ghostState.ghost.beneficiaries.splice(index, 1);
     _refreshBenePickers(); renderBeneficiaries(); renderVaultHoldings();
-    addActivityRow('❌ Beneficiary removed · ' + (entry.fullAddr ? entry.fullAddr.slice(0,4)+'...'+entry.fullAddr.slice(-4) : (entry.recipient||'')), sig.slice(0,4)+'...'+sig.slice(-4));
+    const _removedAddr = entry.fullAddr ? entry.fullAddr.slice(0,4)+'...'+entry.fullAddr.slice(-4) : (entry.recipient||'');
+    addActivityRow('❌ Beneficiary removed · ' + _removedAddr, sig.slice(0,4)+'...'+sig.slice(-4));
     saveSession();
     showNotif('Beneficiary removed on-chain!', 'green');
   } catch(err) {
@@ -3991,7 +4018,7 @@ async function dbSaveWholeVaultPlan() {
 
     ghostState.ghost.wholeVaultRecipient = recipient;
     _applyWholeVaultLocally(share);
-    addActivityRow('Whole vault → ' + share.addr, sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('Whole vault recipient → ' + share.addr, sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif('Whole vault recipient set on-chain!', 'green');
   } catch(err) {
     console.error('set_whole_vault_recipient error:', err);
@@ -4594,8 +4621,15 @@ async function guardianWithdrawAll(ownerAddress) {
       const _gShort = ghostState.publicKey ? ghostState.publicKey.slice(0,4)+'...'+ghostState.publicKey.slice(-4) : 'guardian';
       const _lastSig = guardianWithdrawSigs[guardianWithdrawSigs.length-1] || '';
       const _summary = guardianWithdrawLog.length > 0 ? guardianWithdrawLog.join(' + ') : successCount + ' asset' + (successCount>1?'s':'');
-      addActivityRow('Guardian Withdrawal', _lastSig.slice(0,4)+'...'+_lastSig.slice(-4), 'angel');
+      addActivityRow('Guardian Withdrawal · by ' + _gShort, _lastSig.slice(0,4)+'...'+_lastSig.slice(-4), 'angel');
       showNotif('Guardian withdrew ' + successCount + ' asset' + (successCount > 1 ? 's' : '') + '!', 'green');
+      // Reload ghost account from chain — clears beneficiaries if contract cleared them on withdrawal
+      try {
+        await fetchGhostAccount();
+        ghostState.ghost.beneficiaries = [];
+        renderBeneficiaries();
+        renderVaultHoldings();
+      } catch(_) {}
       await scanGuardianAssignments();
     } else {
       showNotif('No assets were successfully withdrawn', 'error');
@@ -5140,6 +5174,7 @@ async function loadWalletTokens() {
     }
 
     populateAllPickers();
+    _refreshBenePickers(); // rebuild bene picker with freshly loaded vault tokens (SOL + SPL)
     fetchPumpFunData(); // get logos/prices for any pump.fun tokens
   } catch(err) {
     console.error('Token load error:', err);
@@ -5269,15 +5304,13 @@ function vaultAssignableTokens() {
         if (sym.length <= 6 && !vt.name && mintStr !== 'native') return false;
       }
       // Sum only specific transfer/burn assignments (not whole-vault-share)
-      const assigned = ghostState.ghost.beneficiaries
-        .filter(b => b.action !== 'whole-vault-share' && (b.token === vt.symbol || b.token === vt.mint))
-        .reduce((s, b) => s + (b.amount || 0), 0);
+      const _matchBene = b => b.action !== 'whole-vault-share' && (b.token === vt.symbol || b.token === vt.mint || b.mint === vt.mint);
+      const assigned = ghostState.ghost.beneficiaries.filter(_matchBene).reduce((s, b) => s + (b.amount || 0), 0);
       return assigned < vt.balance; // still has unassigned balance
     })
     .map(vt => {
-      const assigned = ghostState.ghost.beneficiaries
-        .filter(b => b.action !== 'whole-vault-share' && (b.token === vt.symbol || b.token === vt.mint))
-        .reduce((s, b) => s + (b.amount || 0), 0);
+      const _matchBene = b => b.action !== 'whole-vault-share' && (b.token === vt.symbol || b.token === vt.mint || b.mint === vt.mint);
+      const assigned = ghostState.ghost.beneficiaries.filter(_matchBene).reduce((s, b) => s + (b.amount || 0), 0);
       return { ...vt, balance: +(vt.balance - assigned).toFixed(9) };
     });
 }
