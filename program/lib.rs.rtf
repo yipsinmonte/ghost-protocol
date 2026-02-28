@@ -1,1884 +1,592 @@
-{\rtf1\ansi\ansicpg1252\cocoartf2822
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fmodern\fcharset0 Courier;\f1\fmodern\fcharset0 Courier-Oblique;}
-{\colortbl;\red255\green255\blue255;\red252\green93\blue186;\red30\green31\blue41;\red246\green246\blue239;
-\red174\green122\blue247;\red124\green228\blue252;\red72\green255\blue104;\red238\green252\blue122;\red80\green93\blue147;
-}
-{\*\expandedcolortbl;;\cssrgb\c100000\c47451\c77647;\cssrgb\c15686\c16471\c21176;\cssrgb\c97255\c97255\c94902;
-\cssrgb\c74118\c57647\c97647;\cssrgb\c54510\c91373\c99216;\cssrgb\c31373\c98039\c48235;\cssrgb\c94510\c98039\c54902;\cssrgb\c38431\c44706\c64314;
-}
-\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
-\deftab720
-\pard\pardeftab720\partightenfactor0
+use anchor_lang::prelude::*;
+use anchor_spl::token_interface::{self, Burn, TokenAccount, TokenInterface, TransferChecked, Mint};
 
-\f0\fs24 \cf2 \cb3 \expnd0\expndtw0\kerning0
-\outl0\strokewidth0 \strokec2 use\cf4 \strokec4  anchor_lang\cf2 \strokec2 ::\cf4 \strokec4 prelude\cf2 \strokec2 ::*\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 use\cf4 \strokec4  anchor_spl\cf2 \strokec2 ::\cf4 \strokec4 token\cf2 \strokec2 ::\cf4 \strokec4 \{\cf5 \strokec5 self\cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Burn
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Token
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Transfer
-\f0\i0 \cf4 \strokec4 \};\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf7 \cb3 \strokec7 declare_id!\cf4 \strokec4 (\cf8 \strokec8 "3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3"\cf4 \strokec4 );\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9 // \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \cf4 \cb1 \strokec4 \
-\cf9 \cb3 \strokec9 //  GHOST Protocol v1.1 \'97 Trustless Digital Legacy on Solana\cf4 \cb1 \strokec4 \
-\cf9 \cb3 \strokec9 //  Playground-compatible build\cf4 \cb1 \strokec4 \
-\cf9 \cb3 \strokec9 // \uc0\u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \cf4 \cb1 \strokec4 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  GHOST_SEED\cf2 \strokec2 :\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ] \cf2 \strokec2 =\cf4 \strokec4  \cf8 \strokec8 b"ghost"\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  VAULT_SEED\cf2 \strokec2 :\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ] \cf2 \strokec2 =\cf4 \strokec4  \cf8 \strokec8 b"vault"\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  MIN_STAKE\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4  \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 10_000\cf4 \strokec4  \cf2 \strokec2 *\cf4 \strokec4  \cf5 \strokec5 1_000_000\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  MIN_INTERVAL\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4  \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 7\cf4 \strokec4  \cf2 \strokec2 *\cf4 \strokec4  \cf5 \strokec5 24\cf4 \strokec4  \cf2 \strokec2 *\cf4 \strokec4  \cf5 \strokec5 60\cf4 \strokec4  \cf2 \strokec2 *\cf4 \strokec4  \cf5 \strokec5 60\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  MIN_GRACE_PERIOD\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4  \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 24\cf4 \strokec4  \cf2 \strokec2 *\cf4 \strokec4  \cf5 \strokec5 60\cf4 \strokec4  \cf2 \strokec2 *\cf4 \strokec4  \cf5 \strokec5 60\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  MAX_BENEFICIARIES\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4  \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 10\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  SILENCE_BOUNTY_BPS\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4  \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 500\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  BURN_ON_ABANDON_BPS\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4  \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 5_000\cf4 \strokec4 ;\cb1 \
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 const\cf4 \strokec4  GHOST_ACCOUNT_SPACE\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4  \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 8\cf4 \strokec4  \cf2 \strokec2 +\cf4 \strokec4  \cf5 \strokec5 900\cf4 \strokec4 ;\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[program]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 mod\cf4 \strokec4  ghost_protocol \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 use\cf4 \strokec4  \cf5 \strokec5 super\cf2 \strokec2 ::*\cf4 \strokec4 ;\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Initialize a new ghost account.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 initialize_ghost\cf4 \strokec4 (\cb1 \
-\cb3         ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 InitializeGhost
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3         interval_seconds\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3         grace_period_seconds\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3         recovery_wallet\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Option
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3         stake_amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     ) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (stake_amount \cf2 \strokec2 >=\cf4 \strokec4  MIN_STAKE, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 InsufficientStake
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (interval_seconds \cf2 \strokec2 >=\cf4 \strokec4  MIN_INTERVAL, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 IntervalTooShort
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (grace_period_seconds \cf2 \strokec2 >=\cf4 \strokec4  MIN_GRACE_PERIOD, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GracePeriodTooShort
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  ghost \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &mut\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  clock \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Clock
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 get\cf4 \strokec4 ()\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 owner \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 signer\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 ();\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 recovery_wallet \cf2 \strokec2 =\cf4 \strokec4  recovery_wallet;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 last_heartbeat \cf2 \strokec2 =\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 interval_seconds \cf2 \strokec2 =\cf4 \strokec4  interval_seconds;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 grace_period_seconds \cf2 \strokec2 =\cf4 \strokec4  grace_period_seconds;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 awakened \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 false\cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 awakened_at \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 None
-\f0\i0 \cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 executed \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 false\cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 executed_at \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 None
-\f0\i0 \cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 staked_ghost \cf2 \strokec2 =\cf4 \strokec4  stake_amount;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 bump \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 bumps\cf2 \strokec2 .\cf4 \strokec4 ghost;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 vault_bump \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 bumps\cf2 \strokec2 .\cf4 \strokec4 vault;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 registered_at \cf2 \strokec2 =\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 ping_count \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 0\cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 0\cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiaries \cf2 \strokec2 =\cf4 \strokec4  [
-\f1\i \cf6 \strokec6 Beneficiary
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 default\cf4 \strokec4 (); \cf5 \strokec5 10\cf4 \strokec4 ];\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9         // Transfer stake into vault\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         \cf2 \strokec2 let\cf4 \strokec4  cpi_ctx \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CpiContext
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 new\cf4 \strokec4 (\cb1 \
-\cb3             ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 token_program\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 Transfer
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3                 from\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 signer_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 to\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost_stake_vault\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 authority\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 signer\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             \},\cb1 \
-\cb3         );\cb1 \
-\cb3         token\cf2 \strokec2 ::\cf7 \strokec7 transfer\cf4 \strokec4 (cpi_ctx, stake_amount)\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 GhostRegistered
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3             soul\cf2 \strokec2 :\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner,\cb1 \
-\cb3             interval\cf2 \strokec2 :\cf4 \strokec4  interval_seconds,\cb1 \
-\cb3             grace_period\cf2 \strokec2 :\cf4 \strokec4  grace_period_seconds,\cb1 \
-\cb3             recovery_wallet,\cb1 \
-\cb3             staked\cf2 \strokec2 :\cf4 \strokec4  stake_amount,\cb1 \
-\cb3             timestamp\cf2 \strokec2 :\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp,\cb1 \
-\cb3         \});\cb1 \
-\
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56443  Ghost initialized for \{\}"\cf4 \strokec4 , ghost\cf2 \strokec2 .\cf4 \strokec4 owner);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Send a heartbeat ping to prove you are alive.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 ping\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 Ping
-\f0\i0 \cf4 \strokec4 >) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  ghost \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &mut\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost;\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 executed, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostAlreadyExecuted
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  clock \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Clock
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 get\cf4 \strokec4 ()\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 last_heartbeat \cf2 \strokec2 =\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 ping_count \cf2 \strokec2 +=\cf4 \strokec4  \cf5 \strokec5 1\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf2 \strokec2 if\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 awakened \{\cb1 \
-\cb3             ghost\cf2 \strokec2 .\cf4 \strokec4 awakened \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 false\cf4 \strokec4 ;\cb1 \
-\cb3             ghost\cf2 \strokec2 .\cf4 \strokec4 awakened_at \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 None
-\f0\i0 \cf4 \strokec4 ;\cb1 \
-\cb3             \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56467  Ping received \'97 awakening cancelled"\cf4 \strokec4 );\cb1 \
-\cb3         \} \cf2 \strokec2 else\cf4 \strokec4  \{\cb1 \
-\cb3             \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56467  Heartbeat #\{\} recorded"\cf4 \strokec4 , ghost\cf2 \strokec2 .\cf4 \strokec4 ping_count);\cb1 \
-\cb3         \}\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 HeartbeatReceived
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3             soul\cf2 \strokec2 :\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner,\cb1 \
-\cb3             timestamp\cf2 \strokec2 :\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp,\cb1 \
-\cb3             ping_number\cf2 \strokec2 :\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 ping_count,\cb1 \
-\cb3         \});\cb1 \
-\
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Add a beneficiary.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 add_beneficiary\cf4 \strokec4 (\cb1 \
-\cb3         ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 ManageBeneficiaries
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3         recipient\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3         amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3         token_mint\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Option
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3         action\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cf9 \strokec9  // 0=Transfer, 1=Burn, 2=TimeLock\cf4 \cb1 \strokec4 \
-\cb3     ) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  ghost \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &mut\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost;\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 awakened, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostAlreadyAwakened
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cb1 \
-\cb3             (ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 ) \cf2 \strokec2 <\cf4 \strokec4  MAX_BENEFICIARIES,\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 TooManyBeneficiaries
-\f0\i0 \cf4 \cb1 \strokec4 \
-\cb3         );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  idx \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 ;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  new_b \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Beneficiary
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3             recipient,\cb1 \
-\cb3             amount,\cb1 \
-\cb3             token_mint,\cb1 \
-\cb3             action,\cb1 \
-\cb3             executed\cf2 \strokec2 :\cf4 \strokec4  \cf5 \strokec5 false\cf4 \strokec4 ,\cb1 \
-\cb3         \};\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiaries[idx] \cf2 \strokec2 =\cf4 \strokec4  new_b;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count \cf2 \strokec2 +=\cf4 \strokec4  \cf5 \strokec5 1\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 BeneficiaryAdded
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3             soul\cf2 \strokec2 :\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner,\cb1 \
-\cb3             recipient,\cb1 \
-\cb3             amount,\cb1 \
-\cb3             action,\cb1 \
-\cb3         \});\cb1 \
-\
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56523  Beneficiary added: \{\} receives \{\}"\cf4 \strokec4 , recipient, amount);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Remove a beneficiary by index.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 remove_beneficiary\cf4 \strokec4 (\cb1 \
-\cb3         ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 ManageBeneficiaries
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3         index\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     ) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  ghost \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &mut\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost;\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 awakened, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostAlreadyAwakened
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 ((index \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 ) \cf2 \strokec2 <\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 InvalidBeneficiary
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  count \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 ;\cb1 \
-\cb3         \cf2 \strokec2 for\cf4 \strokec4  i \cf2 \strokec2 in\cf4 \strokec4  (index \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 )\cf2 \strokec2 ..\cf4 \strokec4 (count \cf2 \strokec2 -\cf4 \strokec4  \cf5 \strokec5 1\cf4 \strokec4 ) \{\cb1 \
-\cb3             ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiaries[i] \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiaries[i \cf2 \strokec2 +\cf4 \strokec4  \cf5 \strokec5 1\cf4 \strokec4 ];\cb1 \
-\cb3         \}\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count \cf2 \strokec2 -=\cf4 \strokec4  \cf5 \strokec5 1\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56523  Beneficiary at index \{\} removed"\cf4 \strokec4 , index);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Check if a soul has gone silent. Permissionless \'97 caller earns 5% bounty.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 check_silence\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 CheckSilence
-\f0\i0 \cf4 \strokec4 >) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  clock \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Clock
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 get\cf4 \strokec4 ()\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9         // Copy all needed values out before any mutable borrow\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         \cf2 \strokec2 let\cf4 \strokec4  owner \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 owner;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  awakened \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 awakened;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  executed \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 executed;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  last_heartbeat \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 last_heartbeat;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  interval_seconds \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 interval_seconds;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  grace_period_seconds \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 grace_period_seconds;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  staked_ghost \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 staked_ghost;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  bump \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 bump;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  caller_key \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 caller\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 ();\cb1 \
-\
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 awakened, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostAlreadyAwakened
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 executed, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostAlreadyExecuted
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  silence \cf2 \strokec2 =\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp \cf2 \strokec2 -\cf4 \strokec4  last_heartbeat;\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (silence \cf2 \strokec2 >\cf4 \strokec4  interval_seconds, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 SoulStillAlive
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  bounty \cf2 \strokec2 =\cf4 \strokec4  staked_ghost\cb1 \
-\cb3             \cf2 \strokec2 .\cf7 \strokec7 checked_mul\cf4 \strokec4 (SILENCE_BOUNTY_BPS)\cf2 \strokec2 .\cf7 \strokec7 unwrap\cf4 \strokec4 ()\cb1 \
-\cb3             \cf2 \strokec2 .\cf7 \strokec7 checked_div\cf4 \strokec4 (\cf5 \strokec5 10_000\cf4 \strokec4 )\cf2 \strokec2 .\cf7 \strokec7 unwrap\cf4 \strokec4 ();\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9         // Mutate state\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 awakened \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 true\cf4 \strokec4 ;\cb1 \
-\cb3         ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 awakened_at \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Some
-\f0\i0 \cf4 \strokec4 (clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp);\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9         // CPI \'97 ghost account used as authority (immutable borrow)\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         \cf2 \strokec2 let\cf4 \strokec4  seeds \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [GHOST_SEED, owner\cf2 \strokec2 .\cf7 \strokec7 as_ref\cf4 \strokec4 (), \cf2 \strokec2 &\cf4 \strokec4 [bump]];\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  signer_seeds \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [\cf2 \strokec2 &\cf4 \strokec4 seeds[\cf2 \strokec2 ..\cf4 \strokec4 ]];\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  cpi_ctx \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CpiContext
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 new_with_signer\cf4 \strokec4 (\cb1 \
-\cb3             ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 token_program\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 Transfer
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3                 from\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost_stake_vault\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 to\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 caller_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 authority\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             \},\cb1 \
-\cb3             signer_seeds,\cb1 \
-\cb3         );\cb1 \
-\cb3         token\cf2 \strokec2 ::\cf7 \strokec7 transfer\cf4 \strokec4 (cpi_ctx, bounty)\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 GhostAwakened
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3             soul\cf2 \strokec2 :\cf4 \strokec4  owner,\cb1 \
-\cb3             silence_duration\cf2 \strokec2 :\cf4 \strokec4  silence,\cb1 \
-\cb3             awakened_at\cf2 \strokec2 :\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp,\cb1 \
-\cb3             grace_period_ends\cf2 \strokec2 :\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp \cf2 \strokec2 +\cf4 \strokec4  grace_period_seconds,\cb1 \
-\cb3             bounty_paid\cf2 \strokec2 :\cf4 \strokec4  bounty,\cb1 \
-\cb3             caller\cf2 \strokec2 :\cf4 \strokec4  caller_key,\cb1 \
-\cb3         \});\cb1 \
-\
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56443  Ghost awakened! Grace period: \{\}s"\cf4 \strokec4 , grace_period_seconds);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Cancel an awakening during the grace period.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 cancel_awakening\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 CancelAwakening
-\f0\i0 \cf4 \strokec4 >) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  ghost \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &mut\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost;\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (ghost\cf2 \strokec2 .\cf4 \strokec4 awakened, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostNotAwakened
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 executed, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostAlreadyExecuted
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  clock \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Clock
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 get\cf4 \strokec4 ()\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  grace_end \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 awakened_at\cf2 \strokec2 .\cf7 \strokec7 unwrap\cf4 \strokec4 () \cf2 \strokec2 +\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 grace_period_seconds;\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp \cf2 \strokec2 <=\cf4 \strokec4  grace_end, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GracePeriodExpired
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  caller \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 signer\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 ();\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cb1 \
-\cb3             caller \cf2 \strokec2 ==\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner\cb1 \
-\cb3                 \cf2 \strokec2 ||\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 recovery_wallet\cf2 \strokec2 .\cf7 \strokec7 map_or\cf4 \strokec4 (\cf5 \strokec5 false\cf4 \strokec4 , \cf2 \strokec2 |\cf4 \strokec4 r\cf2 \strokec2 |\cf4 \strokec4  r \cf2 \strokec2 ==\cf4 \strokec4  caller),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 Unauthorized
-\f0\i0 \cf4 \cb1 \strokec4 \
-\cb3         );\cb1 \
-\
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 awakened \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 false\cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 awakened_at \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 None
-\f0\i0 \cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 last_heartbeat \cf2 \strokec2 =\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp;\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 AwakeningCancelled
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3             soul\cf2 \strokec2 :\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner,\cb1 \
-\cb3             cancelled_by\cf2 \strokec2 :\cf4 \strokec4  caller,\cb1 \
-\cb3             timestamp\cf2 \strokec2 :\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp,\cb1 \
-\cb3         \});\cb1 \
-\
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u9989  Awakening cancelled by \{\}"\cf4 \strokec4 , caller);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Mark execution as started (permissionless after grace period).\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 execute_legacy\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 ExecuteLegacy
-\f0\i0 \cf4 \strokec4 >) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  ghost \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &mut\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost;\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (ghost\cf2 \strokec2 .\cf4 \strokec4 awakened, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostNotAwakened
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 executed, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostAlreadyExecuted
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  clock \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Clock
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 get\cf4 \strokec4 ()\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  grace_end \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 awakened_at\cf2 \strokec2 .\cf7 \strokec7 unwrap\cf4 \strokec4 () \cf2 \strokec2 +\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 grace_period_seconds;\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp \cf2 \strokec2 >\cf4 \strokec4  grace_end, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GracePeriodActive
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 executed \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 true\cf4 \strokec4 ;\cb1 \
-\cb3         ghost\cf2 \strokec2 .\cf4 \strokec4 executed_at \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Some
-\f0\i0 \cf4 \strokec4 (clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp);\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 LegacyExecuted
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3             soul\cf2 \strokec2 :\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner,\cb1 \
-\cb3             executed_at\cf2 \strokec2 :\cf4 \strokec4  clock\cf2 \strokec2 .\cf4 \strokec4 unix_timestamp,\cb1 \
-\cb3             beneficiary_count\cf2 \strokec2 :\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count,\cb1 \
-\cb3         \});\cb1 \
-\
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56448  Ghost executed. \{\} beneficiaries to distribute."\cf4 \strokec4 , ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Transfer to one beneficiary. Call once per beneficiary after execute_legacy.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 execute_transfer\cf4 \strokec4 (\cb1 \
-\cb3         ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 ExecuteTransfer
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3         beneficiary_index\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     ) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 executed, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostNotExecuted
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cb1 \
-\cb3             (beneficiary_index \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 ) \cf2 \strokec2 <\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiary_count \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 InvalidBeneficiary
-\f0\i0 \cf4 \cb1 \strokec4 \
-\cb3         );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  beneficiary \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiaries[beneficiary_index \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 ];\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 beneficiary\cf2 \strokec2 .\cf4 \strokec4 executed, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 BeneficiaryAlreadyPaid
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cb1 \
-\cb3             beneficiary\cf2 \strokec2 .\cf4 \strokec4 recipient \cf2 \strokec2 ==\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 recipient\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 (),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 WrongRecipient
-\f0\i0 \cf4 \cb1 \strokec4 \
-\cb3         );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  owner \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 owner;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  vault_bump \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 vault_bump;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  seeds \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [VAULT_SEED, owner\cf2 \strokec2 .\cf7 \strokec7 as_ref\cf4 \strokec4 (), \cf2 \strokec2 &\cf4 \strokec4 [vault_bump]];\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  signer_seeds \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [\cf2 \strokec2 &\cf4 \strokec4 seeds[\cf2 \strokec2 ..\cf4 \strokec4 ]];\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  cpi_ctx \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CpiContext
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 new_with_signer\cf4 \strokec4 (\cb1 \
-\cb3             ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 token_program\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 Transfer
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3                 from\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 vault_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 to\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 recipient_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 authority\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 vault\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             \},\cb1 \
-\cb3             signer_seeds,\cb1 \
-\cb3         );\cb1 \
-\cb3         token\cf2 \strokec2 ::\cf7 \strokec7 transfer\cf4 \strokec4 (cpi_ctx, beneficiary\cf2 \strokec2 .\cf4 \strokec4 amount)\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\cb3         ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 beneficiaries[beneficiary_index \cf2 \strokec2 as\cf4 \strokec4  
-\f1\i \cf6 \strokec6 usize
-\f0\i0 \cf4 \strokec4 ]\cf2 \strokec2 .\cf4 \strokec4 executed \cf2 \strokec2 =\cf4 \strokec4  \cf5 \strokec5 true\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 TransferExecuted
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3             soul\cf2 \strokec2 :\cf4 \strokec4  owner,\cb1 \
-\cb3             recipient\cf2 \strokec2 :\cf4 \strokec4  beneficiary\cf2 \strokec2 .\cf4 \strokec4 recipient,\cb1 \
-\cb3             amount\cf2 \strokec2 :\cf4 \strokec4  beneficiary\cf2 \strokec2 .\cf4 \strokec4 amount,\cb1 \
-\cb3         \});\cb1 \
-\
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u9989  Transferred \{\} to \{\}"\cf4 \strokec4 , beneficiary\cf2 \strokec2 .\cf4 \strokec4 amount, beneficiary\cf2 \strokec2 .\cf4 \strokec4 recipient);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Deposit tokens into your vault.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 deposit_to_vault\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 DepositToVault
-\f0\i0 \cf4 \strokec4 >, amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  cpi_ctx \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CpiContext
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 new\cf4 \strokec4 (\cb1 \
-\cb3             ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 token_program\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 Transfer
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3                 from\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 owner_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 to\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 vault_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 authority\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 signer\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             \},\cb1 \
-\cb3         );\cb1 \
-\cb3         token\cf2 \strokec2 ::\cf7 \strokec7 transfer\cf4 \strokec4 (cpi_ctx, amount)\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 VaultDeposit
-\f0\i0 \cf4 \strokec4  \{ soul\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 owner, amount \});\cb1 \
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56549  Deposited \{\} to vault"\cf4 \strokec4 , amount);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Withdraw tokens from your vault.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 withdraw_from_vault\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 WithdrawFromVault
-\f0\i0 \cf4 \strokec4 >, amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (\cf2 \strokec2 !\cf4 \strokec4 ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 awakened, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GhostAlreadyAwakened
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  owner \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 owner;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  vault_bump \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 vault_bump;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  seeds \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [VAULT_SEED, owner\cf2 \strokec2 .\cf7 \strokec7 as_ref\cf4 \strokec4 (), \cf2 \strokec2 &\cf4 \strokec4 [vault_bump]];\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  signer_seeds \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [\cf2 \strokec2 &\cf4 \strokec4 seeds[\cf2 \strokec2 ..\cf4 \strokec4 ]];\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  cpi_ctx \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CpiContext
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 new_with_signer\cf4 \strokec4 (\cb1 \
-\cb3             ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 token_program\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 Transfer
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3                 from\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 vault_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 to\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 owner_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 authority\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 vault\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             \},\cb1 \
-\cb3             signer_seeds,\cb1 \
-\cb3         );\cb1 \
-\cb3         token\cf2 \strokec2 ::\cf7 \strokec7 transfer\cf4 \strokec4 (cpi_ctx, amount)\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 VaultWithdrawal
-\f0\i0 \cf4 \strokec4  \{ soul\cf2 \strokec2 :\cf4 \strokec4  owner, amount \});\cb1 \
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56548  Withdrew \{\} from vault"\cf4 \strokec4 , amount);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Update heartbeat interval.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 update_interval\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 UpdateSettings
-\f0\i0 \cf4 \strokec4 >, interval_seconds\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (interval_seconds \cf2 \strokec2 >=\cf4 \strokec4  MIN_INTERVAL, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 IntervalTooShort
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 interval_seconds \cf2 \strokec2 =\cf4 \strokec4  interval_seconds;\cb1 \
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u9201 \u65039  Interval updated to \{\}s"\cf4 \strokec4 , interval_seconds);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Update grace period.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 update_grace_period\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 UpdateSettings
-\f0\i0 \cf4 \strokec4 >, grace_period_seconds\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf7 \strokec7 require!\cf4 \strokec4 (grace_period_seconds \cf2 \strokec2 >=\cf4 \strokec4  MIN_GRACE_PERIOD, 
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 GracePeriodTooShort
-\f0\i0 \cf4 \strokec4 );\cb1 \
-\cb3         ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 grace_period_seconds \cf2 \strokec2 =\cf4 \strokec4  grace_period_seconds;\cb1 \
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u9203  Grace period updated to \{\}s"\cf4 \strokec4 , grace_period_seconds);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Update recovery wallet.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 update_recovery_wallet\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 UpdateSettings
-\f0\i0 \cf4 \strokec4 >, recovery_wallet\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Option
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 >) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 recovery_wallet \cf2 \strokec2 =\cf4 \strokec4  recovery_wallet;\cb1 \
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56593  Recovery wallet updated"\cf4 \strokec4 );\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// Abandon ghost: burn 50% of stake, return 50%, close account.\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 abandon_ghost\cf4 \strokec4 (ctx\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Context
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 AbandonGhost
-\f0\i0 \cf4 \strokec4 >) \cf2 \strokec2 ->\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Result
-\f0\i0 \cf4 \strokec4 <()> \{\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  owner \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 owner;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  staked \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 staked_ghost;\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  bump \cf2 \strokec2 =\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf4 \strokec4 bump;\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  burn_amount \cf2 \strokec2 =\cf4 \strokec4  staked\cf2 \strokec2 .\cf7 \strokec7 checked_mul\cf4 \strokec4 (BURN_ON_ABANDON_BPS)\cf2 \strokec2 .\cf7 \strokec7 unwrap\cf4 \strokec4 ()\cf2 \strokec2 .\cf7 \strokec7 checked_div\cf4 \strokec4 (\cf5 \strokec5 10_000\cf4 \strokec4 )\cf2 \strokec2 .\cf7 \strokec7 unwrap\cf4 \strokec4 ();\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  return_amount \cf2 \strokec2 =\cf4 \strokec4  staked\cf2 \strokec2 .\cf7 \strokec7 checked_sub\cf4 \strokec4 (burn_amount)\cf2 \strokec2 .\cf7 \strokec7 unwrap\cf4 \strokec4 ();\cb1 \
-\
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  seeds \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [GHOST_SEED, owner\cf2 \strokec2 .\cf7 \strokec7 as_ref\cf4 \strokec4 (), \cf2 \strokec2 &\cf4 \strokec4 [bump]];\cb1 \
-\cb3         \cf2 \strokec2 let\cf4 \strokec4  signer_seeds \cf2 \strokec2 =\cf4 \strokec4  \cf2 \strokec2 &\cf4 \strokec4 [\cf2 \strokec2 &\cf4 \strokec4 seeds[\cf2 \strokec2 ..\cf4 \strokec4 ]];\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9         // Burn 50%\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         \cf2 \strokec2 let\cf4 \strokec4  burn_ctx \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CpiContext
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 new_with_signer\cf4 \strokec4 (\cb1 \
-\cb3             ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 token_program\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 Burn
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3                 mint\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost_mint\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 from\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost_stake_vault\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 authority\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             \},\cb1 \
-\cb3             signer_seeds,\cb1 \
-\cb3         );\cb1 \
-\cb3         token\cf2 \strokec2 ::\cf7 \strokec7 burn\cf4 \strokec4 (burn_ctx, burn_amount)\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9         // Return 50%\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         \cf2 \strokec2 let\cf4 \strokec4  return_ctx \cf2 \strokec2 =\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CpiContext
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 new_with_signer\cf4 \strokec4 (\cb1 \
-\cb3             ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 token_program\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             
-\f1\i \cf6 \strokec6 Transfer
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\cb3                 from\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost_stake_vault\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 to\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 owner_token_account\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3                 authority\cf2 \strokec2 :\cf4 \strokec4  ctx\cf2 \strokec2 .\cf4 \strokec4 accounts\cf2 \strokec2 .\cf4 \strokec4 ghost\cf2 \strokec2 .\cf7 \strokec7 to_account_info\cf4 \strokec4 (),\cb1 \
-\cb3             \},\cb1 \
-\cb3             signer_seeds,\cb1 \
-\cb3         );\cb1 \
-\cb3         token\cf2 \strokec2 ::\cf7 \strokec7 transfer\cf4 \strokec4 (return_ctx, return_amount)\cf2 \strokec2 ?\cf4 \strokec4 ;\cb1 \
-\
-\cb3         \cf7 \strokec7 emit!\cf4 \strokec4 (
-\f1\i \cf6 \strokec6 GhostAbandoned
-\f0\i0 \cf4 \strokec4  \{ soul\cf2 \strokec2 :\cf4 \strokec4  owner, burned\cf2 \strokec2 :\cf4 \strokec4  burn_amount, returned\cf2 \strokec2 :\cf4 \strokec4  return_amount \});\cb1 \
-\cb3         \cf7 \strokec7 msg!\cf4 \strokec4 (\cf8 \strokec8 "\uc0\u55357 \u56448  Ghost abandoned. Burned: \{\}, Returned: \{\}"\cf4 \strokec4 , burn_amount, return_amount);\cb1 \
-\cb3         
-\f1\i \cf6 \strokec6 Ok
-\f0\i0 \cf4 \strokec4 (())\cb1 \
-\cb3     \}\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9 // \uc0\u9472 \u9472 \u9472  STRUCTS \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \cf4 \cb1 \strokec4 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 AnchorSerialize
-\f0\i0 \cf5 \strokec5 , 
-\f1\i \cf6 \strokec6 AnchorDeserialize
-\f0\i0 \cf5 \strokec5 , 
-\f1\i \cf6 \strokec6 Clone
-\f0\i0 \cf5 \strokec5 , 
-\f1\i \cf6 \strokec6 Copy
-\f0\i0 \cf5 \strokec5 , 
-\f1\i \cf6 \strokec6 PartialEq
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Beneficiary
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  recipient\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  token_mint\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Option
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  action\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cf9 \strokec9        // 0 = Transfer, 1 = Burn, 2 = TimeLock\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  executed\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 bool
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 impl\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Default
-\f0\i0 \cf4 \strokec4  \cf2 \strokec2 for\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Beneficiary
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 fn\cf4 \strokec4  \cf7 \strokec7 default\cf4 \strokec4 () \cf2 \strokec2 ->\cf4 \strokec4  \cf5 \strokec5 Self\cf4 \strokec4  \{\cb1 \
-\cb3         \cf5 \strokec5 Self\cf4 \strokec4  \{\cb1 \
-\cb3             recipient\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf2 \strokec2 ::\cf7 \strokec7 default\cf4 \strokec4 (),\cb1 \
-\cb3             amount\cf2 \strokec2 :\cf4 \strokec4  \cf5 \strokec5 0\cf4 \strokec4 ,\cb1 \
-\cb3             token_mint\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 None
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3             action\cf2 \strokec2 :\cf4 \strokec4  \cf5 \strokec5 0\cf4 \strokec4 ,\cb1 \
-\cb3             executed\cf2 \strokec2 :\cf4 \strokec4  \cf5 \strokec5 false\cf4 \strokec4 ,\cb1 \
-\cb3         \}\cb1 \
-\cb3     \}\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[account]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  owner\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  recovery_wallet\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Option
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  last_heartbeat\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  interval_seconds\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  grace_period_seconds\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  awakened\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 bool
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  awakened_at\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Option
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  executed\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 bool
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  executed_at\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Option
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  staked_ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  bump\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  vault_bump\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  registered_at\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ping_count\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  beneficiary_count\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  beneficiaries\cf2 \strokec2 :\cf4 \strokec4  [
-\f1\i \cf6 \strokec6 Beneficiary
-\f0\i0 \cf4 \strokec4 ; \cf5 \strokec5 10\cf4 \strokec4 ],\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9 // \uc0\u9472 \u9472 \u9472  CONTEXTS \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \cf4 \cb1 \strokec4 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 InitializeGhost
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         init,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         payer \cf2 \strokec2 =\cf5 \strokec5  signer,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         space \cf2 \strokec2 =\cf5 \strokec5  GHOST_ACCOUNT_SPACE,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// CHECK: Vault PDA \'97 holds deposited assets\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [VAULT_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  vault\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 UncheckedAccount
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost_stake_vault\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  token_program\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Program
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Token
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  system_program\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Program
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 System
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Ping
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         \cf2 \strokec2 mut\cf5 \strokec5 ,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3         constraint \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner \cf2 \strokec2 ==\cf4 \strokec4  signer\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 () \cf2 \strokec2 @\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 Unauthorized
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 ManageBeneficiaries
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         \cf2 \strokec2 mut\cf5 \strokec5 ,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3         constraint \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner \cf2 \strokec2 ==\cf4 \strokec4  signer\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 () \cf2 \strokec2 @\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 Unauthorized
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CheckSilence
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         \cf2 \strokec2 mut\cf5 \strokec5 ,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, ghost\cf2 \strokec2 .\cf5 \strokec5 owner\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  caller\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost_stake_vault\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  caller_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  token_program\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Program
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Token
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 CancelAwakening
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         \cf2 \strokec2 mut\cf5 \strokec5 ,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, ghost\cf2 \strokec2 .\cf5 \strokec5 owner\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 ExecuteLegacy
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         \cf2 \strokec2 mut\cf5 \strokec5 ,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, ghost\cf2 \strokec2 .\cf5 \strokec5 owner\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  caller\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 ExecuteTransfer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         \cf2 \strokec2 mut\cf5 \strokec5 ,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, ghost\cf2 \strokec2 .\cf5 \strokec5 owner\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// CHECK: Vault PDA authority\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [VAULT_SEED, ghost\cf2 \strokec2 .\cf5 \strokec5 owner\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 vault_bump,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  vault\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 UncheckedAccount
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  vault_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// CHECK: validated against beneficiary list\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  recipient\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 UncheckedAccount
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  recipient_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  token_program\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Program
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Token
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  caller\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 DepositToVault
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3         constraint \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner \cf2 \strokec2 ==\cf4 \strokec4  signer\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 () \cf2 \strokec2 @\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 Unauthorized
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  owner_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  vault_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  token_program\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Program
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Token
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 WithdrawFromVault
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3         constraint \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner \cf2 \strokec2 ==\cf4 \strokec4  signer\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 () \cf2 \strokec2 @\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 Unauthorized
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9     /// CHECK: Vault PDA authority\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [VAULT_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 vault_bump,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  vault\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 UncheckedAccount
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  owner_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  vault_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  token_program\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Program
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Token
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 UpdateSettings
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         \cf2 \strokec2 mut\cf5 \strokec5 ,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3         constraint \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner \cf2 \strokec2 ==\cf4 \strokec4  signer\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 () \cf2 \strokec2 @\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 Unauthorized
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[derive(
-\f1\i \cf6 \strokec6 Accounts
-\f0\i0 \cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 AbandonGhost
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 > \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[account(\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5         \cf2 \strokec2 mut\cf5 \strokec5 ,\cf4 \cb1 \strokec4 \
-\cf5 \cb3 \strokec5         seeds \cf2 \strokec2 =\cf5 \strokec5  [GHOST_SEED, signer\cf2 \strokec2 .\cf5 \strokec5 key()\cf2 \strokec2 .\cf5 \strokec5 as_ref()]\cf4 \strokec4 ,\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3         bump \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 bump,\cb1 \
-\cb3         constraint \cf2 \strokec2 =\cf4 \strokec4  ghost\cf2 \strokec2 .\cf4 \strokec4 owner \cf2 \strokec2 ==\cf4 \strokec4  signer\cf2 \strokec2 .\cf7 \strokec7 key\cf4 \strokec4 () \cf2 \strokec2 @\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 Unauthorized
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3         close \cf2 \strokec2 =\cf4 \strokec4  signer,\cb1 \
-\cb3     )]\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 GhostAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  signer\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Signer
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost_stake_vault\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  owner_token_account\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 TokenAccount
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf5 \strokec5 #[account(\cf2 \strokec2 mut\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ghost_mint\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Account
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , anchor_spl\cf2 \strokec2 ::\cf4 \strokec4 token\cf2 \strokec2 ::
-\f1\i \cf6 \strokec6 Mint
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  token_program\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Program
-\f0\i0 \cf4 \strokec4 <\cf5 \strokec5 '
-\f1\i info
-\f0\i0 \cf4 \strokec4 , 
-\f1\i \cf6 \strokec6 Token
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9 // \uc0\u9472 \u9472 \u9472  EVENTS \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \cf4 \cb1 \strokec4 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostRegistered
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  interval\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  grace_period\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  recovery_wallet\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Option
-\f0\i0 \cf4 \strokec4 <
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 >,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  staked\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  timestamp\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 HeartbeatReceived
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  timestamp\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  ping_number\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostAwakened
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  silence_duration\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  awakened_at\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  grace_period_ends\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  bounty_paid\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  caller\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 AwakeningCancelled
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  cancelled_by\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  timestamp\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 LegacyExecuted
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  executed_at\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 i64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  beneficiary_count\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 TransferExecuted
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  recipient\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 BeneficiaryAdded
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  recipient\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  action\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u8
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 VaultDeposit
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 VaultWithdrawal
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  amount\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[event]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 struct\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostAbandoned
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf2 \strokec2 pub\cf4 \strokec4  soul\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 Pubkey
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  burned\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf2 \strokec2 pub\cf4 \strokec4  returned\cf2 \strokec2 :\cf4 \strokec4  
-\f1\i \cf6 \strokec6 u64
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf9 \cb3 \strokec9 // \uc0\u9472 \u9472 \u9472  ERRORS \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \cf4 \cb1 \strokec4 \
-\
-\pard\pardeftab720\partightenfactor0
-\cf5 \cb3 \strokec5 #[error_code]\cf4 \cb1 \strokec4 \
-\pard\pardeftab720\partightenfactor0
-\cf2 \cb3 \strokec2 pub\cf4 \strokec4  \cf2 \strokec2 enum\cf4 \strokec4  
-\f1\i \cf6 \strokec6 GhostError
-\f0\i0 \cf4 \strokec4  \{\cb1 \
-\pard\pardeftab720\partightenfactor0
-\cf4 \cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Insufficient $GHOST staked. Minimum 10,000 $GHOST required."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 InsufficientStake
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Heartbeat interval too short. Minimum 7 days."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 IntervalTooShort
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Grace period too short. Minimum 24 hours."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 GracePeriodTooShort
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "This ghost has already awakened."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 GhostAlreadyAwakened
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "This ghost has not yet awakened."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 GhostNotAwakened
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "This ghost has already been executed."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 GhostAlreadyExecuted
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "This ghost has not been executed yet."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 GhostNotExecuted
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Soul is still alive. Heartbeat detected within interval."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 SoulStillAlive
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Grace period is still active. Cannot execute yet."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 GracePeriodActive
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Grace period has expired. Cannot cancel."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 GracePeriodExpired
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Unauthorized. Only the soul owner or recovery wallet can perform this action."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 Unauthorized
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Too many beneficiaries. Maximum 10."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 TooManyBeneficiaries
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Invalid beneficiary index."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 InvalidBeneficiary
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Beneficiary already paid."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 BeneficiaryAlreadyPaid
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Wrong recipient account."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 WrongRecipient
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3     \cf5 \strokec5 #[msg(\cf8 \strokec8 "Arithmetic overflow."\cf5 \strokec5 )]\cf4 \cb1 \strokec4 \
-\cb3     
-\f1\i \cf6 \strokec6 Overflow
-\f0\i0 \cf4 \strokec4 ,\cb1 \
-\cb3 \}\cb1 \
+declare_id!("3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3");
+
+// ─────────────────────────────────────────────────────────────
+//  GHOST Protocol v1.2 — Token-2022 compatible
+// ─────────────────────────────────────────────────────────────
+
+pub const GHOST_SEED: &[u8] = b"ghost";
+pub const VAULT_SEED: &[u8] = b"vault";
+pub const MIN_STAKE: u64 = 10_000 * 1_000_000;
+pub const MIN_INTERVAL: i64 = 7 * 24 * 60 * 60;
+pub const MIN_GRACE_PERIOD: i64 = 24 * 60 * 60;
+pub const MAX_BENEFICIARIES: usize = 10;
+pub const SILENCE_BOUNTY_BPS: u64 = 500;
+pub const BURN_ON_ABANDON_BPS: u64 = 5_000;
+pub const GHOST_ACCOUNT_SPACE: usize = 8 + 900;
+
+#[program]
+pub mod ghost_protocol {
+    use super::*;
+
+    pub fn initialize_ghost(
+        ctx: Context<InitializeGhost>,
+        interval_seconds: i64,
+        grace_period_seconds: i64,
+        recovery_wallet: Option<Pubkey>,
+        stake_amount: u64,
+    ) -> Result<()> {
+        require!(stake_amount >= MIN_STAKE, GhostError::InsufficientStake);
+        require!(interval_seconds >= MIN_INTERVAL, GhostError::IntervalTooShort);
+        require!(grace_period_seconds >= MIN_GRACE_PERIOD, GhostError::GracePeriodTooShort);
+
+        let ghost = &mut ctx.accounts.ghost;
+        let clock = Clock::get()?;
+
+        ghost.owner = ctx.accounts.signer.key();
+        ghost.recovery_wallet = recovery_wallet;
+        ghost.last_heartbeat = clock.unix_timestamp;
+        ghost.interval_seconds = interval_seconds;
+        ghost.grace_period_seconds = grace_period_seconds;
+        ghost.awakened = false;
+        ghost.awakened_at = None;
+        ghost.executed = false;
+        ghost.executed_at = None;
+        ghost.staked_ghost = stake_amount;
+        ghost.bump = ctx.bumps.ghost;
+        ghost.vault_bump = ctx.bumps.vault;
+        ghost.registered_at = clock.unix_timestamp;
+        ghost.ping_count = 0;
+        ghost.beneficiary_count = 0;
+        for i in 0..10 {
+            ghost.beneficiaries[i] = Beneficiary::default();
+        }
+
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.signer_token_account.to_account_info(),
+                to: ctx.accounts.ghost_stake_vault.to_account_info(),
+                authority: ctx.accounts.signer.to_account_info(),
+                mint: ctx.accounts.ghost_mint.to_account_info(),
+            },
+        );
+        token_interface::transfer_checked(cpi_ctx, stake_amount, ctx.accounts.ghost_mint.decimals)?;
+
+        emit!(GhostRegistered {
+            soul: ghost.owner,
+            interval: interval_seconds,
+            grace_period: grace_period_seconds,
+            recovery_wallet,
+            staked: stake_amount,
+            timestamp: clock.unix_timestamp,
+        });
+
+        msg!("👻 Ghost initialized for {}", ghost.owner);
+        Ok(())
+    }
+
+    pub fn ping(ctx: Context<Ping>) -> Result<()> {
+        let ghost = &mut ctx.accounts.ghost;
+        require!(!ghost.executed, GhostError::GhostAlreadyExecuted);
+
+        let clock = Clock::get()?;
+        ghost.last_heartbeat = clock.unix_timestamp;
+        ghost.ping_count += 1;
+
+        if ghost.awakened {
+            ghost.awakened = false;
+            ghost.awakened_at = None;
+            msg!("💓 Ping received — awakening cancelled");
+        } else {
+            msg!("💓 Heartbeat #{} recorded", ghost.ping_count);
+        }
+
+        emit!(HeartbeatReceived {
+            soul: ghost.owner,
+            timestamp: clock.unix_timestamp,
+            ping_number: ghost.ping_count,
+        });
+
+        Ok(())
+    }
+
+    pub fn add_beneficiary(
+        ctx: Context<ManageBeneficiaries>,
+        recipient: Pubkey,
+        amount: u64,
+        token_mint: Option<Pubkey>,
+        action: u8,
+    ) -> Result<()> {
+        let ghost = &mut ctx.accounts.ghost;
+        require!(!ghost.awakened, GhostError::GhostAlreadyAwakened);
+        require!(
+            (ghost.beneficiary_count as usize) < MAX_BENEFICIARIES,
+            GhostError::TooManyBeneficiaries
+        );
+
+        let idx = ghost.beneficiary_count as usize;
+        ghost.beneficiaries[idx] = Beneficiary { recipient, amount, token_mint, action, executed: false };
+        ghost.beneficiary_count += 1;
+
+        emit!(BeneficiaryAdded { soul: ghost.owner, recipient, amount, action });
+        msg!("📋 Beneficiary added: {} receives {}", recipient, amount);
+        Ok(())
+    }
+
+    pub fn remove_beneficiary(ctx: Context<ManageBeneficiaries>, index: u8) -> Result<()> {
+        let ghost = &mut ctx.accounts.ghost;
+        require!(!ghost.awakened, GhostError::GhostAlreadyAwakened);
+        require!((index as usize) < ghost.beneficiary_count as usize, GhostError::InvalidBeneficiary);
+
+        let count = ghost.beneficiary_count as usize;
+        for i in (index as usize)..(count - 1) {
+            ghost.beneficiaries[i] = ghost.beneficiaries[i + 1];
+        }
+        ghost.beneficiary_count -= 1;
+        msg!("📋 Beneficiary at index {} removed", index);
+        Ok(())
+    }
+
+    pub fn check_silence(ctx: Context<CheckSilence>) -> Result<()> {
+        let clock = Clock::get()?;
+        let owner = ctx.accounts.ghost.owner;
+        let awakened = ctx.accounts.ghost.awakened;
+        let executed = ctx.accounts.ghost.executed;
+        let last_heartbeat = ctx.accounts.ghost.last_heartbeat;
+        let interval_seconds = ctx.accounts.ghost.interval_seconds;
+        let grace_period_seconds = ctx.accounts.ghost.grace_period_seconds;
+        let staked_ghost = ctx.accounts.ghost.staked_ghost;
+        let bump = ctx.accounts.ghost.bump;
+        let caller_key = ctx.accounts.caller.key();
+
+        require!(!awakened, GhostError::GhostAlreadyAwakened);
+        require!(!executed, GhostError::GhostAlreadyExecuted);
+
+        let silence = clock.unix_timestamp - last_heartbeat;
+        require!(silence > interval_seconds, GhostError::SoulStillAlive);
+
+        let bounty = staked_ghost.checked_mul(SILENCE_BOUNTY_BPS).unwrap().checked_div(10_000).unwrap();
+
+        ctx.accounts.ghost.awakened = true;
+        ctx.accounts.ghost.awakened_at = Some(clock.unix_timestamp);
+
+        let seeds = &[GHOST_SEED, owner.as_ref(), &[bump]];
+        let signer_seeds = &[&seeds[..]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.ghost_stake_vault.to_account_info(),
+                to: ctx.accounts.caller_token_account.to_account_info(),
+                authority: ctx.accounts.ghost.to_account_info(),
+                mint: ctx.accounts.ghost_mint.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token_interface::transfer_checked(cpi_ctx, bounty, ctx.accounts.ghost_mint.decimals)?;
+
+        emit!(GhostAwakened {
+            soul: owner,
+            silence_duration: silence,
+            awakened_at: clock.unix_timestamp,
+            grace_period_ends: clock.unix_timestamp + grace_period_seconds,
+            bounty_paid: bounty,
+            caller: caller_key,
+        });
+
+        msg!("👻 Ghost awakened! Grace period: {}s", grace_period_seconds);
+        Ok(())
+    }
+
+    pub fn cancel_awakening(ctx: Context<CancelAwakening>) -> Result<()> {
+        let ghost = &mut ctx.accounts.ghost;
+        require!(ghost.awakened, GhostError::GhostNotAwakened);
+        require!(!ghost.executed, GhostError::GhostAlreadyExecuted);
+
+        let clock = Clock::get()?;
+        let grace_end = ghost.awakened_at.unwrap() + ghost.grace_period_seconds;
+        require!(clock.unix_timestamp <= grace_end, GhostError::GracePeriodExpired);
+
+        let caller = ctx.accounts.signer.key();
+        require!(
+            caller == ghost.owner || ghost.recovery_wallet.map_or(false, |r| r == caller),
+            GhostError::Unauthorized
+        );
+
+        ghost.awakened = false;
+        ghost.awakened_at = None;
+        ghost.last_heartbeat = clock.unix_timestamp;
+
+        emit!(AwakeningCancelled { soul: ghost.owner, cancelled_by: caller, timestamp: clock.unix_timestamp });
+        msg!("✅ Awakening cancelled by {}", caller);
+        Ok(())
+    }
+
+    pub fn execute_legacy(ctx: Context<ExecuteLegacy>) -> Result<()> {
+        let ghost = &mut ctx.accounts.ghost;
+        require!(ghost.awakened, GhostError::GhostNotAwakened);
+        require!(!ghost.executed, GhostError::GhostAlreadyExecuted);
+
+        let clock = Clock::get()?;
+        let grace_end = ghost.awakened_at.unwrap() + ghost.grace_period_seconds;
+        require!(clock.unix_timestamp > grace_end, GhostError::GracePeriodActive);
+
+        ghost.executed = true;
+        ghost.executed_at = Some(clock.unix_timestamp);
+
+        emit!(LegacyExecuted { soul: ghost.owner, executed_at: clock.unix_timestamp, beneficiary_count: ghost.beneficiary_count });
+        msg!("💀 Ghost executed. {} beneficiaries to distribute.", ghost.beneficiary_count);
+        Ok(())
+    }
+
+    pub fn execute_transfer(ctx: Context<ExecuteTransfer>, beneficiary_index: u8) -> Result<()> {
+        require!(ctx.accounts.ghost.executed, GhostError::GhostNotExecuted);
+        require!((beneficiary_index as usize) < ctx.accounts.ghost.beneficiary_count as usize, GhostError::InvalidBeneficiary);
+
+        let beneficiary = ctx.accounts.ghost.beneficiaries[beneficiary_index as usize];
+        require!(!beneficiary.executed, GhostError::BeneficiaryAlreadyPaid);
+        require!(beneficiary.recipient == ctx.accounts.recipient.key(), GhostError::WrongRecipient);
+
+        let owner = ctx.accounts.ghost.owner;
+        let vault_bump = ctx.accounts.ghost.vault_bump;
+        let seeds = &[VAULT_SEED, owner.as_ref(), &[vault_bump]];
+        let signer_seeds = &[&seeds[..]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.vault_token_account.to_account_info(),
+                to: ctx.accounts.recipient_token_account.to_account_info(),
+                authority: ctx.accounts.vault.to_account_info(),
+                mint: ctx.accounts.ghost_mint.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token_interface::transfer_checked(cpi_ctx, beneficiary.amount, ctx.accounts.ghost_mint.decimals)?;
+
+        ctx.accounts.ghost.beneficiaries[beneficiary_index as usize].executed = true;
+        emit!(TransferExecuted { soul: owner, recipient: beneficiary.recipient, amount: beneficiary.amount });
+        msg!("✅ Transferred {} to {}", beneficiary.amount, beneficiary.recipient);
+        Ok(())
+    }
+
+    pub fn deposit_to_vault(ctx: Context<DepositToVault>, amount: u64) -> Result<()> {
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.owner_token_account.to_account_info(),
+                to: ctx.accounts.vault_token_account.to_account_info(),
+                authority: ctx.accounts.signer.to_account_info(),
+                mint: ctx.accounts.ghost_mint.to_account_info(),
+            },
+        );
+        token_interface::transfer_checked(cpi_ctx, amount, ctx.accounts.ghost_mint.decimals)?;
+        emit!(VaultDeposit { soul: ctx.accounts.ghost.owner, amount });
+        msg!("📥 Deposited {} to vault", amount);
+        Ok(())
+    }
+
+    pub fn withdraw_from_vault(ctx: Context<WithdrawFromVault>, amount: u64) -> Result<()> {
+        require!(!ctx.accounts.ghost.awakened, GhostError::GhostAlreadyAwakened);
+
+        let owner = ctx.accounts.ghost.owner;
+        let vault_bump = ctx.accounts.ghost.vault_bump;
+        let seeds = &[VAULT_SEED, owner.as_ref(), &[vault_bump]];
+        let signer_seeds = &[&seeds[..]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.vault_token_account.to_account_info(),
+                to: ctx.accounts.owner_token_account.to_account_info(),
+                authority: ctx.accounts.vault.to_account_info(),
+                mint: ctx.accounts.ghost_mint.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token_interface::transfer_checked(cpi_ctx, amount, ctx.accounts.ghost_mint.decimals)?;
+        emit!(VaultWithdrawal { soul: owner, amount });
+        msg!("📤 Withdrew {} from vault", amount);
+        Ok(())
+    }
+
+    pub fn update_interval(ctx: Context<UpdateSettings>, interval_seconds: i64) -> Result<()> {
+        require!(interval_seconds >= MIN_INTERVAL, GhostError::IntervalTooShort);
+        ctx.accounts.ghost.interval_seconds = interval_seconds;
+        msg!("⏱️ Interval updated to {}s", interval_seconds);
+        Ok(())
+    }
+
+    pub fn update_grace_period(ctx: Context<UpdateSettings>, grace_period_seconds: i64) -> Result<()> {
+        require!(grace_period_seconds >= MIN_GRACE_PERIOD, GhostError::GracePeriodTooShort);
+        ctx.accounts.ghost.grace_period_seconds = grace_period_seconds;
+        msg!("⏳ Grace period updated to {}s", grace_period_seconds);
+        Ok(())
+    }
+
+    pub fn update_recovery_wallet(ctx: Context<UpdateSettings>, recovery_wallet: Option<Pubkey>) -> Result<()> {
+        ctx.accounts.ghost.recovery_wallet = recovery_wallet;
+        msg!("🔑 Recovery wallet updated");
+        Ok(())
+    }
+
+    pub fn abandon_ghost(ctx: Context<AbandonGhost>) -> Result<()> {
+        let owner = ctx.accounts.ghost.owner;
+        let staked = ctx.accounts.ghost.staked_ghost;
+        let bump = ctx.accounts.ghost.bump;
+
+        let burn_amount = staked.checked_mul(BURN_ON_ABANDON_BPS).unwrap().checked_div(10_000).unwrap();
+        let return_amount = staked.checked_sub(burn_amount).unwrap();
+
+        let seeds = &[GHOST_SEED, owner.as_ref(), &[bump]];
+        let signer_seeds = &[&seeds[..]];
+
+        let burn_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            Burn {
+                mint: ctx.accounts.ghost_mint.to_account_info(),
+                from: ctx.accounts.ghost_stake_vault.to_account_info(),
+                authority: ctx.accounts.ghost.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token_interface::burn(burn_ctx, burn_amount)?;
+
+        let return_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.ghost_stake_vault.to_account_info(),
+                to: ctx.accounts.owner_token_account.to_account_info(),
+                authority: ctx.accounts.ghost.to_account_info(),
+                mint: ctx.accounts.ghost_mint.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token_interface::transfer_checked(return_ctx, return_amount, ctx.accounts.ghost_mint.decimals)?;
+
+        emit!(GhostAbandoned { soul: owner, burned: burn_amount, returned: return_amount });
+        msg!("💀 Ghost abandoned. Burned: {}, Returned: {}", burn_amount, return_amount);
+        Ok(())
+    }
+}
+
+// ─── STRUCTS ──────────────────────────────────────────────────
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
+pub struct Beneficiary {
+    pub recipient: Pubkey,
+    pub amount: u64,
+    pub token_mint: Option<Pubkey>,
+    pub action: u8,
+    pub executed: bool,
+}
+
+impl Default for Beneficiary {
+    fn default() -> Self {
+        Self { recipient: Pubkey::default(), amount: 0, token_mint: None, action: 0, executed: false }
+    }
+}
+
+#[account]
+pub struct GhostAccount {
+    pub owner: Pubkey,
+    pub recovery_wallet: Option<Pubkey>,
+    pub last_heartbeat: i64,
+    pub interval_seconds: i64,
+    pub grace_period_seconds: i64,
+    pub awakened: bool,
+    pub awakened_at: Option<i64>,
+    pub executed: bool,
+    pub executed_at: Option<i64>,
+    pub staked_ghost: u64,
+    pub bump: u8,
+    pub vault_bump: u8,
+    pub registered_at: i64,
+    pub ping_count: u64,
+    pub beneficiary_count: u8,
+    pub beneficiaries: [Beneficiary; 10],
+}
+
+// ─── CONTEXTS ─────────────────────────────────────────────────
+
+#[derive(Accounts)]
+pub struct InitializeGhost<'info> {
+    #[account(
+        init,
+        payer = signer,
+        space = GHOST_ACCOUNT_SPACE,
+        seeds = [GHOST_SEED, signer.key().as_ref()],
+        bump,
+    )]
+    pub ghost: Box<Account<'info, GhostAccount>>,
+
+    /// CHECK: Vault PDA
+    #[account(seeds = [VAULT_SEED, signer.key().as_ref()], bump)]
+    pub vault: UncheckedAccount<'info>,
+
+    pub ghost_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        init,
+        payer = signer,
+        seeds = [b"stake_vault", signer.key().as_ref()],
+        bump,
+        token::mint = ghost_mint,
+        token::authority = ghost,
+        token::token_program = token_program,
+    )]
+    pub ghost_stake_vault: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(mut, token::mint = ghost_mint, token::authority = signer, token::token_program = token_program)]
+    pub signer_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Ping<'info> {
+    #[account(mut, seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    pub ghost: Account<'info, GhostAccount>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ManageBeneficiaries<'info> {
+    #[account(mut, seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    pub ghost: Account<'info, GhostAccount>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CheckSilence<'info> {
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump)]
+    pub ghost: Account<'info, GhostAccount>,
+    #[account(mut)]
+    pub caller: Signer<'info>,
+    pub ghost_mint: InterfaceAccount<'info, Mint>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub ghost_stake_vault: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub caller_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[derive(Accounts)]
+pub struct CancelAwakening<'info> {
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump)]
+    pub ghost: Account<'info, GhostAccount>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteLegacy<'info> {
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump)]
+    pub ghost: Account<'info, GhostAccount>,
+    pub caller: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteTransfer<'info> {
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump)]
+    pub ghost: Account<'info, GhostAccount>,
+    /// CHECK: Vault PDA authority
+    #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
+    pub vault: UncheckedAccount<'info>,
+    pub ghost_mint: InterfaceAccount<'info, Mint>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
+    /// CHECK: validated against beneficiary list
+    pub recipient: UncheckedAccount<'info>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub caller: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct DepositToVault<'info> {
+    #[account(seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    pub ghost: Account<'info, GhostAccount>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    pub ghost_mint: InterfaceAccount<'info, Mint>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub owner_token_account: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[derive(Accounts)]
+pub struct WithdrawFromVault<'info> {
+    #[account(seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    pub ghost: Account<'info, GhostAccount>,
+    /// CHECK: Vault PDA authority
+    #[account(seeds = [VAULT_SEED, signer.key().as_ref()], bump = ghost.vault_bump)]
+    pub vault: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    pub ghost_mint: InterfaceAccount<'info, Mint>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub owner_token_account: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateSettings<'info> {
+    #[account(mut, seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    pub ghost: Account<'info, GhostAccount>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AbandonGhost<'info> {
+    #[account(mut, seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized, close = signer)]
+    pub ghost: Account<'info, GhostAccount>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    pub ghost_mint: InterfaceAccount<'info, Mint>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub ghost_stake_vault: InterfaceAccount<'info, TokenAccount>,
+    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    pub owner_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+// ─── EVENTS ───────────────────────────────────────────────────
+
+#[event] pub struct GhostRegistered { pub soul: Pubkey, pub interval: i64, pub grace_period: i64, pub recovery_wallet: Option<Pubkey>, pub staked: u64, pub timestamp: i64 }
+#[event] pub struct HeartbeatReceived { pub soul: Pubkey, pub timestamp: i64, pub ping_number: u64 }
+#[event] pub struct GhostAwakened { pub soul: Pubkey, pub silence_duration: i64, pub awakened_at: i64, pub grace_period_ends: i64, pub bounty_paid: u64, pub caller: Pubkey }
+#[event] pub struct AwakeningCancelled { pub soul: Pubkey, pub cancelled_by: Pubkey, pub timestamp: i64 }
+#[event] pub struct LegacyExecuted { pub soul: Pubkey, pub executed_at: i64, pub beneficiary_count: u8 }
+#[event] pub struct TransferExecuted { pub soul: Pubkey, pub recipient: Pubkey, pub amount: u64 }
+#[event] pub struct BeneficiaryAdded { pub soul: Pubkey, pub recipient: Pubkey, pub amount: u64, pub action: u8 }
+#[event] pub struct VaultDeposit { pub soul: Pubkey, pub amount: u64 }
+#[event] pub struct VaultWithdrawal { pub soul: Pubkey, pub amount: u64 }
+#[event] pub struct GhostAbandoned { pub soul: Pubkey, pub burned: u64, pub returned: u64 }
+
+// ─── ERRORS ───────────────────────────────────────────────────
+
+#[error_code]
+pub enum GhostError {
+    #[msg("Insufficient $GHOST staked. Minimum 10,000 $GHOST required.")] InsufficientStake,
+    #[msg("Heartbeat interval too short. Minimum 7 days.")] IntervalTooShort,
+    #[msg("Grace period too short. Minimum 24 hours.")] GracePeriodTooShort,
+    #[msg("This ghost has already awakened.")] GhostAlreadyAwakened,
+    #[msg("This ghost has not yet awakened.")] GhostNotAwakened,
+    #[msg("This ghost has already been executed.")] GhostAlreadyExecuted,
+    #[msg("This ghost has not been executed yet.")] GhostNotExecuted,
+    #[msg("Soul is still alive. Heartbeat detected within interval.")] SoulStillAlive,
+    #[msg("Grace period is still active. Cannot execute yet.")] GracePeriodActive,
+    #[msg("Grace period has expired. Cannot cancel.")] GracePeriodExpired,
+    #[msg("Unauthorized.")] Unauthorized,
+    #[msg("Too many beneficiaries. Maximum 10.")] TooManyBeneficiaries,
+    #[msg("Invalid beneficiary index.")] InvalidBeneficiary,
+    #[msg("Beneficiary already paid.")] BeneficiaryAlreadyPaid,
+    #[msg("Wrong recipient account.")] WrongRecipient,
+    #[msg("Arithmetic overflow.")] Overflow,
 }
