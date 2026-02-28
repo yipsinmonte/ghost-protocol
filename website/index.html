@@ -3081,7 +3081,8 @@ async function disconnectWallet() {
     try { await provider.disconnect(); } catch(e) {}
     try { provider.off?.('accountChanged'); } catch(e) {}
   }
-  sessionStorage.removeItem('ghostSession');
+  sessionStorage.removeItem('ghostSession'); // legacy cleanup
+  try { localStorage.removeItem(_sessionKey()); localStorage.removeItem('ghostLastWallet'); } catch(e) {}
   ghostState.connected = false;
   ghostState.walletName = null;
   ghostState.walletAddress = null;
@@ -3115,8 +3116,25 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// ─── Disconnect on tab close, stay connected on refresh ─────────
+// sessionStorage survives refresh but clears on tab close/new tab
+// We use this to distinguish "refresh" from "fresh open"
+window.addEventListener('beforeunload', () => {
+  // Mark that we're in the middle of a navigation/refresh
+  sessionStorage.setItem('ghostRefresh', '1');
+  // Schedule localStorage wipe — if the page reloads the wipe gets cancelled by the flag check below
+  // If the tab closes, localStorage is cleared on next open by the absence of the refresh flag
+  // Actually: we clear immediately on beforeunload; DOMContentLoaded re-saves if refresh flag present
+  const key = _sessionKey();
+  localStorage.removeItem(key);
+  localStorage.removeItem('ghostLastWallet');
+});
+
 // ─── Restore session after page refresh ─────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  const isRefresh = sessionStorage.getItem('ghostRefresh') === '1';
+  sessionStorage.removeItem('ghostRefresh'); // consume the flag
+  if (!isRefresh) return; // fresh open (tab close + reopen, new tab) — stay disconnected
   const lastPage = loadSession();
   if (!lastPage) return;
   const isDemo = ghostState.walletName?.includes('demo');
