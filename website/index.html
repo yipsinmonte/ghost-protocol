@@ -6020,10 +6020,11 @@ function dbDepositAll() {
 
   renderVaultHoldings();
   renderVaultOverview();
+  _refreshBenePickers();
   showNotif('📥 Deposited all ' + count + ' asset' + (count > 1 ? 's' : '') + ' to vault!', 'green');
   saveSession();
-  // fetchPumpFunData gets logos for newly deposited tokens — no extra render needed
-  setTimeout(fetchPumpFunData, 300);
+  // Chain re-fetch: rebuild vaultTokens + bene picker + chart from RPC
+  setTimeout(() => loadWalletTokens().catch(()=>{}), 800);
 }
 
 async function dbWithdrawAll() {
@@ -6428,7 +6429,7 @@ async function dbDeposit() {
         document.getElementById('depositBalance').value='—';
       }
     }
-    renderVaultHoldings(); renderVaultOverview();
+    renderVaultHoldings(); renderVaultOverview(); renderBeneficiaries();
     saveSession(); pumpFunFetched.delete(mintStr); setTimeout(fetchPumpFunData, 400);
   };
 
@@ -6628,8 +6629,8 @@ async function dbDeposit() {
     const shortSig = sig.slice(0,4)+'...'+sig.slice(-4);
     addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + displaySym, shortSig, 'deposit');
     showNotif('✅ Deposited ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to vault!', 'green');
-    // Refresh vault from chain after short delay to pick up any token metadata the local state missed
-    setTimeout(() => fetchGhostAccount().catch(()=>{}), 1800);
+    // Hard chain re-fetch: rebuilds vaultTokens from RPC, refreshes bene picker + chart instantly
+    setTimeout(() => loadWalletTokens().catch(()=>{}), 800);
   } catch(err) {
     console.error('Deposit error:', err);
     showNotif('Deposit failed: ' + (err.message || err), 'error');
