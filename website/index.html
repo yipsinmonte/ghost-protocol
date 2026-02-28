@@ -2527,6 +2527,7 @@ async function initializeGhost() {
     ghostState.ghost.pingCount = 0;
     ghostState.ghost.vaultBalance = 0;
     showNotif('✅ Ghost initialized! [demo mode]', 'green');
+    saveSession();
     updateDashboardUI();
     dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
@@ -2682,6 +2683,7 @@ async function initializeGhost() {
 
     showNotif('✅ Ghost initialized on-chain!', 'green');
     addActivityRow('👻 Ghost initialized', sig.slice(0,4)+'...'+sig.slice(-4));
+    saveSession();
     updateDashboardUI();
     dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
