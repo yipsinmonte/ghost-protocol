@@ -776,7 +776,7 @@
         </div>
 
         <div class="db-section-header"><div class="db-section-title">Recent Activity</div></div>
-        <div class="db-form" style="padding:0">
+        <div class="db-form" style="padding:0;max-height:320px;overflow-y:auto">
           <table class="db-table">
             <thead><tr><th>Event</th><th>Time</th><th>Tx</th></tr></thead>
             <tbody id="dbActivityLog">
@@ -1542,6 +1542,7 @@ function saveSession() {
       vaultTokens: ghostState.vaultTokens,
       walletTokens: ghostState.walletTokens,
       recoveryWallets: ghostState.recoveryWallets,
+      activityLog: ghostState.activityLog || [],
       ghostPda: ghostState.ghostPda,
       vaultPda: ghostState.vaultPda,
       lastPage: _currentPage || 'overview',
@@ -1564,6 +1565,7 @@ function loadSession() {
     ghostState.vaultTokens = s.vaultTokens || [];
     ghostState.walletTokens = s.walletTokens || [];
     ghostState.recoveryWallets = s.recoveryWallets || [];
+    if (s.activityLog) ghostState.activityLog = s.activityLog;
     if (s.ghostPda) ghostState.ghostPda = s.ghostPda;
     if (s.vaultPda) ghostState.vaultPda = s.vaultPda;
     return s.lastPage || 'overview';
@@ -1890,8 +1892,8 @@ async function connectWallet(name) {
   }
   try {
     showNotif('Connecting to ' + name + '...', '');
-    // If already connected to this provider, disconnect first to force re-auth
-    if (provider.isConnected) { try { await provider.disconnect(); } catch(e) {} }
+    // Always disconnect first to force the wallet to show the approve popup
+    try { await provider.disconnect(); } catch(e) {}
     // onlyIfTrusted: false → always shows the approve popup
     const resp = await provider.connect({ onlyIfTrusted: false });
     const pubkey = resp.publicKey.toString();
@@ -2407,7 +2409,9 @@ function parseGhostAccount(bytes) {
 
     ghostState.ghost.intervalSeconds = interval;
     ghostState.ghost.gracePeriodSeconds = grace;
-    ghostState.ghost.lastHeartbeat = lastBeat * 1000; // convert to ms
+    // Keep the fresher value — session may have a ping not yet on-chain or just confirmed
+    const chainHeartbeatMs = lastBeat * 1000;
+    ghostState.ghost.lastHeartbeat = Math.max(ghostState.ghost.lastHeartbeat || 0, chainHeartbeatMs) || chainHeartbeatMs;
     if (recoveryWalletPubkey) ghostState.ghost.recoveryWallet = recoveryWalletPubkey;
     ghostState.ghost.awakened = awakened;
     ghostState.ghost.awakenedAt = awakenedAt ? awakenedAt * 1000 : null;
@@ -2596,7 +2600,15 @@ async function initializeGhost() {
     return;
   }
 
-  // Real transaction — call initialize_ghost on-chain
+  // Real transaction — check wallet holds enough $GHOST before signing
+  const ghostWalletToken = ghostState.walletTokens.find(t => t.mint === GHOST_MINT);
+  const ghostBalance = ghostWalletToken?.balance || 0;
+  if (ghostBalance < stakeAmt) {
+    const needed = stakeAmt.toLocaleString();
+    const have = ghostBalance > 0 ? ghostBalance.toLocaleString(undefined, {maximumFractionDigits:0}) : '0';
+    showNotif(`⚠️ You need ${needed} $GHOST to summon — you only have ${have}`, 'error');
+    return;
+  }
   try {
     showNotif('Initializing ghost account...', '');
     // Base58 decode helper for pubkey bytes
@@ -2764,6 +2776,7 @@ function openDashboard() {
     renderVaultOverview();
     renderRecoveryWallets();
     renderPingHistory();
+    renderActivityLog();
     updateCountdown();
     syncSettingsDisplay();
   }
@@ -2905,7 +2918,7 @@ function dbShowPage(pageId, navEl) {
   if (pageId === 'settings') syncSettingsDisplay();
   if (pageId === 'recovery') renderRecoveryWallets();
   if (pageId === 'heartbeat') renderPingHistory();
-  if (pageId === 'overview') { renderVaultOverview(); renderPingHistory(); }
+  if (pageId === 'overview') { renderVaultOverview(); renderPingHistory(); renderActivityLog(); }
 }
 
 // ─── Countdown ─────────────────────────────────────────────────
@@ -3022,12 +3035,28 @@ async function sendPing() {
   }
 }
 
+// ─── Activity Log (persistent across session) ───────────────────
+if (!ghostState.activityLog) ghostState.activityLog = []; // [{msg, tx, ts}]
+
 function addActivityRow(msg, tx) {
+  const ts = Date.now();
+  ghostState.activityLog.unshift({ msg, tx, ts });
+  renderActivityLog();
+  saveSession();
+}
+
+function renderActivityLog() {
   const log = document.getElementById('dbActivityLog');
   if (!log) return;
-  const row = document.createElement('tr');
-  row.innerHTML = '<td>' + msg + '</td><td>just now</td><td><span class="addr-short">' + tx + '</span></td>';
-  log.prepend(row);
+  if (ghostState.activityLog.length === 0) {
+    log.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#c0bce0">No activity yet</td></tr>';
+    return;
+  }
+  log.innerHTML = ghostState.activityLog.map(entry => {
+    const d = new Date(entry.ts);
+    const timeStr = d.toLocaleDateString('en-GB', {day:'numeric',month:'short'}) + ' ' + d.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+    return `<tr><td>${entry.msg}</td><td style="white-space:nowrap;color:#9090b8">${timeStr}</td><td><span class="addr-short">${entry.tx}</span></td></tr>`;
+  }).join('');
 }
 
 function randomTx() {
@@ -3826,8 +3855,104 @@ async function guardianCancelAwakening(ownerAddress) {
 }
 
 async function guardianWithdrawAll(ownerAddress) {
-  showNotif('Guardian vault withdrawal coming soon', 'error');
-  // TODO: call withdraw_from_vault for each token in the vault
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    showNotif('⚠️ Connect your real wallet to use guardian withdraw', 'error'); return;
+  }
+  showNotif('Fetching vault assets...', '');
+  try {
+    const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    const ownerPk = new PublicKey(ownerAddress);
+    const programId = new PublicKey(PROGRAM_ID);
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const TOKEN_PROG_PK = new PublicKey(TOKEN_PROGRAM_STR);
+    const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
+
+    // Derive ghost + vault PDAs from the owner's key
+    const [ghostPda] = await PublicKey.findProgramAddress(
+      [new TextEncoder().encode('ghost'), ownerPk.toBytes()], programId);
+    const [vaultPda] = await PublicKey.findProgramAddress(
+      [new TextEncoder().encode('vault'), ownerPk.toBytes()], programId);
+
+    // Get all token accounts owned by the vault
+    const vaultAccounts = await connection.getTokenAccountsByOwner(vaultPda, { programId: TOKEN_PROG_PK });
+    if (vaultAccounts.value.length === 0) { showNotif('Vault is empty', 'error'); return; }
+
+    const disc = [180, 34, 37, 46, 156, 0, 211, 238]; // withdraw_from_vault discriminator
+    let successCount = 0;
+    const total = vaultAccounts.value.length;
+
+    for (const { pubkey: vaultAta, account } of vaultAccounts.value) {
+      try {
+        // Parse mint and amount from token account data
+        const data = account.data;
+        const mintBytes = data.slice(0, 32);
+        const mintPk = new PublicKey(mintBytes);
+        const mintStr = mintPk.toBase58();
+        const amountRaw = new DataView(data.buffer, data.byteOffset + 64, 8).getBigUint64(0, true);
+        if (amountRaw === 0n) { successCount++; continue; } // skip empty
+
+        const isSOL = mintStr === WSOL_MINT_PK_STR;
+
+        // Get mint info for token program detection
+        let rawMintOwner = TOKEN_PROGRAM_STR;
+        try { const mi = await connection.getAccountInfo(mintPk); rawMintOwner = mi?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
+        const rawTokenProgPk = new PublicKey(rawMintOwner);
+
+        const amountBuf = new ArrayBuffer(8); new DataView(amountBuf).setBigUint64(0, amountRaw, true);
+        const ixData = new Uint8Array(16); ixData.set(disc, 0); ixData.set(new Uint8Array(amountBuf), 8);
+
+        if (isSOL) {
+          const Keypair = solanaWeb3.Keypair;
+          const wsolKp = Keypair.generate(); const wsolAcct = wsolKp.publicKey;
+          const space = 165; const rent = await connection.getMinimumBalanceForRentExemption(space);
+          const { blockhash } = await connection.getLatestBlockhash();
+          const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+          tx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
+          const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
+          tx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK, keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }], data: initData }));
+          tx.add(new TransactionInstruction({ programId, keys: [
+            { pubkey: ghostPda,     isSigner: false, isWritable: false },
+            { pubkey: vaultPda,     isSigner: false, isWritable: false },
+            { pubkey: walletPk,     isSigner: true,  isWritable: true  },
+            { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
+            { pubkey: wsolAcct,     isSigner: false, isWritable: true  },
+            { pubkey: vaultAta,     isSigner: false, isWritable: true  },
+            { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
+          ], data: ixData }));
+          tx.add(buildUnwrapIx(walletPk, wsolAcct));
+          showNotif('Sign to withdraw SOL...', '');
+          const signed = await ghostState.provider.signTransaction(tx); signed.partialSign(wsolKp);
+          const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+          await connection.confirmTransaction(sig, 'confirmed');
+        } else {
+          const ownerAta = await findATAWithProg(walletPk, mintPk, rawTokenProgPk);
+          const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
+          const { blockhash } = await connection.getLatestBlockhash();
+          const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+          if (!ownerAtaInfo) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, rawTokenProgPk));
+          tx.add(new TransactionInstruction({ programId, keys: [
+            { pubkey: ghostPda,      isSigner: false, isWritable: false },
+            { pubkey: vaultPda,      isSigner: false, isWritable: false },
+            { pubkey: walletPk,      isSigner: true,  isWritable: true  },
+            { pubkey: mintPk,        isSigner: false, isWritable: false },
+            { pubkey: ownerAta,      isSigner: false, isWritable: true  },
+            { pubkey: vaultAta,      isSigner: false, isWritable: true  },
+            { pubkey: rawTokenProgPk,isSigner: false, isWritable: false },
+          ], data: ixData }));
+          showNotif('Sign to withdraw ' + mintStr.slice(0,6) + '...', '');
+          const signed = await ghostState.provider.signTransaction(tx);
+          const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+          await connection.confirmTransaction(sig, 'confirmed');
+        }
+        successCount++;
+      } catch(err) { console.error('Guardian withdraw token error:', err); }
+    }
+    showNotif(`✅ Guardian withdrew ${successCount}/${total} assets`, successCount > 0 ? 'green' : 'error');
+    await scanGuardianAssignments();
+  } catch(err) {
+    showNotif('Guardian withdraw failed: ' + (err.message||err), 'error');
+  }
 }
 
 async function checkIfRecoveryWallet() {
@@ -4476,10 +4601,23 @@ function populateAllPickers() {
 }
 
 // ─── Vault Overview (on Overview page) ─────────────────────────
+// ─── Vault sort: SOL first, then by USD value desc ──────────────
+function sortedVaultTokens() {
+  return [...ghostState.vaultTokens].sort((a, b) => {
+    const aIsSOL = a.mint === 'native' || a.mint === WSOL_MINT_PK_STR;
+    const bIsSOL = b.mint === 'native' || b.mint === WSOL_MINT_PK_STR;
+    if (aIsSOL && !bIsSOL) return -1;
+    if (!aIsSOL && bIsSOL) return 1;
+    const aUsd = a.balance * (getTokenPrice(a) || 0);
+    const bUsd = b.balance * (getTokenPrice(b) || 0);
+    return bUsd - aUsd;
+  });
+}
+
 function renderVaultOverview() {
   const el = document.getElementById('dbVaultOverview');
   if (!el) return;
-  const tokens = ghostState.vaultTokens;
+  const tokens = sortedVaultTokens();
   if (tokens.length === 0) {
     el.innerHTML = '<div style="padding:16px 20px;font-family:\'Share Tech Mono\',monospace;font-size:12px;color:#c0bce0">No assets in vault</div>';
     const usdEl = document.getElementById('dbVaultUsdTotal');
@@ -4489,7 +4627,6 @@ function renderVaultOverview() {
     return;
   }
 
-  // Simple USD pricing: SOL ~$86, GHOST uses live price, others approximate
   let totalUsd = 0;
   const rows = tokens.map(t => {
     const price = getTokenPrice(t);
@@ -4505,25 +4642,8 @@ function renderVaultOverview() {
     </div>`;
   }).join('');
 
-  // Diff: only rebuild if token count changed, else patch in-place
-  const existingOvRows = el.querySelectorAll('[data-ov-mint]');
-  if (existingOvRows.length !== tokens.length) {
-    el.innerHTML = rows;
-  } else {
-    tokens.forEach((t) => {
-      const price = getTokenPrice(t);
-      const usdVal = t.balance * price;
-      const usdStr = usdVal > 0 ? ' · ~$' + usdVal.toFixed(2) : '';
-      const balEl = el.querySelector(`[data-ov-bal="${t.mint}"]`);
-      if (balEl) balEl.textContent = `${t.balance.toLocaleString(undefined,{maximumFractionDigits:6})} ${t.symbol}${usdStr}`;
-      // Only update logo if not already loaded
-      const logoEl = el.querySelector(`[data-ov-logo="${t.mint}"]`);
-      if (logoEl && t.logoUrl) {
-        const img = logoEl.querySelector('img');
-        if (!img || img.naturalWidth === 0) logoEl.innerHTML = tokenLogoEl(t.symbol, 36, t.logoUrl);
-      }
-    });
-  }
+  // Always full rebuild to avoid stale diff artifacts
+  el.innerHTML = rows;
   const usdEl = document.getElementById('dbVaultUsdTotal');
   const subEl = document.getElementById('dbVaultUsdSub');
   if (usdEl) {
@@ -4775,7 +4895,7 @@ function renderVaultHoldings() {
     .reduce((s, b) => s + (b.sharePct || 0), 0);
 
   let totalUsd = 0;
-  const rows = ghostState.vaultTokens.map((t, i) => {
+  const rows = sortedVaultTokens().map((t, i) => {
     // Normalise wSOL → display as SOL everywhere in vault
     if (t.mint === WSOL_MINT_PK_STR || t.mint === 'So11111111111111111111111111111111111111112') t.symbol = 'SOL';
     const price = getTokenPrice(t);
