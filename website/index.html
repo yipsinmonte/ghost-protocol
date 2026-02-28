@@ -1515,6 +1515,7 @@ const ghostState = {
   provider: null,
   ghostPda: null,
   vaultPda: null,
+  ghostStakeVault: null,
   ghost: {
     status: 'none',
     lastHeartbeat: null,
@@ -1882,12 +1883,13 @@ async function connectWallet(name) {
   } else if (name === 'Solflare') {
     provider = window.solflare;
   } else if (name === 'Backpack') {
-    provider = window.backpack?.solana;
+    provider = window.backpack?.solana || window.xnft?.solana;
+  } else if (name === 'OKX') {
+    provider = window.okxwallet?.solana;
   }
-  if (!provider) provider = window.phantom?.solana || window.solflare || window.solana;
+  // No silent fallthrough — if the chosen wallet isn't installed, say so clearly
   if (!provider) {
-    showNotif('⚠️ ' + name + ' not found. Please install it first.', 'error');
-    connectWalletDemo(name);
+    showNotif('\u26A0\uFE0F ' + name + ' not detected. Please install it and refresh.', 'error');
     return;
   }
   try {
@@ -1899,12 +1901,20 @@ async function connectWallet(name) {
     // onlyIfTrusted: false → always shows the approve popup
     const resp = await provider.connect({ onlyIfTrusted: false });
     const pubkey = resp.publicKey.toString();
+    // Sign BEFORE any UI update — cancelling sign leaves UI untouched (not connected)
+    try {
+      const authMsg = new TextEncoder().encode('Authenticate with GHOST Protocol — ' + new Date().toISOString());
+      await provider.signMessage(authMsg, 'utf8');
+    } catch(signErr) {
+      try { await provider.disconnect(); } catch(e) {}
+      throw new Error('Authentication cancelled — approve the sign request to connect.');
+    }
+    // Sign succeeded — update state and UI
     ghostState.connected = true;
     ghostState.walletName = name;
     ghostState.walletAddress = pubkey.slice(0,4) + '...' + pubkey.slice(-4);
     ghostState.publicKey = pubkey;
     ghostState.provider = provider;
-    // Listen for account switches — treat as a full disconnect
     const _onAccountChange = () => {
       showNotif('👻 Wallet account changed — please reconnect.', '');
       disconnectWallet();
@@ -1920,16 +1930,6 @@ async function connectWallet(name) {
     document.getElementById('navDisconnectBtn').style.display = 'inline-block';
     const wsEl = document.getElementById('walletStatus');
     if (wsEl) wsEl.textContent = ghostState.walletAddress + ' — Heartbeat Active';
-    // Force sign request — cannot be auto-approved, ensures user actively confirms
-    // This only runs on explicit connect, NOT the silent onlyIfTrusted:true re-attach
-    try {
-      const authMsg = new TextEncoder().encode('Authenticate with GHOST Protocol — ' + new Date().toISOString());
-      await provider.signMessage(authMsg, 'utf8');
-    } catch(signErr) {
-      try { await provider.disconnect(); } catch(e) {}
-      ghostState.connected = false; ghostState.provider = null;
-      throw new Error('Authentication cancelled — approve the sign request to connect.');
-    }
     showNotif('\u2713 ' + name + ' connected!', 'green');
     saveSession();
     await fetchGhostAccount();
@@ -1983,11 +1983,19 @@ async function deriveAndSetPDAs(walletAddress) {
       [new TextEncoder().encode(VAULT_SEED), wallet.toBytes()],
       programId
     );
-    
+    // Stake vault: the specific token account PDA holding staked $GHOST (seeds: ["stake_vault", owner])
+    // It is protocol-locked and excluded from user vault display and withdrawals
+    const [stakeVaultPda] = PublicKey.findProgramAddressSync(
+      [new TextEncoder().encode('stake_vault'), wallet.toBytes()],
+      programId
+    );
+
     ghostState.ghostPda = ghostPda.toString();
     ghostState.vaultPda = vaultPda.toString();
+    ghostState.ghostStakeVault = stakeVaultPda.toString();
     console.log('Ghost PDA:', ghostState.ghostPda);
     console.log('Vault PDA:', ghostState.vaultPda);
+    console.log('Stake Vault:', ghostState.ghostStakeVault);
   } catch (err) {
     console.error('PDA derivation error:', err);
   }
@@ -2581,7 +2589,14 @@ function updateDashboardUI() {
   // ── Sidebar footer ───────────────────────────────────────────
   const stakeEl = document.getElementById('sidebarStake');
   const pingsEl = document.getElementById('sidebarPings');
-  if (stakeEl) stakeEl.textContent = isNone ? '—' : (g.stakedGhost||0).toLocaleString() + ' $GHOST';
+  if (stakeEl) {
+    if (isNone) { stakeEl.textContent = '—'; } else {
+      const _sAmt = g.stakedGhost || 0;
+      const _gPrice = PRICE_CACHE[GHOST_MINT] || 0;
+      const _sUsd = _gPrice > 0 ? '<br><span style="font-size:10px;color:#9090b8;font-weight:300">\u2248 $' + (_sAmt * _gPrice).toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>' : '';
+      stakeEl.innerHTML = _sAmt.toLocaleString() + ' $GHOST' + _sUsd;
+    }
+  }
   if (pingsEl) pingsEl.textContent = isNone ? '—' : g.pingCount;
 
   // ── Status badge in overview ─────────────────────────────────
@@ -2930,6 +2945,7 @@ async function disconnectWallet() {
   ghostState.publicKey = null;
   ghostState.ghostPda = null;
   ghostState.vaultPda = null;
+  ghostState.ghostStakeVault = null;
   ghostState.ghost = { status:'none', lastHeartbeat:null, intervalSeconds:365*86400, gracePeriodSeconds:30*86400, awakenedAt:null, executed:false, stakedGhost:0, pingCount:0, vaultBalance:0, recoveryWallet:null, beneficiaries:[] };
   ghostState.walletTokens = [];
   ghostState.vaultTokens = [];
@@ -4450,8 +4466,12 @@ async function loadWalletTokens() {
           // Deduplicate by token account pubkey (same ATA won't appear twice)
           const seen = new Set();
           const deduped = vaultAccts.filter(a => { if (seen.has(a.pubkey)) return false; seen.add(a.pubkey); return true; });
-          // shadow vaultAccts with deduped for the rest of the block
-          vaultAccts.splice(0, vaultAccts.length, ...deduped);
+          // Exclude the ghost_stake_vault token account — holds protocol-locked staked $GHOST
+          // Users cannot withdraw this until they abandon ghost; it should not appear in vault UI
+          const _stakeVaultKey = ghostState.ghostStakeVault;
+          const userAccts = _stakeVaultKey ? deduped.filter(a => a.pubkey !== _stakeVaultKey) : deduped;
+          console.log('[Ghost] Vault accts:', deduped.length, 'after excluding stake vault:', userAccts.length);
+          vaultAccts.splice(0, vaultAccts.length, ...userAccts);
           if (true) { // keep original block structure
           // Rebuild vaultTokens from on-chain data
           const freshVault = [];
@@ -5917,7 +5937,12 @@ function syncSettingsDisplay() {
   if (el('settingsIntervalSub')) el('settingsIntervalSub').textContent = 'days · ~' + (iDays/30).toFixed(1) + ' months';
   if (el('settingsGraceVal')) el('settingsGraceVal').textContent = gDays;
   if (el('settingsGraceSub')) el('settingsGraceSub').textContent = 'days after silence detected';
-  if (el('settingsStakedVal')) el('settingsStakedVal').textContent = (g.stakedGhost || 10000).toLocaleString();
+  if (el('settingsStakedVal')) {
+    const _ssAmt = g.stakedGhost || 10000;
+    const _ssPrice = PRICE_CACHE[GHOST_MINT] || 0;
+    const _ssUsd = _ssPrice > 0 ? '<span style="font-size:11px;color:#9090b8;margin-left:6px">\u2248 $' + (_ssAmt * _ssPrice).toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>' : '';
+    el('settingsStakedVal').innerHTML = _ssAmt.toLocaleString() + ' $GHOST' + _ssUsd;
+  }
 }
 
 async function dbUpdateInterval() {
