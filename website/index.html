@@ -2591,44 +2591,15 @@ async function initializeGhost() {
         { pubkey: signerGhostAta,         isSigner: false, isWritable: true  },
         { pubkey: walletPubkey,           isSigner: true,  isWritable: true  },
         { pubkey: ghostTokenProgramId,    isSigner: false, isWritable: false },
+        { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso'), isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId,isSigner: false, isWritable: false },
       ],
       data
     });
 
-    // Check if ghostStakeVault ATA exists — if not, create it in a separate TX first
-    const stakeVaultInfo = await connection.getAccountInfo(ghostStakeVault);
-    console.log('[Ghost] ghostStakeVault exists:', !!stakeVaultInfo);
-
-    // Check both ATAs — create any that don't exist
+    // Program creates ghost_stake_vault via init_if_needed — no pre-creation needed
     const signerAtaInfo = await connection.getAccountInfo(signerGhostAta);
     console.log('[Ghost] signerGhostAta exists:', !!signerAtaInfo);
-    console.log('[Ghost] ghostStakeVault exists:', !!stakeVaultInfo);
-
-    const missingAtas = [];
-    if (!signerAtaInfo) missingAtas.push(buildCreateATAIx(walletPubkey, signerGhostAta, walletPubkey, ghostMint, ghostTokenProgramId));
-    if (!stakeVaultInfo) missingAtas.push(buildCreateATAIx(walletPubkey, ghostStakeVault, ghostPda, ghostMint, ghostTokenProgramId));
-
-    if (missingAtas.length > 0) {
-      showNotif(`Step 1/2: Creating ${missingAtas.length} token account(s)...`, '');
-      const { blockhash: bh1 } = await connection.getLatestBlockhash();
-      const ataTx = new Transaction({ recentBlockhash: bh1, feePayer: walletPubkey });
-      missingAtas.forEach(ix => ataTx.add(ix));
-      let ataSig;
-      if (ghostState.provider.sendTransaction) {
-        ataSig = await ghostState.provider.sendTransaction(ataTx, connection);
-      } else {
-        const signedAta = await ghostState.provider.signTransaction(ataTx);
-        ataSig = await connection.sendRawTransaction(signedAta.serialize(), { skipPreflight: true });
-      }
-      console.log('[Ghost] ATA TX sent:', ataSig);
-      await connection.confirmTransaction(ataSig, 'confirmed');
-      console.log('[Ghost] ATAs created');
-      // Verify stake vault was created correctly
-      const vaultInfo = await connection.getAccountInfo(ghostStakeVault);
-      console.log('[Ghost] stakeVault after creation - exists:', !!vaultInfo, 'owner:', vaultInfo?.owner?.toBase58(), 'len:', vaultInfo?.data?.length);
-      showNotif('Step 2/2: Initializing ghost...', '');
-    }
 
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
