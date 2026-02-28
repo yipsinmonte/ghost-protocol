@@ -1531,6 +1531,7 @@ function saveSession() {
       ghost: ghostState.ghost,
       vaultTokens: ghostState.vaultTokens,
       walletTokens: ghostState.walletTokens,
+      recoveryWallets: ghostState.recoveryWallets,
       lastPage: _currentPage || 'overview',
     };
     sessionStorage.setItem('ghostSession', JSON.stringify(s));
@@ -1550,6 +1551,7 @@ function loadSession() {
     ghostState.ghost = s.ghost || ghostState.ghost;
     ghostState.vaultTokens = s.vaultTokens || [];
     ghostState.walletTokens = s.walletTokens || [];
+    ghostState.recoveryWallets = s.recoveryWallets || [];
     return s.lastPage || 'overview';
   } catch(e) { return false; }
 }
@@ -2525,6 +2527,7 @@ async function initializeGhost() {
     ghostState.ghost.pingCount = 0;
     ghostState.ghost.vaultBalance = 0;
     showNotif('✅ Ghost initialized! [demo mode]', 'green');
+    saveSession();
     updateDashboardUI();
     dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
@@ -2680,6 +2683,7 @@ async function initializeGhost() {
 
     showNotif('✅ Ghost initialized on-chain!', 'green');
     addActivityRow('👻 Ghost initialized', sig.slice(0,4)+'...'+sig.slice(-4));
+    saveSession();
     updateDashboardUI();
     dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
@@ -4863,6 +4867,7 @@ async function dbWithdrawAll() {
   const vaultPda  = new PublicKey(ghostState.vaultPda);
   const programId = new PublicKey(PROGRAM_ID);
   const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
+  const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
   const disc = [180, 34, 37, 46, 156, 0, 211, 238]; // withdraw_from_vault discriminator
   const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 
@@ -4873,7 +4878,6 @@ async function dbWithdrawAll() {
     try {
       const isSOL = (vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
       const mintStr = effectiveMint(vt.mint);
-      const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
       const mintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
       const displaySym = isSOL ? 'SOL' : vt.symbol;
       const amount = vt.balance;
@@ -4889,6 +4893,14 @@ async function dbWithdrawAll() {
 
       const { blockhash } = await connection.getLatestBlockhash();
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+
+      // Create owner ATA if missing
+      const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
+      if (!ownerAtaInfo) {
+        console.log('[Ghost] Owner ATA missing — prepending createATA ix for', mintPk.toBase58());
+        tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, TOKEN_PROG));
+      }
+
       tx.add(new TransactionInstruction({ programId,
         keys: [
           { pubkey: ghostPda,   isSigner: false, isWritable: false },
@@ -5418,7 +5430,7 @@ async function dbWithdrawAsset(vaultIdx) {
     const TOKEN_PROG = new PublicKey(TOKEN_PROGRAM_STR);
     console.log('[Ghost] mintStr:', mintStr, 'isSOL:', isSOL);
 
-    // For SOL: always use wSOL mint for ATA derivation — never pass null
+    // Always use the real wSOL mint for ATA derivation — never null
     const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
     const mintPk = isSOL ? WSOL_MINT_PK : new PublicKey(mintStr);
 
@@ -5437,6 +5449,13 @@ async function dbWithdrawAsset(vaultIdx) {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
+    // Create owner ATA if it doesn't exist yet (e.g. wSOL was closed after deposit, or first-time SPL receive)
+    const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
+    if (!ownerAtaInfo) {
+      console.log('[Ghost] Owner ATA missing — prepending createATA ix for', mintPk.toBase58());
+      tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, TOKEN_PROG));
+    }
+
     tx.add(new TransactionInstruction({ programId,
       keys: [
         { pubkey: ghostPda,   isSigner: false, isWritable: false },
@@ -5450,7 +5469,6 @@ async function dbWithdrawAsset(vaultIdx) {
 
     // For SOL: after withdraw_from_vault moves wSOL to owner's ATA,
     // close the wSOL ATA to convert back to native SOL automatically.
-    // This is the unwrap — user sees SOL arrive in wallet, never sees wSOL.
     if (isSOL) {
       tx.add(buildUnwrapIx(walletPk, ownerAta));
     }
