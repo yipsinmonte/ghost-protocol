@@ -2660,6 +2660,10 @@ async function initializeGhost() {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
 
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
@@ -2895,6 +2899,10 @@ async function sendPing() {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
 
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
@@ -3271,6 +3279,10 @@ async function dbAddBeneficiary(action) {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
@@ -3564,6 +3576,10 @@ async function cancelAwakening() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
     tx.add(ix);
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     await connection.confirmTransaction(sig, 'confirmed');
@@ -4471,6 +4487,10 @@ async function dbAddRecoveryWallet() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
     tx.add(ix);
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     await connection.confirmTransaction(sig, 'confirmed');
@@ -4521,6 +4541,10 @@ async function dbRemoveRecoveryWallet(idx) {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
     tx.add(ix);
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     await connection.confirmTransaction(sig, 'confirmed');
@@ -4979,8 +5003,9 @@ async function dbDeposit() {
     }
     // Normalize pump.fun non-standard Token-2022 → standard for ATA creation
     const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
+    console.log('[Ghost] rawMintOwner:', rawMintOwner, 'normalized:', normalizedTokenProg);
     const tokenProgPk    = new PublicKey(normalizedTokenProg); // for ATA creation
-    const rawTokenProgPk = new PublicKey(rawMintOwner);        // for deposit instruction
+    const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR); // for deposit instruction
 
     // Owner source token account
     const ownerAta = isSOL
@@ -5041,6 +5066,10 @@ async function dbDeposit() {
         { pubkey: rawTokenProgPk,    isSigner: false, isWritable: false }, // use raw (may be pump.fun variant)
       ], data }));
 
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     let sig;
     try {
@@ -5168,6 +5197,10 @@ async function dbWithdrawAsset(vaultIdx) {
       tx.add(buildUnwrapIx(walletPk, ownerAta));
     }
 
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig    = await connection.sendRawTransaction(signed.serialize());
     await connection.confirmTransaction(sig, 'confirmed');
@@ -5227,6 +5260,10 @@ async function dbUpdateInterval() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
@@ -5273,6 +5310,10 @@ async function dbUpdateGrace() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
+    // Debug: log all instruction programIds to find the bad one
+    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
+      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
+    ));
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
