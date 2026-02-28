@@ -4848,6 +4848,41 @@ async function findATA(ownerPk, mintPk) {
 }
 
 // Build create-ATA instruction (with rent sysvar for compatibility)
+// Manual token account creation — bypasses ATA program entirely
+// Generates a new keypair, creates + initializes the account, returns keypair
+// Caller must call tx.partialSign(kp) before provider.signTransaction(tx)
+async function buildManualTokenAccountIxs(walletPk, mintPk, ownerPk, tokenProgPk, connection) {
+  const { Keypair, SystemProgram, TransactionInstruction } = solanaWeb3;
+  const kp = Keypair.generate();
+  // Token account space: 165 bytes (Token), 165 bytes (Token-2022 base without extensions)
+  const space = 165;
+  const lamports = await connection.getMinimumBalanceForRentExemption(space);
+
+  const createIx = SystemProgram.createAccount({
+    fromPubkey: walletPk,
+    newAccountPubkey: kp.publicKey,
+    lamports,
+    space,
+    programId: tokenProgPk, // token program owns the account
+  });
+
+  // InitializeAccount3: opcode 18, layout = [18u8, owner_pubkey(32)]
+  const initData = new Uint8Array(33);
+  initData[0] = 18;
+  initData.set(ownerPk.toBytes(), 1);
+
+  const initIx = new TransactionInstruction({
+    programId: tokenProgPk,
+    keys: [
+      { pubkey: kp.publicKey, isSigner: false, isWritable: true },
+      { pubkey: mintPk,       isSigner: false, isWritable: false },
+    ],
+    data: initData,
+  });
+
+  return { createIx, initIx, kp };
+}
+
 function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk, tokenProgId) {
   const { PublicKey, TransactionInstruction, SystemProgram } = solanaWeb3;
   const tokenProg = tokenProgId || new PublicKey(TOKEN_PROGRAM_STR);
@@ -5010,7 +5045,7 @@ async function dbDeposit() {
 
     // Vault destination token account
     const ghostMintStr = ghostState.ghost?.mint || GHOST_MINT;
-    const vaultAta = (depositMintStr === ghostMintStr)
+    let vaultAta = (depositMintStr === ghostMintStr)
       ? await solanaWeb3.PublicKey.findProgramAddress(
           [new TextEncoder().encode('stake_vault'), walletPk.toBytes()],
           new PublicKey(PROGRAM_ID)
@@ -5046,18 +5081,26 @@ async function dbDeposit() {
         console.log('[Ghost] Vault PDA funded');
       }
 
-      // Step 1b: Create vault token account
+      // Step 1b: Create vault token account via raw createAccount + initializeAccount3
+      // Bypasses ATA program which fails with ProgramAccountNotFound on some RPCs
       showNotif('Initializing vault token account...', '');
-      console.log('[Ghost] Creating vault ATA');
+      console.log('[Ghost] Creating vault token account manually');
       const { blockhash: initBh } = await connection.getLatestBlockhash();
       const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
-      initTx.add(buildCreateATAIx(walletPk, vaultAta, vaultPda, depositMintPk, tokenProgPk));
-      const initSigned = await ghostState.provider.signTransaction(initTx);
-      const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: true });
-      console.log('[Ghost] Vault ATA init tx:', initSig);
+      const { createIx, initIx, kp: vaultTokenKp } = await buildManualTokenAccountIxs(
+        walletPk, depositMintPk, vaultPda, rawTokenProgPk, connection
+      );
+      initTx.add(createIx, initIx);
+      // Wallet signs first, then keypair signs — Phantom may strip pre-existing partial sigs
+      const initWalletSigned = await ghostState.provider.signTransaction(initTx);
+      initWalletSigned.partialSign(vaultTokenKp); // add keypair sig AFTER wallet
+      const initSig = await connection.sendRawTransaction(initWalletSigned.serialize(), { skipPreflight: true });
+      console.log('[Ghost] Vault token account tx:', initSig, 'addr:', vaultTokenKp.publicKey.toBase58());
       const initConf = await connection.confirmTransaction(initSig, 'confirmed');
       if (initConf.value?.err) throw new Error('Vault init failed: ' + JSON.stringify(initConf.value.err));
-      console.log('[Ghost] Vault ATA created');
+      // Override vaultAta to use the newly created account
+      vaultAta = vaultTokenKp.publicKey;
+      console.log('[Ghost] Vault token account created:', vaultAta.toBase58());
       showNotif('Vault ready — proceeding with deposit...', '');
       const { blockhash: newBh } = await connection.getLatestBlockhash();
       tx.recentBlockhash = newBh;
