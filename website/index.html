@@ -1531,6 +1531,7 @@ function saveSession() {
       ghost: ghostState.ghost,
       vaultTokens: ghostState.vaultTokens,
       walletTokens: ghostState.walletTokens,
+      recoveryWallets: ghostState.recoveryWallets,
       lastPage: _currentPage || 'overview',
     };
     sessionStorage.setItem('ghostSession', JSON.stringify(s));
@@ -1550,6 +1551,7 @@ function loadSession() {
     ghostState.ghost = s.ghost || ghostState.ghost;
     ghostState.vaultTokens = s.vaultTokens || [];
     ghostState.walletTokens = s.walletTokens || [];
+    ghostState.recoveryWallets = s.recoveryWallets || [];
     return s.lastPage || 'overview';
   } catch(e) { return false; }
 }
