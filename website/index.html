@@ -2660,10 +2660,10 @@ async function initializeGhost() {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
 
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
@@ -2899,10 +2899,10 @@ async function sendPing() {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
 
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
@@ -3279,10 +3279,10 @@ async function dbAddBeneficiary(action) {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
@@ -3576,10 +3576,10 @@ async function cancelAwakening() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
     tx.add(ix);
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     await connection.confirmTransaction(sig, 'confirmed');
@@ -4487,10 +4487,10 @@ async function dbAddRecoveryWallet() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
     tx.add(ix);
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     await connection.confirmTransaction(sig, 'confirmed');
@@ -4541,10 +4541,10 @@ async function dbRemoveRecoveryWallet(idx) {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
     tx.add(ix);
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     await connection.confirmTransaction(sig, 'confirmed');
@@ -4815,15 +4815,10 @@ function fillMaxDeposit() {
 // ─── SOL/wSOL constants ─────────────────────────────────────────────────────
 const WSOL_MINT_PK_STR = 'So11111111111111111111111111111111111111112';
 const TOKEN_PROGRAM_STR    = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
-const TOKEN_2022_STR       = 'TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB'; // standard
-const TOKEN_2022_PUMP_STR  = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'; // pump.fun variant
+const TOKEN_2022_STR       = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'; // real Token-2022
 
-// Normalize token program: pump.fun uses a non-standard Token-2022 address
-// The ATA program only recognizes the standard addresses — always normalize
-function normalizeTokenProg(addr) {
-  if (addr === TOKEN_2022_PUMP_STR) return TOKEN_2022_STR;
-  return addr;
-}
+// No normalization needed — TokenzQdBNbLqP5... IS the real Token-2022 program
+function normalizeTokenProg(addr) { return addr; }
 const ASSOC_TOKEN_PROG_STR = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso';
 
 // Resolve effective mint: native SOL → wSOL mint string
@@ -4835,10 +4830,8 @@ function effectiveMint(mint) {
 async function findATAWithProg(owner, mint, tokenProg) {
   const { PublicKey } = solanaWeb3;
   const ASSOC = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso');
-  // Normalize pump.fun Token-2022 variant for ATA derivation
-  const normalizedProg = new PublicKey(normalizeTokenProg(tokenProg.toBase58()));
   const [ata] = await PublicKey.findProgramAddress(
-    [owner.toBytes(), normalizedProg.toBytes(), mint.toBytes()], ASSOC
+    [owner.toBytes(), tokenProg.toBytes(), mint.toBytes()], ASSOC
   );
   return ata;
 }
@@ -5066,10 +5059,10 @@ async function dbDeposit() {
         { pubkey: rawTokenProgPk,    isSigner: false, isWritable: false }, // use raw (may be pump.fun variant)
       ], data }));
 
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     let sig;
     try {
@@ -5197,10 +5190,10 @@ async function dbWithdrawAsset(vaultIdx) {
       tx.add(buildUnwrapIx(walletPk, ownerAta));
     }
 
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig    = await connection.sendRawTransaction(signed.serialize());
     await connection.confirmTransaction(sig, 'confirmed');
@@ -5260,10 +5253,10 @@ async function dbUpdateInterval() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
@@ -5310,10 +5303,10 @@ async function dbUpdateGrace() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
-    // Debug: log all instruction programIds to find the bad one
-    console.log('[Ghost] TX instructions:', tx.instructions.map((ix, i) => 
-      `ix${i}: ${ix.programId.toBase58()} (${ix.keys.length} accounts)`
-    ));
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] TX sent:', sig);
