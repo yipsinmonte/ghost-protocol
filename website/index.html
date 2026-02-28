@@ -4137,6 +4137,68 @@ async function loadWalletTokens() {
       setTimeout(fetchPumpFunData, 200);
     }
 
+    // Fetch vault token balances from chain — source of truth regardless of session state
+    if (ghostState.ghost?.status === 'alive' || ghostState.ghost?.status === 'triggered') {
+      try {
+        const vaultPdaStr = ghostState.vaultPda;
+        if (vaultPdaStr) {
+          const [vaultSpl, vaultSpl22] = await Promise.all([
+            fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({jsonrpc:'2.0',id:'vs1',method:'getTokenAccountsByOwner',
+                params:[vaultPdaStr,{programId:'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'},{encoding:'jsonParsed'}]})
+            }).then(r=>r.json()),
+            fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({jsonrpc:'2.0',id:'vs2',method:'getTokenAccountsByOwner',
+                params:[vaultPdaStr,{programId:'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'},{encoding:'jsonParsed'}]})
+            }).then(r=>r.json())
+          ]);
+          const vaultAccts = [
+            ...(vaultSpl.result?.value || []),
+            ...(vaultSpl22.result?.value || [])
+          ];
+          // Rebuild vaultTokens from on-chain data
+          const freshVault = [];
+          for (const acct of vaultAccts) {
+            const info = acct.account.data.parsed?.info;
+            if (!info) continue;
+            const balance = parseFloat(info.tokenAmount.uiAmountString || 0);
+            if (balance <= 0) continue;
+            const mint = info.mint;
+            // Find metadata from wallet tokens or existing vault tokens
+            const meta = ghostState.walletTokens.find(t => t.mint === mint)
+                      || ghostState.vaultTokens.find(t => t.mint === mint)
+                      || {};
+            freshVault.push({
+              symbol: meta.symbol || mint.slice(0,6),
+              mint,
+              balance,
+              decimals: info.tokenAmount.decimals,
+              logoUrl: meta.logoUrl || null,
+              name: meta.name || null
+            });
+          }
+          if (freshVault.length > 0 || vaultAccts.length >= 0) {
+            // Merge: preserve logos/names from existing entries, update balances from chain
+            for (const fresh of freshVault) {
+              const existing = ghostState.vaultTokens.find(v => v.mint === fresh.mint);
+              if (existing) {
+                existing.balance = fresh.balance;
+                if (fresh.logoUrl) existing.logoUrl = fresh.logoUrl;
+              } else {
+                ghostState.vaultTokens.push(fresh);
+              }
+            }
+            // Remove vault tokens that no longer have on-chain balance
+            ghostState.vaultTokens = ghostState.vaultTokens.filter(v =>
+              v.mint === ghostState.ghost?.ghostMint || // keep GHOST stake entry
+              freshVault.find(f => f.mint === v.mint)
+            );
+          }
+          console.log('[Ghost] Vault tokens from chain:', ghostState.vaultTokens.map(v => v.symbol + ':' + v.balance));
+        }
+      } catch(e) { console.warn('[Ghost] Vault fetch error:', e); }
+    }
+
     populateAllPickers();
     fetchPumpFunData(); // get logos/prices for any pump.fun tokens
   } catch(err) {
@@ -5045,12 +5107,29 @@ async function dbDeposit() {
 
     // Vault destination token account
     const ghostMintStr = ghostState.ghost?.mint || GHOST_MINT;
-    let vaultAta = (depositMintStr === ghostMintStr)
-      ? await solanaWeb3.PublicKey.findProgramAddress(
-          [new TextEncoder().encode('stake_vault'), walletPk.toBytes()],
-          new PublicKey(PROGRAM_ID)
-        ).then(([pk]) => pk)
-      : await findATAWithProg(vaultPda, depositMintPk, tokenProgPk); // tokenProgPk already normalized
+    // For GHOST: use the stake_vault PDA (deterministic, program-owned)
+    // For other tokens: look up existing token account on-chain first,
+    //   fall back to ATA derivation if none found yet
+    let vaultAta;
+    if (depositMintStr === ghostMintStr) {
+      const [pk] = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode('stake_vault'), walletPk.toBytes()],
+        new PublicKey(PROGRAM_ID)
+      );
+      vaultAta = pk;
+    } else {
+      // Check for existing token accounts owned by vaultPda for this mint
+      try {
+        const existing = await connection.getTokenAccountsByOwner(vaultPda, { mint: depositMintPk });
+        if (existing.value.length > 0) {
+          vaultAta = existing.value[0].pubkey;
+          console.log('[Ghost] Found existing vault token account:', vaultAta.toBase58());
+        }
+      } catch(_) {}
+      if (!vaultAta) {
+        vaultAta = await findATAWithProg(vaultPda, depositMintPk, tokenProgPk);
+      }
+    }
 
     console.log('[Ghost] deposit mint:', depositMintPk.toBase58(), 'tokenProg:', tokenProgPk.toBase58());
     console.log('[Ghost] ownerAta:', ownerAta.toBase58(), 'vaultAta:', vaultAta.toBase58());
