@@ -669,6 +669,19 @@
   </div>
 </div>
 
+<!-- ─── GHOST CONFIRM MODAL ─────────────────────────────────── -->
+<div class="modal-overlay" id="ghostConfirmModal" onclick="if(event.target===this)_ghostConfirmReject()">
+  <div class="modal" style="max-width:400px;padding:40px 36px">
+    <div id="ghostConfirmIcon" style="font-size:30px;margin-bottom:14px;text-align:center;line-height:1"></div>
+    <h3 id="ghostConfirmTitle" style="margin-bottom:10px;font-size:20px"></h3>
+    <p id="ghostConfirmMsg" style="margin-bottom:28px;font-size:13px;line-height:1.6;color:#c0bce0"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="_ghostConfirmReject()" style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.1em;color:#c0bce0;background:none;border:1px solid rgba(192,188,224,0.2);padding:9px 20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.borderColor='rgba(192,188,224,0.45)'" onmouseout="this.style.borderColor='rgba(192,188,224,0.2)'">CANCEL</button>
+      <button id="ghostConfirmOkBtn" onclick="_ghostConfirmAccept()" style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.1em;padding:9px 22px;cursor:pointer;transition:all 0.2s">CONFIRM</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── DASHBOARD PANEL ─────────────────────────────────────── -->
 <div class="dashboard-panel" id="dashboardPanel">
 
@@ -775,10 +788,7 @@
           <div class="db-card"><div class="db-card-label">🔑 Recovery</div><div class="db-card-value" style="font-size:15px" id="dbRecoveryStatus">NONE</div><div class="db-card-sub" id="dbRecoveryShort">not configured</div></div>
         </div>
 
-        <div class="db-section-header" style="display:flex;align-items:center">
-          <div class="db-section-title" style="flex:1">Recent Activity</div>
-          <div id="activityChestIcon" style="width:28px;height:28px;margin-right:4px"></div>
-        </div>
+        <div class="db-section-header"><div class="db-section-title">Recent Activity</div></div>
         <div class="db-form" style="padding:0;max-height:320px;overflow-y:auto">
           <table class="db-table">
             <thead><tr><th>Event</th><th>Time</th><th>Tx</th></tr></thead>
@@ -1874,6 +1884,33 @@ function showNotif(msg, type = '', duration = 3500) {
 // ─── Wallet Modal ───────────────────────────────────────────────
 function openModal() { document.getElementById('walletModal').classList.add('open'); }
 function closeModal() { document.getElementById('walletModal').classList.remove('open'); }
+
+// ─── Ghost-styled confirm dialog ─────────────────────────────────────────────
+let _ghostConfirmResolve = null;
+function ghostConfirm({ icon='👻', title='Confirm', message='', okLabel='CONFIRM', danger=false }={}) {
+  return new Promise(resolve => {
+    _ghostConfirmResolve = resolve;
+    document.getElementById('ghostConfirmIcon').textContent = icon;
+    document.getElementById('ghostConfirmTitle').textContent = title;
+    document.getElementById('ghostConfirmMsg').textContent = message;
+    const btn = document.getElementById('ghostConfirmOkBtn');
+    btn.textContent = okLabel;
+    if (danger) {
+      btn.style.cssText = 'font-family:\'Share Tech Mono\',monospace;font-size:11px;letter-spacing:0.1em;padding:9px 22px;cursor:pointer;background:rgba(255,51,102,0.12);border:1px solid rgba(255,51,102,0.45);color:#ff6688;transition:all 0.2s';
+    } else {
+      btn.style.cssText = 'font-family:\'Share Tech Mono\',monospace;font-size:11px;letter-spacing:0.1em;padding:9px 22px;cursor:pointer;background:rgba(102,51,255,0.15);border:1px solid rgba(102,51,255,0.5);color:#c0a0ff;transition:all 0.2s';
+    }
+    document.getElementById('ghostConfirmModal').classList.add('open');
+  });
+}
+function _ghostConfirmAccept() {
+  document.getElementById('ghostConfirmModal').classList.remove('open');
+  if (_ghostConfirmResolve) { _ghostConfirmResolve(true); _ghostConfirmResolve = null; }
+}
+function _ghostConfirmReject() {
+  document.getElementById('ghostConfirmModal').classList.remove('open');
+  if (_ghostConfirmResolve) { _ghostConfirmResolve(false); _ghostConfirmResolve = null; }
+}
 document.getElementById('walletModal').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
 });
@@ -2375,7 +2412,11 @@ const GHOST_DISC_LABELS = {
   '69d66a8db4a67bee': '\u{1F3AF} Beneficiary added',
   '431b18998740ca4d': '\u274C Beneficiary removed',
   '51a633d59e549d6c': '\u2699\uFE0F Settings updated',
+  'd9efe14bf40efc5b': '\u{1F47B} Whole vault recipient set',
+  '63a333690b0b3b22': '\u{1F47C} Guardian withdrawal',
 };
+// Discriminators that indicate a guardian withdrawal (for icon tagging)
+const GUARDIAN_DISCS = new Set(['63a333690b0b3b22']);
 function b58ToDiscHex(s) {
   const B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   let leading=0; for(const ch of s){if(ch==='1')leading++;else break;}
@@ -2461,8 +2502,18 @@ async function fetchOnChainHistory() {
       if (!s) continue;
       const ts=((tx?.blockTime||s.blockTime)||0)*1000;
       if (!ts) continue;
-      const label=labelFromTx(tx)||'\u{1F4CB} On-chain action';
-      builtActivity.push({msg:label, tx:s.signature, ts});
+      let label=labelFromTx(tx)||'\u{1F4CB} On-chain action';
+      // Check if this tx contains a guardian withdrawal disc
+      let rowIcon = null;
+      try {
+        const allIx = [...(tx?.transaction?.message?.instructions||[]), ...(tx?.meta?.innerInstructions||[]).flatMap(g=>g.instructions||[])];
+        for (const ix of allIx) {
+          if (ix.programId===PROGRAM_ID && ix.data) {
+            try { if (GUARDIAN_DISCS.has(b58ToDiscHex(ix.data))) { rowIcon='angel'; break; } } catch(_){}
+          }
+        }
+      } catch(_) {}
+      builtActivity.push({msg:label, tx:s.signature, ts, icon:rowIcon});
       if (label==='\u{1F493} Heartbeat sent') rawPings.push({ts,sig:s.signature});
     }
     const chronoPings=rawPings.sort((a,b)=>a.ts-b.ts);
@@ -3235,12 +3286,6 @@ function addActivityRow(msg, tx) {
 function renderActivityLog() {
   const log = document.getElementById('dbActivityLog');
   if (!log) return;
-  // Render chest icon once
-  const _chestEl = document.getElementById('activityChestIcon');
-  if (_chestEl && !_chestEl.dataset.rendered) {
-    _chestEl.innerHTML = tokenLogoEl('Whole Vault', 28);
-    _chestEl.dataset.rendered = '1';
-  }
   if (ghostState.activityLog.length === 0) {
     log.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#c0bce0">No activity yet</td></tr>';
     return;
@@ -3477,6 +3522,9 @@ async function dbAddBeneficiary(action) {
       return !(shortMatch || fullMatch);
     });
     const mergedCount = beforeCount - ghostState.ghost.beneficiaries.length;
+    // Stage locally first so UI reflects immediately
+    if (!ghostState.ghost.wholeVaultShares) ghostState.ghost.wholeVaultShares = [];
+    ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: recipient, pct: 100 }];
     ghostState.ghost.beneficiaries.push({
       recipient: short, fullAddr: recipient,
       sharePct: 100, amount: 0,
@@ -3488,8 +3536,9 @@ async function dbAddBeneficiary(action) {
     renderBeneficiaries();
     saveSession();
     const mergeNote = mergedCount > 0 ? ' · merged ' + mergedCount + ' existing entr' + (mergedCount === 1 ? 'y' : 'ies') : '';
-    showNotif('👻 Entire vault → ' + short + mergeNote, 'green');
-    addActivityRow('👻 Whole vault 100% → ' + short, randomTx());
+    showNotif('👻 Staged → ' + short + mergeNote + '. Sending on-chain...', 'green');
+    // Fire on-chain tx immediately — no second popup
+    await dbSaveWholeVaultPlan();
     return;
   }
 
@@ -3632,13 +3681,13 @@ async function dbAddBeneficiary(action) {
 }
 
 async function dbRemoveBeneficiary(index) {
-  if (!confirm('Remove this beneficiary?')) return;
+  const _ok1 = await ghostConfirm({ icon:'🗑️', title:'Remove Beneficiary', message:'Remove this beneficiary? This sends a transaction to update the on-chain record.', okLabel:'REMOVE', danger:true }); if (!_ok1) return;
 
   const entry = ghostState.ghost.beneficiaries[index];
 
   // Whole-vault-share: delegate to on-chain clear (set_whole_vault_recipient None)
   if (entry?.action === 'whole-vault-share') {
-    await dbClearWholeVaultRecipient();
+    await dbClearWholeVaultRecipient(true); // skip second confirm, already confirmed above
     _refreshBenePickers(); renderVaultHoldings();
     return;
   }
@@ -3782,7 +3831,7 @@ async function removeWholeVaultShare(i) {
   // If already on-chain, clear it on-chain
   const share = ghostState.ghost.wholeVaultShares?.[i];
   if (ghostState.ghost.wholeVaultRecipient && ghostState.ghost.wholeVaultRecipient === share?.fullAddr) {
-    await dbClearWholeVaultRecipient();
+    await dbClearWholeVaultRecipient(true); // skipConfirm — already confirmed above
     return;
   }
   // Just a pending local entry - remove locally
@@ -3848,8 +3897,8 @@ async function dbSaveWholeVaultPlan() {
   }
 }
 
-async function dbClearWholeVaultRecipient() {
-  if (!confirm('Remove the whole-vault recipient on-chain?')) return;
+async function dbClearWholeVaultRecipient(skipConfirm) {
+  if (!skipConfirm) { const _ok2 = await ghostConfirm({ icon:'👻', title:'Remove Whole Vault Recipient', message:'Clear the whole-vault recipient on-chain? This requires a transaction signature.', okLabel:'REMOVE', danger:true }); if (!_ok2) return; }
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     _clearWholeVaultLocally();
@@ -4229,7 +4278,7 @@ async function guardianCancelAwakening(ownerAddress) {
 
 async function guardianWithdrawAll(ownerAddress) {
   if (!ghostState.provider) { showNotif('Connect your wallet first', 'error'); return; }
-  if (!confirm('Withdraw all vault assets from ' + ownerAddress.slice(0,6) + '...' + ownerAddress.slice(-4) + ' to your wallet?')) return;
+  const _ok3 = await ghostConfirm({ icon:'🔓', title:'Guardian Withdrawal', message:'Withdraw all vault assets from ' + ownerAddress.slice(0,4) + '...' + ownerAddress.slice(-4) + ' to your recovery wallet? Each asset type requires one signature.', okLabel:'WITHDRAW ALL' }); if (!_ok3) return;
 
   try {
     showNotif('Preparing guardian withdrawal...', '');
@@ -4292,6 +4341,10 @@ async function guardianWithdrawAll(ownerAddress) {
     const WSOL_MINT_PK_G = new PublicKey(WSOL_MINT_STR_G);
     let successCount = 0;
 
+    // Track all withdrawn assets for single combined activity row
+    const guardianWithdrawLog = [];
+    const guardianWithdrawSigs = [];
+
     // ── SPL tokens ────────────────────────────────────────────────────────────
     for (const acct of splAccts) {
       const info = acct.account?.data?.parsed?.info;
@@ -4344,8 +4397,8 @@ async function guardianWithdrawAll(ownerAddress) {
         if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
         const humanAmt = (Number(rawAmount) / Math.pow(10, decimals)).toLocaleString();
-        const _gShort = ghostState.publicKey ? ghostState.publicKey.slice(0,4)+'...'+ghostState.publicKey.slice(-4) : 'guardian';
-        addActivityRow('Guardian Withdrawal · ' + humanAmt + ' · by ' + _gShort, sig.slice(0,4)+'...'+sig.slice(-4), 'angel');
+        guardianWithdrawLog.push(humanAmt + ' ' + (info.symbol || info.mint.slice(0,6)));
+        guardianWithdrawSigs.push(sig);
         successCount++;
       } catch(tokenErr) {
         console.error('[Ghost] Guardian withdraw failed for', info.mint, tokenErr);
@@ -4410,8 +4463,8 @@ async function guardianWithdrawAll(ownerAddress) {
         if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
         const humanAmt = (Number(rawAmount) / 1e9).toLocaleString();
-        const _gShortSol = ghostState.publicKey ? ghostState.publicKey.slice(0,4)+'...'+ghostState.publicKey.slice(-4) : 'guardian';
-        addActivityRow('Guardian Withdrawal · ' + humanAmt + ' SOL · by ' + _gShortSol, sig.slice(0,4)+'...'+sig.slice(-4), 'angel');
+        guardianWithdrawLog.push(humanAmt + ' SOL');
+        guardianWithdrawSigs.push(sig);
         successCount++;
       } catch(solErr) {
         console.error('[Ghost] Guardian SOL withdraw failed:', solErr);
@@ -4420,6 +4473,11 @@ async function guardianWithdrawAll(ownerAddress) {
     }
 
     if (successCount > 0) {
+      // Single combined activity row for entire guardian withdrawal
+      const _gShort = ghostState.publicKey ? ghostState.publicKey.slice(0,4)+'...'+ghostState.publicKey.slice(-4) : 'guardian';
+      const _lastSig = guardianWithdrawSigs[guardianWithdrawSigs.length-1] || '';
+      const _summary = guardianWithdrawLog.length > 0 ? guardianWithdrawLog.join(' + ') : successCount + ' asset' + (successCount>1?'s':'');
+      addActivityRow('Guardian Withdrawal · ' + _summary + ' · by ' + _gShort, _lastSig.slice(0,4)+'...'+_lastSig.slice(-4), 'angel');
       showNotif('Guardian withdrew ' + successCount + ' asset' + (successCount > 1 ? 's' : '') + '!', 'green');
       await scanGuardianAssignments();
     } else {
@@ -5309,7 +5367,7 @@ async function dbAddRecoveryWallet() {
 }
 
 async function dbRemoveRecoveryWallet(idx) {
-  if (!confirm('Remove this recovery wallet on-chain?')) return;
+  const _ok4 = await ghostConfirm({ icon:'🔑', title:'Remove Recovery Wallet', message:'Remove this recovery wallet on-chain? You can set a new one at any time.', okLabel:'REMOVE', danger:true }); if (!_ok4) return;
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.recoveryWallets.splice(idx, 1);
@@ -6139,6 +6197,8 @@ async function dbDeposit() {
     const shortSig = sig.slice(0,4)+'...'+sig.slice(-4);
     addActivityRow('📥 Deposited ' + amount.toLocaleString() + ' ' + displaySym, shortSig);
     showNotif('✅ Deposited ' + amount.toLocaleString(undefined,{maximumFractionDigits:4}) + ' ' + displaySym + ' to vault!', 'green');
+    // Refresh vault from chain after short delay to pick up any token metadata the local state missed
+    setTimeout(() => fetchGhostAccount().catch(()=>{}), 1800);
   } catch(err) {
     console.error('Deposit error:', err);
     showNotif('Deposit failed: ' + (err.message || err), 'error');
