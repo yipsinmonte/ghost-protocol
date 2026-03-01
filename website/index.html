@@ -636,7 +636,7 @@
     console.log('Solana web3.js loaded:', !!solanaWeb3);
     // Retry token metadata fetch now that we have proper PDA derivation
     // Defer — pumpFunFetched is declared in a later script block
-    setTimeout(function() { pumpFunFetched.clear(); fetchPumpFunData(); }, 500);
+    setTimeout(function() { pumpFunFetched.clear(); dexFetched.clear(); fetchPumpFunData(); }, 500);
   };
   web3Script.onerror = function() {
     console.warn('Solana web3.js failed to load - demo mode only');
@@ -2094,6 +2094,7 @@ function retryTokenData() {
 const pumpFunFetched = new Set(); // logo fetched
 const priceFetched = new Set(); // price fetched
 const largestFetched = new Set(); // getTokenLargestAccounts already done
+const dexFetched = new Set(); // DexScreener already fetched
 const METAPLEX_PROGRAM = 'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s';
 
 // Pure-JS base58 decode
@@ -2245,6 +2246,8 @@ async function fetchPumpFunData() {
         .filter(t => t.mint === token.mint).forEach(fn);
 
     // ── Source 1: DexScreener pairs ──
+    if (dexFetched.has(token.mint)) return;
+    dexFetched.add(token.mint);
     try {
       const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${token.mint}`);
       if (r.ok) {
@@ -5598,7 +5601,7 @@ async function loadWalletTokens() {
     // Only init demo tokens once — never overwrite if already set
     if (ghostState.walletTokens.length === 0) {
       // Preload logos/prices for demo wallet tokens
-      setTimeout(() => { pumpFunFetched.clear(); priceFetched.clear(); fetchPumpFunData(); }, 800);
+      setTimeout(() => { pumpFunFetched.clear(); priceFetched.clear(); dexFetched.clear(); largestFetched.clear(); fetchPumpFunData(); }, 800);
       const demoMints = [
         'k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump',
         '7opAGer4hk78N7VtYjk2bVif6SzvPkBm8PzQAvzspump',
@@ -5827,7 +5830,7 @@ async function loadWalletTokens() {
 async function fetchTokenMetadata(tokens, mints) {
   // Step 1: Try Jupiter token list for established tokens
   try {
-    const res = await fetch('https://token.jup.ag/strict');
+    const res = await fetch('https://lite-api.jup.ag/tokens/v1/strict');
     if (res.ok) {
       const list = await res.json();
       const byMint = {};
