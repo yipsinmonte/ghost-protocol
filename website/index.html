@@ -3044,22 +3044,78 @@ async function _resolveAndShowSolDomain(addr, domainEl, updateName) {
     return false;
   };
 
-  // SNS resolution: /reverse-lookup/ only — returns primary domain
-  // /domains/ fallback intentionally removed: returns arbitrary ordering,
-  // showing wrong domain is worse than showing none
-  const BONFIDA = 'https://sns-sdk-proxy.bonfida.workers.dev';
+  // SNS primary domain: two on-chain RPC calls, no external proxy needed
+  // Step 1: derive primary domain pointer account
+  //   key = findProgramAddress([sha256("SPL Name Service"), walletBytes, CENTRAL_STATE_bytes], NAME_PROGRAM)
+  // Step 2: read pointer account data — offset 96 contains the domain registry pubkey (32 bytes)
+  // Step 3: read domain registry account — name string at offset 100 (96-byte header + u32 len)
+  const NAME_PROGRAM  = 'namesLPAXkSnS6VoK3M3AoUBYSbkTr3YUidbEMrCXLF';
+  const CENTRAL_STATE = 'EXqe7zt3m9oqDTSFDmS6WVRG3S8YQ41SQqHbN7cL1H5';
+
+  const rpc = async (body) => {
+    const r = await fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    return r.json();
+  };
+
+  const readName = (b64) => {
+    if (!b64) return null;
+    const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    if (raw.length < 100) return null;
+    const nameLen = new DataView(raw.buffer).getUint32(96, true);
+    if (nameLen < 1 || nameLen > 200 || raw.length < 100 + nameLen) return null;
+    return new TextDecoder().decode(raw.slice(100, 100 + nameLen)).replace(/ /g, '').trim();
+  };
 
   try {
-    const res = await fetch(BONFIDA + '/reverse-lookup/' + addr);
+    const { PublicKey } = solanaWeb3;
+    // Hash of empty string = primary domain pointer seed
+    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('SPL Name Service'));
+    const hashBytes = new Uint8Array(hashBuf);
+    const walletKey   = new PublicKey(addr);
+    const centralKey  = new PublicKey(CENTRAL_STATE);
+    const programKey  = new PublicKey(NAME_PROGRAM);
+
+    // Primary pointer PDA: seeds = [hash(''), walletKey, centralStateKey]
+    const [ptrKey] = await PublicKey.findProgramAddress(
+      [hashBytes, walletKey.toBytes(), centralKey.toBytes()],
+      programKey
+    );
+    console.log('[Ghost] SNS primary ptr:', ptrKey.toString().slice(0,8));
+
+    // Step 1: read primary pointer account
+    const ptrData = await rpc({ jsonrpc:'2.0', id:'snsp', method:'getAccountInfo',
+      params: [ptrKey.toString(), { encoding:'base64' }] });
+    const ptrB64 = ptrData?.result?.value?.data?.[0];
+    if (!ptrB64) { console.log('[Ghost] SNS: no primary domain account'); return; }
+
+    // Offset 96 in the pointer account holds the domain registry pubkey (32 bytes)
+    const ptrRaw = Uint8Array.from(atob(ptrB64), c => c.charCodeAt(0));
+    if (ptrRaw.length < 128) { console.log('[Ghost] SNS: primary ptr too short'); return; }
+    const domainKeyBytes = ptrRaw.slice(96, 128);
+    const domainKey = new PublicKey(domainKeyBytes);
+    console.log('[Ghost] SNS domain registry key:', domainKey.toString().slice(0,8));
+
+    // Step 2: read domain registry account — name is at offset 100
+    const domData = await rpc({ jsonrpc:'2.0', id:'snsd', method:'getAccountInfo',
+      params: [domainKey.toString(), { encoding:'base64' }] });
+    const domB64 = domData?.result?.value?.data?.[0];
+    const name = readName(domB64);
+    console.log('[Ghost] SNS primary domain resolved:', name);
+    if (name && tryShowDomain(name)) return;
+  } catch(e) {
+    console.warn('[Ghost] SNS on-chain lookup failed:', e.message);
+  }
+
+  // Fallback: Bonfida proxy
+  try {
+    const res = await fetch('https://sns-sdk-proxy.bonfida.workers.dev/reverse-lookup/' + addr);
     if (res.ok) {
       const data = await res.json();
-      const domain = data?.result;
-      console.log('[Ghost] SNS primary domain:', domain);
-      if (tryShowDomain(domain)) return;
+      if (tryShowDomain(data?.result)) return;
     }
   } catch(_) {}
 
-  console.log('[Ghost] SNS: no primary domain set for', addr.slice(0,8))
+  console.log('[Ghost] SNS: no primary domain found for', addr.slice(0,8))
 }
 
 // ─── Copy wallet address ──────────────────────────────────────
