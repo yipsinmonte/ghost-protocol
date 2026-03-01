@@ -1680,11 +1680,11 @@ function tokenColor(symbol) {
 }
 
 // GHOST_MINT declared before fetchAllPrices to avoid TDZ error
-const GHOST_MINT = 'DBDr6LXRx8cHvdgzGmZkD2Hf8JkDhU3VvqvhVvQpump'; // placeholder: real $GHOST mint goes here at launch
+const GHOST_MINT = 'k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump';
 // DBD is the placeholder pump.fun token used during development, to be replaced by $GHOST
 // It is only valid for: initial stake (initializeGhost) and 50% burn-back on abandonGhost
 // It must NOT appear in vault holdings, bene picker, deposit, or guardian withdraw
-const DBD_MINT = 'DBDr6LXRx8cHvdgzGmZkD2Hf8JkDhU3VvqvhVvQpump';
+const DBD_MINT = 'k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump';
 function isProtocolMint(mint) {
   if (!mint) return false;
   return mint === GHOST_MINT || mint === DBD_MINT;
