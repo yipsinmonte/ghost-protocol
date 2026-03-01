@@ -3040,12 +3040,12 @@ function updateWalletIdentity() {
   }
 }
 
-function _resolveAndShowSolDomain(addr, domainEl, updateName) {
+async function _resolveAndShowSolDomain(addr, domainEl, updateName) {
   if (_walletIdentityAddr === addr && !updateName) return;
   _walletIdentityAddr = addr;
 
   const tryShowDomain = (domain) => {
-    if (domain && typeof domain === 'string' && domain.length > 0 && !domain.includes(' ')) {
+    if (domain && typeof domain === 'string' && domain.length > 0 && !domain.includes(' ') && !domain.includes('{')) {
       if (domainEl && updateName) domainEl.textContent = domain + '.sol';
       const badge = document.getElementById('dbSolBadge');
       if (badge) badge.style.display = 'block';
@@ -3054,26 +3054,50 @@ function _resolveAndShowSolDomain(addr, domainEl, updateName) {
     return false;
   };
 
-  // Use Bonfida SNS SDK getPrimaryDomain via RPC if available
-  const trySDK = async () => {
+  // Direct RPC: derive reverse registry PDA and read the name from account data
+  // SNS reverse registry PDA = findProgramAddress([sha256("SPL Name Service" + addr), REVERSE_CLASS], NAME_PROGRAM)
+  const tryRPC = async () => {
     try {
-      if (typeof window.SNS !== 'undefined' && window.SNS.getPrimaryDomain) {
-        const conn = new solanaWeb3.Connection(RPC_URL, 'confirmed');
-        const { PublicKey } = solanaWeb3;
-        const { domain } = await window.SNS.getPrimaryDomain(conn, new PublicKey(addr));
-        if (tryShowDomain(domain)) return true;
+      const NAME_PROGRAM = 'namesLPAXkSnS6VoK3M3AoUBYSbkTr3YUidbEMrCXLF';
+      const REVERSE_CLASS = '33m47vH6Eav6jr5Ry86XjhRft2jRBLDnDgPSHoquXi2Z';
+      const { PublicKey } = solanaWeb3;
+      const input = new TextEncoder().encode('SPL Name Service' + addr);
+      const hashBuf = await crypto.subtle.digest('SHA-256', input);
+      const hashBytes = new Uint8Array(hashBuf);
+      const classKey = new PublicKey(REVERSE_CLASS);
+      const programKey = new PublicKey(NAME_PROGRAM);
+      const [reversePda] = await PublicKey.findProgramAddress([hashBytes, classKey.toBytes()], programKey);
+      const res = await fetch(RPC_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'sns', method: 'getAccountInfo',
+          params: [reversePda.toString(), { encoding: 'base64' }] })
+      });
+      const data = await res.json();
+      const b64 = data?.result?.value?.data?.[0];
+      if (!b64) return false;
+      // SNS Name Registry layout: 96-byte header, then u32 nameLen, then name bytes
+      const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      if (raw.length < 100) return false;
+      const nameLen = new DataView(raw.buffer).getUint32(96, true);
+      if (nameLen > 0 && nameLen < 100 && raw.length >= 100 + nameLen) {
+        const name = new TextDecoder().decode(raw.slice(100, 100 + nameLen)).replace(/ /g, '').trim();
+        console.log('[Ghost] SNS RPC domain:', name);
+        return tryShowDomain(name);
       }
-    } catch(_) {}
-    return false;
+      return false;
+    } catch(e) {
+      console.warn('[Ghost] SNS RPC lookup failed:', e.message);
+      return false;
+    }
   };
 
-  // Fall back to REST proxies
+  // REST fallbacks
   const tryRest = () => {
     fetch('https://sns-sdk-proxy.bonfida.workers.dev/reverse-lookup/' + addr)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (tryShowDomain(data?.result)) return;
-        return fetch('https://api.alldomains.id/v1/reverse/' + addr)
+        fetch('https://api.alldomains.id/v1/reverse/' + addr)
           .then(r => r.ok ? r.json() : null)
           .then(d => tryShowDomain(d?.domain || d?.name || d?.result))
           .catch(() => {});
@@ -3085,7 +3109,12 @@ function _resolveAndShowSolDomain(addr, domainEl, updateName) {
       });
   };
 
-  trySDK().then(found => { if (!found) tryRest(); });
+  if (solanaWeb3?.PublicKey) {
+    const found = await tryRPC();
+    if (!found) tryRest();
+  } else {
+    tryRest();
+  }
 }
 
 // ─── Copy wallet address ──────────────────────────────────────
