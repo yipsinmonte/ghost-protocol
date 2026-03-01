@@ -2433,6 +2433,24 @@ async function fetchGhostAccount() {
     for (let i = 0; i < rawData.length; i++) bytes[i] = rawData.charCodeAt(i);
     
     parseGhostAccount(bytes);
+
+    // RAW BYTE DUMP — remove after debugging
+    (function() {
+      const v = new DataView(bytes.buffer);
+      const hex = (n, w=2) => n.toString(16).padStart(w,'0');
+      const i64 = o => Number(v.getBigInt64(o, true));
+      const u64 = o => Number(v.getBigUint64(o, true));
+      console.log('[Ghost] ACCOUNT DUMP — total bytes:', bytes.length);
+      console.log('[Ghost] off  8 (owner):', Array.from(bytes.slice(8,40)).map(b=>hex(b)).join(''));
+      console.log('[Ghost] off 40 byte40:', bytes[40], 'byte41:', bytes[41], 'byte42:', bytes[42], 'byte43:', bytes[43]);
+      // Try interval at various offsets
+      for (const o of [139, 143, 147, 151]) {
+        try { console.log(`[Ghost] interval@${o}:`, i64(o), 'grace@'+(o+8)+':', i64(o+8)); } catch(_){}
+      }
+      // Dump bytes 40-60
+      console.log('[Ghost] bytes[40-60]:', Array.from(bytes.slice(40,60)).map(b=>hex(b)).join(' '));
+      console.log('[Ghost] bytes[135-165]:', Array.from(bytes.slice(135,165)).map(b=>hex(b)).join(' '));
+    })();
     updateDashboardUI();
     showNotif('✓ Ghost account loaded from chain', 'green');
 
