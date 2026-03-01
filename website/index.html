@@ -2635,7 +2635,7 @@ function parseGhostAccount(bytes) {
   let offset = 8; // skip discriminator
 
   // GhostAccount field order (matches lib.rs exactly):
-  // owner(32), recovery_wallets([Option<Pubkey>;3]=99), last_heartbeat(i64=8),
+  // owner(32), recovery_wallets([Option<Pubkey>;3] = u32_len(4) + 3x33 = 103), last_heartbeat(i64=8),
   // interval_seconds(i64=8), grace_period_seconds(i64=8),
   // awakened(bool=1), awakened_at(Option<i64>=9), executed(bool=1), executed_at(Option<i64>=9),
   // staked_ghost(u64=8), bump(u8=1), vault_bump(u8=1),
@@ -2644,7 +2644,8 @@ function parseGhostAccount(bytes) {
   try {
     // owner: Pubkey (32 bytes)
     offset += 32;
-    // recovery_wallets: [Option<Pubkey>; 3] — each slot = 1 byte tag + 32 bytes if Some = 99 bytes total
+    // recovery_wallets: [Option<Pubkey>; 3] — Anchor serializes with u32 length prefix (4 bytes) + 3 slots x 33 bytes = 103 bytes total
+    offset += 4; // skip u32 length prefix
     const recoveryWallets = [];
     for (let _ri = 0; _ri < 3; _ri++) {
       const tag = bytes[offset]; offset += 1;
@@ -2659,7 +2660,7 @@ function parseGhostAccount(bytes) {
         offset += 32;
       } else {
         recoveryWallets.push(null);
-        offset += 32; // still 32 zero bytes for None slot
+        offset += 32; // fixed 33-byte slot, tag already consumed
       }
     }
     // last_heartbeat: i64
@@ -2847,7 +2848,7 @@ function parseGhostAccount(bytes) {
       _countEl.textContent = _tr + (_wv > 0 ? 1 : 0);
     }
 
-    // Populate recovery wallets from on-chain state
+    // Populate recovery wallet from on-chain state if present
     const _chainWallets = recoveryWallets.filter(w => w !== null);
     if (_chainWallets.length > 0) {
       ghostState.recoveryWallets = _chainWallets.map(addr => ({ address: addr, canWithdraw: false }));
@@ -3263,13 +3264,15 @@ async function initializeGhost() {
       }
     }
 
-    // Pack args: interval(i64=8) + grace(i64=8) + recovery_wallets(99) + stake(u64=8) = 123 bytes
-    const buf = new ArrayBuffer(8 + 8 + 99 + 8);
+    // Pack args: interval(i64=8) + grace(i64=8) + recovery_wallets(u32_len=4 + 99 data) + stake(u64=8) = 127 bytes
+    // Anchor serializes fixed arrays with a u32 length prefix
+    const buf = new ArrayBuffer(8 + 8 + 4 + 99 + 8);
     const dv = new DataView(buf);
     dv.setBigInt64(0, BigInt(intervalDays * 86400), true);
     dv.setBigInt64(8, BigInt(graceDays * 86400), true);
-    new Uint8Array(buf).set(recoveryBytes, 16);
-    dv.setBigUint64(115, stakeRaw, true); // offset 16 + 99 = 115
+    dv.setUint32(16, 3, true); // u32 length prefix = 3 slots
+    new Uint8Array(buf).set(recoveryBytes, 20);
+    dv.setBigUint64(119, stakeRaw, true); // offset 16 + 4 + 99 = 119
 
     const data = new Uint8Array(8 + buf.byteLength);
     data.set(discriminator, 0);
