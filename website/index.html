@@ -2644,8 +2644,7 @@ function parseGhostAccount(bytes) {
   try {
     // owner: Pubkey (32 bytes)
     offset += 32;
-    // recovery_wallets: [Option<Pubkey>; 3] — Anchor serializes with u32 length prefix (4 bytes) + 3 slots x 33 bytes = 103 bytes total
-    offset += 4; // skip u32 length prefix
+    // recovery_wallets: [Option<Pubkey>; 3] — fixed array, no length prefix: 3 slots x 33 bytes = 99 bytes total
     const recoveryWallets = [];
     for (let _ri = 0; _ri < 3; _ri++) {
       const tag = bytes[offset]; offset += 1;
@@ -3107,8 +3106,8 @@ async function dbSaveProfile() {
       [new TextEncoder().encode('ghost'), walletPk.toBytes()], programId
     );
 
-    // set_ghost_profile discriminator — sighash of "global:set_ghost_profile"
-    const disc = _instructionDiscriminator('set_ghost_profile');
+    // set_ghost_profile discriminator — sha256("global:set_ghost_profile")[0:8]
+    const disc = [36, 73, 199, 79, 105, 175, 126, 53];
 
     // Args: display_name [u8;32] + image_uri [u8;128] = 160 bytes
     const data = new Uint8Array(8 + 160);
@@ -5245,10 +5244,12 @@ const TOKEN_LOGO_URLS = {
 const TOKEN_FALLBACK = { 'SOL':'◎','wSOL':'◎','$GHOST':'👻','USDC':'$','USDT':'$','mSOL':'◎','bSOL':'◎','ETH':'⟠','BONK':'🐶' };
 
 function tokenLogoEl(sym, size = 32, customUrl = null) {
-  // Glowing treasure chest for whole vault
-  if (sym === 'Whole Vault') {
+  // Glowing treasure chest for whole vault AND burn entire vault
+  if (sym === 'Whole Vault' || sym === 'Burn Entire Vault') {
     const s = size;
-    return `<span style="width:${s}px;height:${s}px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="${s}" height="${s}" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 6px rgba(255,200,60,0.7)) drop-shadow(0 0 12px rgba(255,160,0,0.4))"><rect x="3" y="16" width="30" height="17" rx="2" fill="#7c4d00" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="8" rx="2" fill="#a06000" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="4" rx="1" fill="#c07800" stroke="#f0c040" stroke-width="0.8"/><rect x="2" y="8" width="32" height="11" rx="3" fill="#c07800" stroke="#f0b030" stroke-width="1.2"/><rect x="2" y="8" width="32" height="6" rx="2" fill="#d48a00" stroke="#f0c040" stroke-width="0.8"/><rect x="13" y="19" width="10" height="7" rx="1.5" fill="#f0a020" stroke="#ffd060" stroke-width="0.8"/><circle cx="18" cy="22.5" r="2" fill="#ffd060" stroke="#fff8d0" stroke-width="0.5"/><rect x="5" y="11" width="26" height="2" rx="1" fill="#e09a00" opacity="0.5"/><circle cx="8" cy="12" r="1.2" fill="#ffd060"/><circle cx="28" cy="12" r="1.2" fill="#ffd060"/><path d="M10 28 Q18 24 26 28" stroke="#ffd060" stroke-width="0.8" stroke-dasharray="2 1" opacity="0.5"/></svg></span>`;
+    const glowColor = sym === 'Burn Entire Vault' ? 'rgba(255,61,90,0.7)' : 'rgba(255,200,60,0.7)';
+    const glowColor2 = sym === 'Burn Entire Vault' ? 'rgba(255,100,0,0.4)' : 'rgba(255,160,0,0.4)';
+    return `<span style="width:${s}px;height:${s}px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="${s}" height="${s}" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 6px ${glowColor}) drop-shadow(0 0 12px ${glowColor2})"><rect x="3" y="16" width="30" height="17" rx="2" fill="#7c4d00" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="8" rx="2" fill="#a06000" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="4" rx="1" fill="#c07800" stroke="#f0c040" stroke-width="0.8"/><rect x="2" y="8" width="32" height="11" rx="3" fill="#c07800" stroke="#f0b030" stroke-width="1.2"/><rect x="2" y="8" width="32" height="6" rx="2" fill="#d48a00" stroke="#f0c040" stroke-width="0.8"/><rect x="13" y="19" width="10" height="7" rx="1.5" fill="#f0a020" stroke="#ffd060" stroke-width="0.8"/><circle cx="18" cy="22.5" r="2" fill="#ffd060" stroke="#fff8d0" stroke-width="0.5"/><rect x="5" y="11" width="26" height="2" rx="1" fill="#e09a00" opacity="0.5"/><circle cx="8" cy="12" r="1.2" fill="#ffd060"/><circle cx="28" cy="12" r="1.2" fill="#ffd060"/><path d="M10 28 Q18 24 26 28" stroke="#ffd060" stroke-width="0.8" stroke-dasharray="2 1" opacity="0.5"/></svg></span>`;
   }
   const url = customUrl || TOKEN_LOGO_URLS[sym];
   if (url) {
