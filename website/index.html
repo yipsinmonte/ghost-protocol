@@ -634,15 +634,6 @@
   web3Script.onload = function() {
     solanaWeb3 = window.solanaWeb3;
     console.log('Solana web3.js loaded:', !!solanaWeb3);
-    // Load Bonfida SNS SDK after web3 is ready
-    var snsScript = document.createElement('script');
-    snsScript.src = 'https://cdn.jsdelivr.net/npm/@bonfida/spl-name-service@3/dist/index.iife.js';
-    snsScript.onload = function() {
-      window.SNS = window.splNameService || window.SNS || null;
-      console.log('[Ghost] SNS SDK loaded:', !!window.SNS);
-    };
-    snsScript.onerror = function() { console.warn('[Ghost] SNS SDK failed to load'); };
-    document.head.appendChild(snsScript);
     // Retry token metadata fetch now that we have proper PDA derivation
     pumpFunFetched.clear();
     setTimeout(fetchPumpFunData, 500);
@@ -3055,7 +3046,7 @@ async function _resolveAndShowSolDomain(addr, domainEl, updateName) {
   };
 
   // Direct RPC: derive reverse registry PDA and read the name from account data
-  // SNS reverse registry PDA = findProgramAddress([sha256("SPL Name Service" + addr), REVERSE_CLASS], NAME_PROGRAM)
+  // SNS reverse registry PDA = findProgramAddress([sha256("SPL Name Service" + addr), REVERSE_CLASS, zeros(32)], NAME_PROGRAM)
   const tryRPC = async () => {
     try {
       const NAME_PROGRAM = 'namesLPAXkSnS6VoK3M3AoUBYSbkTr3YUidbEMrCXLF';
@@ -3066,7 +3057,8 @@ async function _resolveAndShowSolDomain(addr, domainEl, updateName) {
       const hashBytes = new Uint8Array(hashBuf);
       const classKey = new PublicKey(REVERSE_CLASS);
       const programKey = new PublicKey(NAME_PROGRAM);
-      const [reversePda] = await PublicKey.findProgramAddress([hashBytes, classKey.toBytes()], programKey);
+      // SNS PDA seeds: [hash(32 bytes), nameClass(32 bytes), nameParent(32 zero bytes)]
+      const [reversePda] = await PublicKey.findProgramAddress([hashBytes, classKey.toBytes(), new Uint8Array(32)], programKey);
       const res = await fetch(RPC_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 'sns', method: 'getAccountInfo',
