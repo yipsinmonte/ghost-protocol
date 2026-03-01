@@ -716,10 +716,20 @@
 
         <!-- Wallet identity -->
         <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:rgba(102,51,255,0.06);border:1px solid rgba(102,51,255,0.14);margin-bottom:20px">
-          <canvas id="dbWalletAvatar" width="40" height="40" style="border-radius:50%;flex-shrink:0"></canvas>
+          <!-- Avatar: profile pic if set, else identicon -->
+          <div style="position:relative;flex-shrink:0;width:48px;height:48px" onclick="dbShowPage('settings', document.querySelector('[onclick*=settings]'))" title="Edit profile" style="cursor:pointer">
+            <canvas id="dbWalletAvatar" width="48" height="48" style="border-radius:50%;display:block"></canvas>
+            <img id="dbProfilePic" src="" alt="" style="display:none;position:absolute;top:0;left:0;width:48px;height:48px;border-radius:50%;object-fit:cover">
+            <div style="position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;background:#1a1028;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer" title="Edit profile">✏️</div>
+          </div>
           <div style="min-width:0;flex:1">
-            <div id="dbWalletDomain" style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:#f0f0f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
-            <div id="dbWalletShortAddr" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#9090b8;letter-spacing:0.06em;margin-top:2px"></div>
+            <!-- Display name or .sol or short addr -->
+            <div id="dbWalletDomain" style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:#f0f0f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">—</div>
+            <!-- Full address, smaller, copyable -->
+            <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+              <div id="dbWalletShortAddr" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#6868a0;letter-spacing:0.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px"></div>
+              <button id="dbCopyAddrBtn" onclick="dbCopyWalletAddr()" title="Copy address" style="background:none;border:none;color:#6868a0;font-size:11px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">⧉</button>
+            </div>
           </div>
           <div id="dbSolBadge" style="display:none;background:rgba(153,69,255,0.15);border:1px solid rgba(153,69,255,0.3);color:#cc99ff;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.15em;padding:3px 8px;flex-shrink:0">.SOL</div>
         </div>
@@ -940,7 +950,7 @@
       <div class="db-page" id="db-page-heartbeat">
         <div class="db-page-title">Heartbeat</div>
         <div class="db-page-sub">Stay alive · Prove you're here</div>
-        <div class="db-info">Ping before your interval expires. If you go silent, your grace period activates — giving your recovery wallets one last chance to cancel before execution.</div>
+        <div class="db-info">Ping before your interval expires. If you go silent, your grace period activates — giving your recovery wallet one last chance to cancel before execution.</div>
         <div class="db-form" style="text-align:center;padding:40px">
           <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:300;color:#c0bce0;margin-bottom:4px">Next deadline in</div>
           <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:60px;line-height:1;color:var(--white);margin-bottom:28px" id="dbBigCountdown">—</div>
@@ -989,6 +999,30 @@
       <div class="db-page" id="db-page-settings">
         <div class="db-page-title">Settings</div>
         <div class="db-page-sub">Configure your protocol parameters</div>
+
+        <!-- GHOST PROFILE -->
+        <div class="db-form" id="profileSettingsForm">
+          <div class="db-form-title">👻 Ghost Profile</div>
+          <div class="db-info">Set a display name and profile picture. Stored on-chain in your ghost account.</div>
+          <div style="display:flex;align-items:center;gap:20px;margin-bottom:20px">
+            <div style="position:relative;flex-shrink:0">
+              <div id="profilePicPreview" style="width:72px;height:72px;border-radius:50%;background:rgba(102,51,255,0.15);border:2px solid rgba(102,51,255,0.3);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:28px">👻</div>
+              <input type="file" id="profilePicInput" accept="image/png,image/jpeg,image/jpg,image/heic,image/heif" style="display:none" onchange="handleProfilePicSelect(this)">
+              <button onclick="document.getElementById('profilePicInput').click()" style="position:absolute;bottom:-4px;right:-4px;width:24px;height:24px;border-radius:50%;background:#6633ff;border:2px solid #1a1028;color:#fff;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">+</button>
+            </div>
+            <div style="flex:1">
+              <div id="profilePicStatus" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#9090b8;margin-bottom:6px">No image set — click + to upload</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(102,51,255,0.5)">PNG · JPEG · HEIC · Stored on IPFS</div>
+            </div>
+          </div>
+          <div class="db-form-group" style="margin-bottom:16px">
+            <label>Display Name <span style="color:#6868a0;font-size:10px">(max 32 chars, stored on-chain)</span></label>
+            <input type="text" id="profileNameInput" maxlength="32" placeholder="e.g. Satoshi's Ghost" oninput="document.getElementById('profileNameCount').textContent=this.value.length+'/32'">
+            <div id="profileNameCount" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#6868a0;margin-top:4px;text-align:right">0/32</div>
+          </div>
+          <button class="db-btn db-btn-primary" id="saveProfileBtn" onclick="dbSaveProfile()">💾 Save Profile On-Chain</button>
+          <div id="profileSaveStatus" style="margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:12px;display:none"></div>
+        </div>
 
         <!-- CURRENT SETTINGS DISPLAY -->
         <div class="settings-current" style="margin-bottom:24px">
@@ -1039,6 +1073,12 @@
             </div>
           </div>
           <button class="db-btn db-btn-primary" onclick="dbUpdateGrace()">⏳ Update Grace Period</button>
+        </div>
+
+        <div class="db-form" id="migrationCard" style="border-color:rgba(255,170,51,0.3);display:none">
+          <div class="db-form-title" style="color:var(--amber)">⚠️ Account Migration Required</div>
+          <div class="db-info" style="border-color:rgba(255,170,51,0.3)">Your ghost account was registered under a previous version of the protocol. The contract has been upgraded and your account layout is outdated — some operations may fail until you re-register.<br><br>Re-registering will: abandon your current ghost (burns 50% staked $GHOST), then open the registration form so you can create a fresh v1.7 account. Your vault assets are <strong>not</strong> affected.</div>
+          <button class="db-btn" style="border-color:var(--amber);color:var(--amber)" onclick="dbMigrateAccount()">🔄 Re-register (Migrate to v1.7)</button>
         </div>
 
         <div class="db-form" style="border-color:rgba(255,61,90,0.2)">
@@ -1336,7 +1376,7 @@
       <div class="step"><span class="step-num">01 —</span><div class="step-content"><h3>Connect & Create Vault</h3><p>Connect your wallet. Stake $GHOST to initialize your ghost account. A unique vault (PDA) is created on-chain — only the program can move funds from it.</p></div></div>
       <div class="step"><span class="step-num">02 —</span><div class="step-content"><h3>Fund & Configure</h3><p>Deposit SOL and SPL tokens into your vault. Set your beneficiaries — who gets what when you go dark. Add anytime.</p></div></div>
       <div class="step"><span class="step-num">03 —</span><div class="step-content"><h3>Stay Alive</h3><p>Ping before your interval expires. Costs less than 0.001 SOL. Miss it, and your grace period begins automatically.</p></div></div>
-      <div class="step"><span class="step-num">04 —</span><div class="step-content"><h3>Grace Period & Execution</h3><p>During the grace window, you or any of your recovery wallets can cancel. If no one intervenes, your vault executes automatically.</p></div></div>
+      <div class="step"><span class="step-num">04 —</span><div class="step-content"><h3>Grace Period & Execution</h3><p>During the grace window, you or your recovery wallet can cancel. If no one intervenes, your vault executes automatically.</p></div></div>
     </div>
     <div class="terminal reveal">
       <div class="terminal-bar">
@@ -1350,7 +1390,7 @@
         <span class="t-line"><span class="t-func">#[account]</span></span>
         <span class="t-line"><span class="t-keyword">pub struct</span> <span class="t-func">GhostAccount</span> {</span>
         <span class="t-line">  <span class="t-keyword">pub</span> owner: Pubkey,</span>
-        <span class="t-line">  <span class="t-keyword">pub</span> recovery_wallets: [Option&lt;Pubkey&gt;; 3],</span>
+        <span class="t-line">  <span class="t-keyword">pub</span> recovery_wallet: Option&lt;Pubkey&gt;,</span>
         <span class="t-line">  <span class="t-keyword">pub</span> last_heartbeat: i64,</span>
         <span class="t-line">  <span class="t-keyword">pub</span> awakened: bool,</span>
         <span class="t-line">  <span class="t-keyword">pub</span> beneficiaries: [Beneficiary; 10],</span>
@@ -1468,8 +1508,8 @@
     <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What is GHOST?</div><div class="faq-a"><p>GHOST is a trustless digital legacy protocol on Solana. You deposit assets into a personal vault, set your beneficiaries, and keep sending heartbeat pings. If you stop pinging, your ghost awakens and distributes your vault automatically.</p></div></div>
     <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">How is this different from giving someone my seed phrase?</div><div class="faq-a"><p>Giving someone your seed phrase means they can access your wallet at any time. With GHOST, your vault is controlled by an audited smart contract — not a person. Nobody can touch your vaulted assets while you're alive and pinging.</p></div></div>
     <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Do I have to put all my crypto in the vault?</div><div class="faq-a"><p>No. You deposit only what you want distributed. The rest stays in your personal wallet.</p></div></div>
-    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What if I forget to ping?</div><div class="faq-a"><p>A grace period starts — you choose the duration at registration (minimum 24 hours). During this window, you or any of your recovery wallets can cancel and reset your heartbeat.</p></div></div>
-    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What is a recovery wallet?</div><div class="faq-a"><p>You can register up to 3 recovery wallets — a spouse, a trusted friend, a hardware wallet in a safe — each of which can cancel a ghost awakening during the grace period. By default, recovery wallets cannot access vault funds. You can optionally grant one withdrawal access, allowing it to move assets on your behalf.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What if I forget to ping?</div><div class="faq-a"><p>A grace period starts — you choose the duration at registration (minimum 24 hours). During this window, you or your recovery wallet can cancel and reset your heartbeat.</p></div></div>
+    <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What is a recovery wallet?</div><div class="faq-a"><p>You can register recovery wallets — a spouse, a trusted friend, a hardware wallet in a safe — each of which can cancel a ghost awakening during the grace period. By default, recovery wallets cannot access vault funds. You can optionally grant one withdrawal access, allowing it to move assets on your behalf.</p></div></div>
     <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Can I withdraw my assets?</div><div class="faq-a"><p>Yes, anytime while your ghost is sleeping. You can deposit and withdraw freely. Withdrawals are blocked only during an active awakening.</p></div></div>
     <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Is the smart contract audited?</div><div class="faq-a"><p>The contract is live on Solana mainnet. A formal audit is currently in progress — we will publish the full report when complete. The code is open source and built with Anchor.</p></div></div>
     <div class="faq-item"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Can the GHOST team access my vault?</div><div class="faq-a"><p>No. Your vault is a PDA — no private key. Only the program logic controls it, and only after your heartbeat expires and grace period passes.</p></div></div>
@@ -2594,32 +2634,28 @@ function parseGhostAccount(bytes) {
   const view = new DataView(bytes.buffer);
   let offset = 8; // skip discriminator
 
-  // GhostAccount field order:
-  // v1.4: owner(32), recovery_wallet(Option<Pubkey>=var), last_heartbeat(i64=8)...
-  // v1.5: owner(32), recovery_wallets([Option<Pubkey>;3]=var), last_heartbeat(i64=8)...
-  // Borsh Option<Pubkey>: None=1 byte, Some=33 bytes. Array is variable-length.
-  // Version detection: account data length 993=v1.4, 1059=v1.5
-
+  // GhostAccount field order (matches lib.rs exactly):
+  // owner(32), recovery_wallet(Option<Pubkey>=33), last_heartbeat(i64=8),
+  // interval_seconds(i64=8), grace_period_seconds(i64=8),
+  // awakened(bool=1), awakened_at(Option<i64>=9), executed(bool=1), executed_at(Option<i64>=9),
+  // staked_ghost(u64=8), bump(u8=1), vault_bump(u8=1),
+  // registered_at(i64=8), ping_count(u64=8), beneficiary_count(u8=1)
+  
   try {
     // owner: Pubkey (32 bytes)
     offset += 32;
-    // Recovery wallet(s) — variable Borsh, version-aware
-    const _B58rv = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    const recoveryWalletPubkeys = [];
-    const _isV15 = bytes.length >= 1059;
-    const _rwSlots = _isV15 ? 3 : 1;
-    for (let _ri = 0; _ri < _rwSlots; _ri++) {
-      const rTag = bytes[offset]; offset += 1;
-      if (rTag === 1) {
-        const pkBytes = bytes.slice(offset, offset + 32);
-        let n = BigInt(0);
-        for (const b of pkBytes) n = n * BigInt(256) + BigInt(b);
-        let r = ''; let tmp = n;
-        while (tmp > 0n) { const rem = tmp % 58n; r = _B58rv[Number(rem)] + r; tmp = tmp / 58n; }
-        const pk = '1'.repeat(pkBytes.findIndex(b => b !== 0) === -1 ? 32 : Math.max(0, pkBytes.findIndex(b => b !== 0))) + r;
-        recoveryWalletPubkeys.push(pk);
-        offset += 32;
-      }
+    // recovery_wallet: Option<Pubkey> — Borsh: 1 byte tag, +32 bytes only if Some
+    const recoveryTag = bytes[offset]; offset += 1;
+    let recoveryWalletPubkey = null;
+    if (recoveryTag === 1) {
+      const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      const pkBytes = bytes.slice(offset, offset + 32);
+      let n = BigInt(0);
+      for (const b of pkBytes) n = n * BigInt(256) + BigInt(b);
+      let r = ''; let tmp = n;
+      while (tmp > 0n) { const rem = tmp % 58n; r = B58[Number(rem)] + r; tmp = tmp / 58n; }
+      recoveryWalletPubkey = '1'.repeat(pkBytes.findIndex(b => b !== 0) === -1 ? 32 : Math.max(0, pkBytes.findIndex(b => b !== 0))) + r;
+      offset += 32;
     }
     // last_heartbeat: i64
     const lastBeat = Number(view.getBigInt64(offset, true));
@@ -2666,7 +2702,7 @@ function parseGhostAccount(bytes) {
     if (chainHeartbeatMs > 0) {
       ghostState.ghost.lastHeartbeat = chainHeartbeatMs;
     }
-    if (recoveryWalletPubkeys.length > 0) ghostState.ghost.recoveryWallet = recoveryWalletPubkeys[0];
+    if (recoveryWalletPubkey) ghostState.ghost.recoveryWallet = recoveryWalletPubkey;
     ghostState.ghost.awakened = awakened;
     ghostState.ghost.awakenedAt = awakenedAt ? awakenedAt * 1000 : null;
     ghostState.ghost.executed = executed;
@@ -2746,27 +2782,58 @@ function parseGhostAccount(bytes) {
         offset += 32;
       }
       ghostState.ghost.wholeVaultRecipient = wholeVaultRecipient;
+      // v1.6: whole_vault_action u8 follows whole_vault_recipient (1 byte)
+      const _isV16 = bytes.length >= 1060;
+      const wholeVaultAction = _isV16 ? bytes[offset] : 0;
+      if (_isV16) offset += 1;
+      ghostState.ghost.wholeVaultAction = wholeVaultAction; // 0=Transfer, 1=Burn
+
+      // v1.7: display_name [u8;32] + image_uri [u8;128] follow whole_vault_action
+      const _isV17 = bytes.length >= 1220;
+      if (_isV17) {
+        const dec = new TextDecoder();
+        // display_name: 32 bytes, null-padded
+        const nameBytes = bytes.slice(offset, offset + 32); offset += 32;
+        const nameStr = dec.decode(nameBytes).replace(/\0+$/, '').trim();
+        ghostState.ghost.displayName = nameStr || null;
+        // image_uri: 128 bytes, null-padded
+        const uriBytes = bytes.slice(offset, offset + 128); offset += 128;
+        const uriStr = dec.decode(uriBytes).replace(/\0+$/, '').trim();
+        ghostState.ghost.imageUri = uriStr || null;
+      } else {
+        ghostState.ghost.displayName = null;
+        ghostState.ghost.imageUri = null;
+      }
       if (wholeVaultRecipient) {
         const short = wholeVaultRecipient.slice(0,4) + '...' + wholeVaultRecipient.slice(-4);
-        ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: wholeVaultRecipient, pct: 100 }];
+        ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: wholeVaultRecipient, pct: 100, action: wholeVaultAction }];
         // Chain is authoritative — always rebuild whole-vault-share entry from on-chain data
         ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
         ghostState.ghost.beneficiaries.push({
           recipient: short, fullAddr: wholeVaultRecipient,
           sharePct: 100, amount: 0, token: 'VAULT x100%',
-          action: 'whole-vault-share', executed: false
+          action: 'whole-vault-share', wholeVaultAction,
+          executed: false
         });
       } else {
         ghostState.ghost.wholeVaultRecipient = null;
+        ghostState.ghost.wholeVaultAction = 0;
         // Chain says no whole-vault recipient — clear any stale session entry
         ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
         ghostState.ghost.wholeVaultShares = [];
       }
-    } catch(_) { ghostState.ghost.wholeVaultRecipient = null; }
+    } catch(_) { ghostState.ghost.wholeVaultRecipient = null; ghostState.ghost.wholeVaultAction = 0; }
 
     if (executed) ghostState.ghost.status = 'executed';
     else if (awakened) ghostState.ghost.status = 'awakened';
     else ghostState.ghost.status = 'alive';
+
+    // Show migration card if account is pre-v1.7 (< 1220 bytes)
+    const _migCard = document.getElementById('migrationCard');
+    if (_migCard) _migCard.style.display = bytes.length < 1220 ? 'block' : 'none';
+
+    // Sync profile data to settings UI if open
+    _syncProfileToSettingsUI();
     // Update overview beneficiary count whenever chain state is parsed
     const _countEl = document.getElementById('dbBenefCount');
     if (_countEl) {
@@ -2775,22 +2842,9 @@ function parseGhostAccount(bytes) {
       _countEl.textContent = _tr + (_wv > 0 ? 1 : 0);
     }
 
-    // Populate recovery wallets from on-chain state
-    if (recoveryWalletPubkeys.length > 0) {
-      const existing = ghostState.recoveryWallets.map(w => w.address);
-      let changed = false;
-      for (const pk of recoveryWalletPubkeys) {
-        if (!existing.includes(pk)) {
-          ghostState.recoveryWallets.push({ address: pk, canWithdraw: false, slotIndex: recoveryWalletPubkeys.indexOf(pk) });
-          changed = true;
-        }
-      }
-      const origLen = ghostState.recoveryWallets.length;
-      ghostState.recoveryWallets = ghostState.recoveryWallets.filter(w => recoveryWalletPubkeys.includes(w.address));
-      if (ghostState.recoveryWallets.length !== origLen) changed = true;
-      if (changed) renderRecoveryWallets();
-    } else if (ghostState.recoveryWallets.length > 0) {
-      ghostState.recoveryWallets = [];
+    // Populate recovery wallet from on-chain state if present
+    if (recoveryWalletPubkey && !ghostState.recoveryWallets.find(w => w.address === recoveryWalletPubkey)) {
+      ghostState.recoveryWallets = [{ address: recoveryWalletPubkey, canWithdraw: false }];
       renderRecoveryWallets();
     }
     
@@ -2886,12 +2940,11 @@ function updateWalletIdentity() {
   const shortEl  = document.getElementById('dbWalletShortAddr');
   const canvas   = document.getElementById('dbWalletAvatar');
   if (!canvas) return;
-  const short = addr.slice(0,4) + '...' + addr.slice(-4);
   if (shortEl) shortEl.textContent = addr;
   // Deterministic identicon
   try {
     const ctx = canvas.getContext('2d');
-    const S = 40, C = S / 7;
+    const S = 48, C = S / 7;
     let seed = 0;
     for (let i = 0; i < addr.length; i++) seed = (seed * 31 + addr.charCodeAt(i)) | 0;
     const rng = () => { seed = (seed * 1664525 + 1013904223) | 0; return (seed >>> 0) / 4294967295; };
@@ -2907,20 +2960,204 @@ function updateWalletIdentity() {
       }
     }
   } catch(e) {}
-  if (_walletIdentityAddr === addr) return;
+
+  // Show on-chain display name if set
+  const onChainName = ghostState.ghost?.displayName;
+  if (onChainName) {
+    if (domainEl) domainEl.textContent = onChainName;
+    // Still do .sol lookup to show badge
+    _resolveAndShowSolDomain(addr, domainEl, false);
+  } else {
+    if (domainEl) domainEl.textContent = addr.slice(0,4) + '...' + addr.slice(-4);
+    _resolveAndShowSolDomain(addr, domainEl, true);
+  }
+
+  // Show on-chain profile pic if set
+  const onChainImg = ghostState.ghost?.imageUri;
+  if (onChainImg) {
+    const picEl = document.getElementById('dbProfilePic');
+    if (picEl) {
+      picEl.src = onChainImg;
+      picEl.style.display = 'block';
+      canvas.style.display = 'none';
+    }
+  } else {
+    const picEl = document.getElementById('dbProfilePic');
+    if (picEl) picEl.style.display = 'none';
+    canvas.style.display = 'block';
+  }
+}
+
+function _resolveAndShowSolDomain(addr, domainEl, updateName) {
+  if (_walletIdentityAddr === addr && !updateName) return;
   _walletIdentityAddr = addr;
-  if (domainEl) domainEl.textContent = short;
-  // Async SNS lookup
-  fetch('https://sns-sdk-proxy.bonfida.workers.dev/domains/' + addr)
+  fetch('https://sns-sdk-proxy.bonfida.workers.dev/reverse-lookup/' + addr)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
-      const domains = data?.result;
-      if (Array.isArray(domains) && domains.length > 0) {
-        if (domainEl) domainEl.textContent = domains[0] + '.sol';
+      const domain = data?.result;
+      if (domain) {
+        if (domainEl && updateName) domainEl.textContent = domain + '.sol';
         const badge = document.getElementById('dbSolBadge');
         if (badge) badge.style.display = 'block';
       }
     }).catch(() => {});
+}
+
+// ─── Copy wallet address ──────────────────────────────────────
+function dbCopyWalletAddr() {
+  const addr = ghostState.publicKey;
+  if (!addr) return;
+  navigator.clipboard.writeText(addr).then(() => {
+    const btn = document.getElementById('dbCopyAddrBtn');
+    if (btn) { btn.textContent = '✓'; setTimeout(() => btn.textContent = '⧉', 1500); }
+  }).catch(() => {});
+}
+
+// ─── Profile picture handling ─────────────────────────────────
+let _pendingImageUri = ''; // holds uploaded URL before on-chain save
+
+async function handleProfilePicSelect(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('profilePicStatus');
+  const previewEl = document.getElementById('profilePicPreview');
+
+  // Validate type
+  const allowed = ['image/png','image/jpeg','image/jpg','image/heic','image/heif'];
+  if (!allowed.includes(file.type) && !file.name.match(/\.(heic|heif|jpg|jpeg|png)$/i)) {
+    showNotif('Unsupported file type. Use PNG, JPEG, or HEIC.', 'error'); return;
+  }
+
+  // Local preview immediately
+  const reader = new FileReader();
+  reader.onload = e => {
+    previewEl.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  };
+  reader.readAsDataURL(file);
+
+  if (statusEl) statusEl.textContent = '⟳ Uploading to IPFS...';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name || 'ghost-profile.jpg');
+
+    const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error('Upload failed: ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    _pendingImageUri = data.url;
+    if (statusEl) statusEl.textContent = '✓ Uploaded — click Save to commit on-chain';
+    showNotif('Image uploaded to IPFS ✓', 'green');
+  } catch(err) {
+    if (statusEl) statusEl.textContent = '✗ Upload failed — ' + (err.message || err);
+    showNotif('Upload failed: ' + (err.message || err), 'error');
+  }
+}
+
+// ─── Save profile on-chain ────────────────────────────────────
+async function dbSaveProfile() {
+  if (!ghostState.ghost?.status || ghostState.ghost.status === 'none') {
+    showNotif('No ghost registered yet', 'error'); return;
+  }
+
+  const nameInput = document.getElementById('profileNameInput')?.value.trim() || '';
+  const imageUri  = _pendingImageUri || ghostState.ghost?.imageUri || '';
+  const statusEl  = document.getElementById('profileSaveStatus');
+  const btn       = document.getElementById('saveProfileBtn');
+
+  // Encode name to [u8; 32] — UTF-8, null-padded
+  const nameBytes = new Uint8Array(32);
+  const enc = new TextEncoder().encode(nameInput.slice(0, 32));
+  nameBytes.set(enc);
+
+  // Encode image_uri to [u8; 128] — null-padded
+  const uriBytes = new Uint8Array(128);
+  const uriEnc = new TextEncoder().encode(imageUri.slice(0, 128));
+  uriBytes.set(uriEnc);
+
+  if (statusEl) { statusEl.style.display = 'block'; statusEl.style.color = '#c0a0ff'; statusEl.textContent = '⟳ Saving...'; }
+  if (btn) btn.disabled = true;
+
+  // Demo mode
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    ghostState.ghost.displayName = nameInput || null;
+    ghostState.ghost.imageUri = imageUri || null;
+    if (statusEl) { statusEl.style.color = '#33ff99'; statusEl.textContent = '✓ Profile saved [demo]'; }
+    if (btn) btn.disabled = false;
+    updateWalletIdentity();
+    _syncProfileToSettingsUI();
+    showNotif('Profile updated [demo]', 'green');
+    return;
+  }
+
+  try {
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPk = new PublicKey(ghostState.publicKey);
+    const programId = new PublicKey(PROGRAM_ID);
+    const [ghostPda] = PublicKey.findProgramAddressSync(
+      [new TextEncoder().encode('ghost'), walletPk.toBytes()], programId
+    );
+
+    // set_ghost_profile discriminator — sighash of "global:set_ghost_profile"
+    const disc = _instructionDiscriminator('set_ghost_profile');
+
+    // Args: display_name [u8;32] + image_uri [u8;128] = 160 bytes
+    const data = new Uint8Array(8 + 160);
+    data.set(disc, 0);
+    data.set(nameBytes, 8);
+    data.set(uriBytes, 40);
+
+    const ix = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPk, isSigner: true, isWritable: true },
+      ],
+      data,
+    });
+
+    const conn = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await conn.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    tx.add(ix);
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await conn.sendRawTransaction(signed.serialize());
+    await conn.confirmTransaction(sig, 'confirmed');
+
+    ghostState.ghost.displayName = nameInput || null;
+    ghostState.ghost.imageUri = imageUri || null;
+    _pendingImageUri = '';
+
+    if (statusEl) { statusEl.style.color = '#33ff99'; statusEl.textContent = '✓ Saved on-chain · ' + sig.slice(0,8) + '...'; }
+    updateWalletIdentity();
+    _syncProfileToSettingsUI();
+    showNotif('Profile saved on-chain ✓', 'green');
+    addActivityRow('👻 Profile updated on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+  } catch(err) {
+    if (statusEl) { statusEl.style.color = '#ff3366'; statusEl.textContent = '✗ ' + (err.message || err); }
+    showNotif('Save failed: ' + (err.message||err), 'error');
+  }
+  if (btn) btn.disabled = false;
+}
+
+// ─── Sync profile data to settings UI inputs ──────────────────
+function _syncProfileToSettingsUI() {
+  const nameInput = document.getElementById('profileNameInput');
+  const nameCount = document.getElementById('profileNameCount');
+  const previewEl = document.getElementById('profilePicPreview');
+  const statusEl  = document.getElementById('profilePicStatus');
+
+  const name = ghostState.ghost?.displayName || '';
+  const img  = ghostState.ghost?.imageUri || '';
+
+  if (nameInput) { nameInput.value = name; }
+  if (nameCount) { nameCount.textContent = name.length + '/32'; }
+  if (img && previewEl) {
+    previewEl.innerHTML = `<img src="${img}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    if (statusEl) statusEl.textContent = '✓ Image set · click + to change';
+  }
 }
 
 function validateStakeInput(el) {
@@ -3003,21 +3240,20 @@ async function initializeGhost() {
     // Anchor discriminator: sha256("global:initialize_ghost")[0:8]
     const discriminator = [51, 255, 136, 226, 138, 175, 174, 211];
 
-    // Args: initialize_ghost(interval: i64, grace: i64, recovery_wallets: [Option<Pubkey>;3], stake: u64)
-    // v1.5 on-chain — always encode 3 slots, each None(1) or Some(33)
+    // Args match lib.rs fn signature exactly:
+    // initialize_ghost(interval_seconds: i64, grace_period_seconds: i64, recovery_wallet: Option<Pubkey>, stake_amount: u64)
+    // stake_amount in base units (6 decimals): UI value × 1_000_000
     const stakeRaw = BigInt(stakeAmt) * BigInt(1_000_000);
     console.log('[Ghost] stakeAmt:', stakeAmt, 'stakeRaw:', stakeRaw.toString());
+    const recoveryWallet = ghostState.recoveryWallets?.[0]?.address || null;
 
-    const _rvParts = [];
-    for (let _ri = 0; _ri < 3; _ri++) {
-      const w = ghostState.recoveryWallets?.[_ri]?.address || null;
-      if (w) { const s = new Uint8Array(33); s[0] = 1; s.set(new PublicKey(w).toBytes(), 1); _rvParts.push(s); }
-      else { _rvParts.push(new Uint8Array([0])); }
-    }
-    const recoveryBytes = new Uint8Array(_rvParts.reduce((s, p) => s + p.length, 0));
-    let _rvOff = 0; for (const p of _rvParts) { recoveryBytes.set(p, _rvOff); _rvOff += p.length; }
-    const recoverySize = recoveryBytes.length;
+    // Borsh Option<Pubkey>: None = [0x00] (1 byte), Some = [0x01] + 32 bytes
+    const recoveryBytes = recoveryWallet
+      ? (() => { const b = new Uint8Array(33); b[0] = 1; b.set(new PublicKey(recoveryWallet).toBytes(), 1); return b; })()
+      : new Uint8Array([0]);
 
+    // Pack args: interval(i64=8) + grace(i64=8) + recovery(1 or 33) + stake(u64=8)
+    const recoverySize = recoveryBytes.length; // 1 if None, 33 if Some
     const buf = new ArrayBuffer(8 + 8 + recoverySize + 8);
     const dv = new DataView(buf);
     dv.setBigInt64(0, BigInt(intervalDays * 86400), true);
@@ -3175,7 +3411,7 @@ async function disconnectWallet() {
   ghostState.ghostPda = null;
   ghostState.vaultPda = null;
   ghostState.ghostStakeVault = null;
-  ghostState.ghost = { status:'none', lastHeartbeat:null, intervalSeconds:365*86400, gracePeriodSeconds:30*86400, awakenedAt:null, executed:false, stakedGhost:0, pingCount:0, vaultBalance:0, recoveryWallet:null, beneficiaries:[] };
+  ghostState.ghost = { status:'none', lastHeartbeat:null, intervalSeconds:365*86400, gracePeriodSeconds:30*86400, awakenedAt:null, executed:false, stakedGhost:0, pingCount:0, vaultBalance:0, recoveryWallet:null, beneficiaries:[], wholeVaultAction:0 };
   ghostState.walletTokens = [];
   ghostState.vaultTokens = [];
   ghostState.recoveryWallets = [];
@@ -3286,7 +3522,7 @@ function dbShowPage(pageId, navEl) {
     // Rebuild bene/burn pickers immediately with current vault state
     const _beneAssignable = vaultAssignableTokens();
     buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ..._beneAssignable]);
-    buildPickerDropdown('burn', _beneAssignable);
+    buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ..._beneAssignable]);
     if (!ghostState.selectedTokens.bene) {
       const symEl = document.getElementById('benePickerSymbol');
       const balEl = document.getElementById('benePickerBal');
@@ -3639,12 +3875,21 @@ function renderBeneficiaries() {
     rows += `<tr><td colspan="7" style="padding:8px 12px;font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(160,128,255,0.6);letter-spacing:0.2em;text-transform:uppercase;border-top:1px solid rgba(160,128,255,0.15)">Whole Vault Assignment</td></tr>`;
     wholeShares.forEach(ben => {
       const realIdx = all.indexOf(ben);
-      rows += `<tr style="background:rgba(102,51,255,0.03)">
-        <td style="color:#a080ff">👻</td>
-        <td><span class="addr-short" style="cursor:pointer" onclick="copyAddr('${ben.fullAddr||ben.recipient}')" title="Click to copy">${ben.recipient} ⧉</span></td>
+      const isBurnAll = ben.wholeVaultAction === 1;
+      const rowBg = isBurnAll ? 'rgba(255,61,90,0.04)' : 'rgba(102,51,255,0.03)';
+      const icon = isBurnAll ? '🔥' : '👻';
+      const recipCell = isBurnAll
+        ? '<span style="color:rgba(255,61,90,0.7)">BURN ALL (no recipient)</span>'
+        : `<span class="addr-short" style="cursor:pointer" onclick="copyAddr('${ben.fullAddr||ben.recipient}')" title="Click to copy">${ben.recipient} ⧉</span>`;
+      const typeTag = isBurnAll
+        ? '<span class="tag tag-burn">BURN ALL</span>'
+        : '<span class="tag" style="background:rgba(160,128,255,0.1);color:#c0a0ff;border-color:rgba(160,128,255,0.3)">VAULT</span>';
+      rows += `<tr style="background:${rowBg}">
+        <td style="color:${isBurnAll?'rgba(255,61,90,0.5)':'#a080ff'}">${icon}</td>
+        <td>${recipCell}</td>
         <td style="color:#c0a0ff">100%</td>
-        <td style="color:#c0a0ff;font-size:12px">All tokens</td>
-        <td><span class="tag" style="background:rgba(160,128,255,0.1);color:#c0a0ff;border-color:rgba(160,128,255,0.3)">VAULT</span></td>
+        <td style="color:${isBurnAll?'#ff6688':'#c0a0ff'};font-size:12px">All tokens</td>
+        <td>${typeTag}</td>
         <td><span class="tag tag-done">READY</span></td>
         <td><button class="icon-btn" onclick="dbRemoveBeneficiary(${realIdx})" title="Remove">✕</button></td>
       </tr>`;
@@ -3840,15 +4085,16 @@ async function dbAddBeneficiary(action) {
   const t = ghostState.selectedTokens[pickerKey];
   if (!t) { showNotif('Select a token first', 'error'); return; }
 
-  // ── Whole vault path — 100% to one recipient ──
-  if (!isBurn && t.mint === '__whole_vault__') {
-    const recipient = document.getElementById('newRecipient').value.trim();
-    if (!recipient || recipient.length < 32) { showNotif('⚠️ Enter a valid Solana address', 'error'); return; }
+  // ── Whole vault path — 100% to one recipient or whole-vault burn ──
+  if (t.mint === '__whole_vault__' || t.mint === '__whole_vault_burn__') {
+    const isWholeBurn = t.mint === '__whole_vault_burn__';
+    const recipient = isWholeBurn ? ghostState.publicKey : document.getElementById('newRecipient').value.trim();
+    if (!isWholeBurn && (!recipient || recipient.length < 32)) { showNotif('⚠️ Enter a valid Solana address', 'error'); return; }
     if (ghostState.vaultTokens.length === 0) { showNotif('⚠️ Vault is empty — deposit assets first', 'error'); return; }
     if (ghostState.ghost.beneficiaries.some(b => b.action === 'whole-vault-share')) {
-      showNotif('⚠️ A whole-vault recipient is already set. Remove it first.', 'error'); return;
+      showNotif('⚠️ A whole-vault assignment is already set. Remove it first.', 'error'); return;
     }
-    const short = recipient.slice(0,4) + '...' + recipient.slice(-4);
+    const short = isWholeBurn ? '(burn all)' : recipient.slice(0,4) + '...' + recipient.slice(-4);
     // Merge: remove any existing specific transfers/burns to this same address
     const beforeCount = ghostState.ghost.beneficiaries.length;
     ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => {
@@ -3861,21 +4107,24 @@ async function dbAddBeneficiary(action) {
     const mergedCount = beforeCount - ghostState.ghost.beneficiaries.length;
     // Stage locally first so UI reflects immediately
     if (!ghostState.ghost.wholeVaultShares) ghostState.ghost.wholeVaultShares = [];
-    ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: recipient, pct: 100 }];
+    const _wvAction = isWholeBurn ? 1 : 0;
+    ghostState.ghost.wholeVaultAction = _wvAction;
+    ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: isWholeBurn ? null : recipient, pct: 100, action: _wvAction }];
     ghostState.ghost.beneficiaries.push({
-      recipient: short, fullAddr: recipient,
+      recipient: short, fullAddr: isWholeBurn ? null : recipient,
       sharePct: 100, amount: 0,
-      token: '👻 100% of vault',
-      action: 'whole-vault-share', executed: false
+      token: isWholeBurn ? '🔥 Burn entire vault' : '👻 100% of vault',
+      action: 'whole-vault-share', wholeVaultAction: _wvAction, executed: false
     });
-    document.getElementById('newRecipient').value = '';
+    if (!isWholeBurn) document.getElementById('newRecipient').value = '';
     _refreshBenePickers();
     renderBeneficiaries();
     saveSession();
     const mergeNote = mergedCount > 0 ? ' · merged ' + mergedCount + ' existing entr' + (mergedCount === 1 ? 'y' : 'ies') : '';
-    showNotif('👻 Staged → ' + short + mergeNote + '. Sending on-chain...', 'green');
+    const wvLabel = isWholeBurn ? '🔥 Whole vault burn staged' : ('👻 Staged → ' + short + mergeNote);
+    showNotif(wvLabel + '. Sending on-chain...', 'green');
     // Fire on-chain tx immediately — no second popup
-    await dbSaveWholeVaultPlan();
+    await dbSaveWholeVaultPlan(isWholeBurn ? 1 : 0);
     return;
   }
 
@@ -4176,34 +4425,39 @@ async function removeWholeVaultShare(i) {
   renderWholeVaultShares();
 }
 
-async function dbSaveWholeVaultPlan() {
+async function dbSaveWholeVaultPlan(wvAction) {
+  const _wvAct = wvAction ?? ghostState.ghost.wholeVaultAction ?? 0; // 0=Transfer, 1=Burn
   const shares = ghostState.ghost.wholeVaultShares || [];
   if (shares.length === 0) { showNotif('Add a recipient first', 'error'); return; }
   const share = shares[0]; // contract stores single Option<Pubkey>
   const recipient = share.fullAddr;
-  if (!recipient || recipient.length < 32) { showNotif('Invalid recipient address', 'error'); return; }
+  const isBurnAll = _wvAct === 1;
+  // For burn, we send recipient=owner (placeholder, unused by burn path) or system_program address
+  const recipientPk = isBurnAll ? ghostState.publicKey : recipient;
+  if (!isBurnAll && (!recipientPk || recipientPk.length < 32)) { showNotif('Invalid recipient address', 'error'); return; }
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     _applyWholeVaultLocally(share);
-    showNotif('Whole vault recipient set [demo]', 'green');
-    addActivityRow('Whole vault -> ' + share.addr + ' [demo]', '');
+    showNotif(isBurnAll ? '🔥 Whole vault burn set [demo]' : 'Whole vault recipient set [demo]', 'green');
+    addActivityRow((isBurnAll ? '🔥 Whole vault burn' : 'Whole vault -> ' + share.addr) + ' [demo]', '');
     return;
   }
 
   try {
-    showNotif('Setting whole vault recipient on-chain...', '');
+    showNotif(isBurnAll ? 'Setting whole vault burn on-chain...' : 'Setting whole vault recipient on-chain...', '');
     const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
     const walletPk = new PublicKey(ghostState.publicKey);
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const programId = new PublicKey(PROGRAM_ID);
 
-    // set_whole_vault_recipient(recipient: Option<Pubkey>)
-    // Borsh: [1 tag][32 pubkey bytes] = 33 bytes
+    // v1.6: set_whole_vault_recipient(recipient: Option<Pubkey>, action: u8)
+    // Borsh: [1 tag][32 pubkey bytes][1 action byte] = 34 bytes
     const disc = [217, 239, 225, 75, 244, 14, 252, 91];
-    const argBytes = new Uint8Array(33);
+    const argBytes = new Uint8Array(34);
     argBytes[0] = 1; // Some
-    argBytes.set(new PublicKey(recipient).toBytes(), 1);
-    const data = new Uint8Array(41);
+    argBytes.set(new PublicKey(recipientPk).toBytes(), 1);
+    argBytes[33] = _wvAct; // action: u8
+    const data = new Uint8Array(42);
     data.set(disc, 0);
     data.set(argBytes, 8);
 
@@ -4224,10 +4478,11 @@ async function dbSaveWholeVaultPlan() {
     const conf = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
-    ghostState.ghost.wholeVaultRecipient = recipient;
+    ghostState.ghost.wholeVaultRecipient = isBurnAll ? null : recipientPk;
+    ghostState.ghost.wholeVaultAction = _wvAct;
     _applyWholeVaultLocally(share);
-    addActivityRow('Whole vault recipient → ' + share.addr, sig.slice(0,4)+'...'+sig.slice(-4));
-    showNotif('Whole vault recipient set on-chain!', 'green');
+    addActivityRow(isBurnAll ? '🔥 Whole vault burn set on-chain' : ('Whole vault recipient → ' + share.addr), sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif(isBurnAll ? '🔥 Whole vault burn set on-chain!' : 'Whole vault recipient set on-chain!', 'green');
   } catch(err) {
     console.error('set_whole_vault_recipient error:', err);
     showNotif('Failed: ' + (err.message || err), 'error');
@@ -4367,9 +4622,10 @@ async function dbLookupSoul() {
     const view = new DataView(bytes.buffer);
     
     let offset = 8 + 32; // skip discriminator + owner
-    // Version-aware recovery wallet skip
-    const _isV15w = bytes.length >= 1059;
-    for (let _ri = 0; _ri < (_isV15w ? 3 : 1); _ri++) { const _rt = bytes[offset]; offset += 1; if (_rt === 1) offset += 32; }
+    // v1.5+: recovery_wallets [Option<Pubkey>; 3] = 99 bytes; v1.4: Option<Pubkey> = 1-33 bytes
+    const _lkV15 = bytes.length >= 1059;
+    const _lkSlots = _lkV15 ? 3 : 1;
+    for (let _i = 0; _i < _lkSlots; _i++) { const _t = bytes[offset]; offset += 1; if (_t === 1) offset += 32; }
     const lastBeat = Number(view.getBigInt64(offset, true)); offset += 8;
     const interval = Number(view.getBigInt64(offset, true)); offset += 8;
     const grace = Number(view.getBigInt64(offset, true)); offset += 8;
@@ -4509,26 +4765,20 @@ async function scanGuardianAssignments() {
     const myPk = new PublicKey(ghostState.publicKey);
     const myBytes = myPk.toBytes();
 
-    // Scan all program accounts and filter client-side — handles both v1.4 and v1.5 layouts
-    // v1.4: slot0 pubkey at offset 41 (8+32+1)
-    // v1.5: slot0 pubkey at offset 41, slot1/slot2 variable depending on slot0
-    // Using client-side filter is the only reliable approach across both versions
-    const _allProgramAccounts = await connection.getProgramAccounts(programId);
-    const _myBytes = myPk.toBytes();
-    const accounts = _allProgramAccounts.filter(({ account }) => {
-      const _b = new Uint8Array(account.data);
-      const _isV15 = _b.length >= 1059;
-      const _slots = _isV15 ? 3 : 1;
-      let _o = 8 + 32;
-      for (let _ri = 0; _ri < _slots; _ri++) {
-        const _t = _b[_o]; _o++;
-        if (_t === 1) {
-          if (_myBytes.every((x, i) => x === _b[_o + i])) return true;
-          _o += 32;
-        }
-      }
-      return false;
-    });
+    // getProgramAccounts: scan all 3 recovery wallet slots (v1.5+)
+    // Slot[0] pubkey @ offset 41 (8 disc + 32 owner + 1 tag) — same as v1.4
+    // Slot[1] pubkey @ offset 74 (41 + 33)
+    // Slot[2] pubkey @ offset 107 (74 + 33)
+    const [_sa0, _sa1, _sa2] = await Promise.all([
+      connection.getProgramAccounts(programId, { filters: [{ memcmp: { offset: 41,  bytes: myPk.toBase58() } }] }),
+      connection.getProgramAccounts(programId, { filters: [{ memcmp: { offset: 74,  bytes: myPk.toBase58() } }] }),
+      connection.getProgramAccounts(programId, { filters: [{ memcmp: { offset: 107, bytes: myPk.toBase58() } }] }),
+    ]);
+    const _seenKeys = new Set();
+    const accounts = [];
+    for (const a of [..._sa0, ..._sa1, ..._sa2]) {
+      const _k = a.pubkey.toString(); if (!_seenKeys.has(_k)) { _seenKeys.add(_k); accounts.push(a); }
+    }
 
     if (accounts.length === 0) {
       statusEl.textContent = '— No guardian assignments found for this wallet';
@@ -4552,9 +4802,10 @@ async function scanGuardianAssignments() {
         let n = 0n; for (const b of ownerBytes) n = n*256n+BigInt(b);
         let ownerB58 = ''; let tmp = n;
         while(tmp>0n){ownerB58=B58[Number(tmp%58n)]+ownerB58;tmp=tmp/58n;}
-        // Version-aware recovery wallet skip
-        const _isV15_ = bytes.length >= 1059;
-        for (let _ri = 0; _ri < (_isV15_ ? 3 : 1); _ri++) { const _rt = bytes[off]; off++; if (_rt === 1) off += 32; }
+        // skip recovery wallets: v1.5+ = 3 slots × 33 bytes; v1.4 = 1 slot
+        const _isV15scan = bytes.length >= 1059;
+        const _scanSlots = _isV15scan ? 3 : 1;
+        for (let _ri = 0; _ri < _scanSlots; _ri++) { const _t = bytes[off]; off++; if (_t===1) off+=32; }
         // last_heartbeat, interval, grace
         const lastBeat = Number(view.getBigInt64(off,true)); off+=8;
         const interval = Number(view.getBigInt64(off,true)); off+=8;
@@ -4928,28 +5179,28 @@ async function checkIfRecoveryWallet() {
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const acct = await connection.getAccountInfo(ghostPda);
     if (!acct) { showNotif('No ghost found for that address', 'error'); return; }
-    // Decode to verify connected wallet is a recovery wallet (version-aware)
+    // Decode to verify recovery wallet matches connected wallet
     const bytes = new Uint8Array(acct.data);
     const view = new DataView(bytes.buffer);
     let off = 8 + 32; // skip disc + owner
-    const connectedBytes = new PublicKey(ghostState.publicKey).toBytes();
-    const _isV15c = bytes.length >= 1059;
-    const _rwSlots = _isV15c ? 3 : 1;
-    let guardianSlot = -1;
-    for (let _ri = 0; _ri < _rwSlots; _ri++) {
-      const rTag = bytes[off]; off++;
-      if (rTag === 1) {
-        if (bytes.slice(off, off + 32).every((b, i) => b === connectedBytes[i])) guardianSlot = _ri;
-        off += 32;
+    // v1.5+: check all 3 recovery wallet slots; v1.4: check 1 slot
+    const _crwV15 = bytes.length >= 1059;
+    const _crwSlots = _crwV15 ? 3 : 1;
+    const _myBytes = new PublicKey(ghostState.publicKey).toBytes();
+    let _foundSlot = false;
+    for (let _si = 0; _si < _crwSlots; _si++) {
+      const _t = bytes[off]; off++;
+      if (_t === 1) {
+        const _slotPk = bytes.slice(off, off + 32); off += 32;
+        if (_slotPk.every((b, i) => b === _myBytes[i])) _foundSlot = true;
       }
     }
-    if (guardianSlot === -1) { showNotif('Your wallet is not a recovery wallet for this ghost', 'error'); return; }
+    if (!_foundSlot) { showNotif('Your wallet is not a recovery wallet for this ghost', 'error'); return; }
     // Set recovery mode — store owner so cancelAwakening uses correct PDA
     ghostState.ghost.ownerPubkey = soul;
     const lastBeat = Number(view.getBigInt64(off, true)); off += 8;
     const interval = Number(view.getBigInt64(off, true)); off += 8;
-    off += 8; // grace_period_seconds
-    const awakened = bytes[off] === 1;
+    const awakened = bytes[off+8] === 1;
     const status = awakened ? '⚠️ AWAKENED — you can cancel!' : '✅ Alive';
     const daysSincePing = Math.floor((Date.now()/1000 - lastBeat)/86400);
     const statusColor = awakened ? '#ffaa33' : '#33ff99';
@@ -5045,7 +5296,7 @@ function buildPickerDropdown(pickerId, tokens, onSelect) {
       <div class="tp-opt-icon" style="overflow:hidden;background:none">${tokenLogoEl(resolveDisplaySym(t), 32, t.logoUrl||null)}</div>
       <div class="tp-opt-info">
         <div class="tp-opt-symbol">${resolveDisplaySym(t)}</div>
-        <div class="tp-opt-bal">${t.isWholeVault ? 'All tokens · proportional shares' : t.balance.toLocaleString(undefined,{maximumFractionDigits:6}) + ' available'}</div>
+        <div class="tp-opt-bal">${t.isWholeVault ? 'All tokens · proportional shares' : t.isWholeBurn ? 'Burns all vault tokens on execution' : t.balance.toLocaleString(undefined,{maximumFractionDigits:6}) + ' available'}</div>
       </div>
       <span class="tp-opt-check" data-check="${pickerId}-${t.mint}" style="display:none">✓</span>
     </div>`).join('') || '<div style="padding:14px;font-family:Share Tech Mono,monospace;font-size:12px;color:#c0bce0">No tokens found</div>';
@@ -5088,6 +5339,15 @@ function selectToken(pickerId, mintOrIdx) {
     if (shareRow) shareRow.style.display = isWhole ? '' : 'none';
     if (!isWhole) updateBeneRemaining();
     else updateSharePreview();
+  }
+  if (pickerId === 'burn') {
+    const isWholeBurn = t.mint === '__whole_vault_burn__';
+    const burnAmtRow = document.getElementById('burnAmount');
+    const burnAmtLabel = burnAmtRow?.previousElementSibling;
+    if (burnAmtRow) burnAmtRow.style.display = isWholeBurn ? 'none' : '';
+    if (burnAmtLabel) burnAmtLabel.style.display = isWholeBurn ? 'none' : '';
+    const addBurnBtn = document.getElementById('addBurnBtn');
+    if (addBurnBtn) addBurnBtn.textContent = isWholeBurn ? '🔥 Set Burn Entire Vault' : '🔥 Add Burn Instruction';
   }
 }
 
@@ -5535,7 +5795,7 @@ function _refreshBenePickers() {
   }
   const assignable = vaultAssignableTokens();
   buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...assignable]);
-  buildPickerDropdown('burn', assignable);
+  buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...assignable]);
   // If current selection is no longer available, reset it
   const curBene = ghostState.selectedTokens.bene;
   if (curBene && curBene.mint !== '__whole_vault__') {
@@ -5605,6 +5865,7 @@ function vaultAssignableTokens() {
 
 // "Whole vault" pseudo-token for the bene picker
 const WHOLE_VAULT_TOKEN = { symbol: 'Whole Vault', mint: '__whole_vault__', balance: 0, logoUrl: null, isWholeVault: true, chestIcon: true };
+const WHOLE_VAULT_BURN_TOKEN = { symbol: 'Burn Entire Vault', mint: '__whole_vault_burn__', balance: 0, logoUrl: null, isWholeBurn: true, burnIcon: true };
 
 function populateAllPickers() {
   const t = ghostState.walletTokens;
@@ -5616,7 +5877,7 @@ function populateAllPickers() {
   const beneTokens = [WHOLE_VAULT_TOKEN, ...assignable];
   buildPickerDropdown('bene', beneTokens);
   // Burn picker: only real vault tokens with remaining balance
-  buildPickerDropdown('burn', assignable);
+  buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...assignable]);
   // Auto-select first token
   if (depositTokens.length > 0 && !ghostState.selectedTokens.deposit) selectToken('deposit', depositTokens[0].mint);
   // Bene picker: show "Select asset" placeholder by default, don't auto-select
@@ -5775,24 +6036,19 @@ async function dbAddRecoveryWallet() {
   const addr = document.getElementById('dbNewRecovery').value.trim();
   if (!addr || addr.length < 32) { showNotif('⚠️ Enter a valid Solana address', 'error'); return; }
   if (ghostState.recoveryWallets.find(w => w.address === addr)) { showNotif('⚠️ Address already added', 'error'); return; }
-  if (ghostState.recoveryWallets.length >= 3) { showNotif('⚠️ Maximum 3 recovery wallets', 'error'); return; }
   const canWithdraw = document.getElementById('permWithdraw').checked;
-
-  // Find next free slot (0–2)
-  const usedSlots = ghostState.recoveryWallets.map(w => w.slotIndex ?? 0);
-  const slotIndex = [0, 1, 2].find(i => !usedSlots.includes(i)) ?? ghostState.recoveryWallets.length;
 
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
-    ghostState.recoveryWallets.push({ address: addr, canWithdraw, slotIndex });
-    if (ghostState.recoveryWallets.length === 1) ghostState.ghost.recoveryWallet = addr;
+    ghostState.recoveryWallets = [{ address: addr, canWithdraw }];
+    ghostState.ghost.recoveryWallet = addr;
     document.getElementById('dbNewRecovery').value = '';
     renderRecoveryWallets();
     showNotif('✅ Recovery wallet set [demo]', 'green');
     return;
   }
 
-  // On-chain: update_recovery_wallet(index: u8, wallet: Option<Pubkey>)
+  // On-chain: update_recovery_wallet
   try {
     showNotif('Setting recovery wallet on-chain...', '');
     const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
@@ -5800,13 +6056,15 @@ async function dbAddRecoveryWallet() {
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const programId = new PublicKey(PROGRAM_ID);
 
-    const disc = [17, 163, 88, 154, 97, 78, 169, 93];
-    // Args: index(u8) + wallet(Option<Pubkey>: Some=33 bytes)
-    const data = new Uint8Array(8 + 1 + 33);
+    // Discriminator: sha256("global:update_recovery_wallet")[0:8]
+    const disc = [17, 163, 88, 154, 97, 78, 169, 93]; // sha256('global:update_recovery_wallet')[0:8]
+    // Args: recovery_wallet: Option<Pubkey>
+    const recoveryBytes = new Uint8Array(33);
+    recoveryBytes[0] = 1;
+    recoveryBytes.set(new PublicKey(addr).toBytes(), 1);
+    const data = new Uint8Array(8 + 33);
     data.set(disc, 0);
-    data[8] = slotIndex;
-    data[9] = 1; // Some
-    data.set(new PublicKey(addr).toBytes(), 10);
+    data.set(recoveryBytes, 8);
 
     const ix = new TransactionInstruction({
       programId,
@@ -5821,15 +6079,16 @@ async function dbAddRecoveryWallet() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
     tx.add(ix);
-    tx.instructions.forEach((ix, i) =>
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
       console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
     );
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
     await connection.confirmTransaction(sig, 'confirmed');
 
-    ghostState.recoveryWallets.push({ address: addr, canWithdraw, slotIndex });
-    if (ghostState.recoveryWallets.length === 1) ghostState.ghost.recoveryWallet = addr;
+    ghostState.recoveryWallets = [{ address: addr, canWithdraw }];
+    ghostState.ghost.recoveryWallet = addr;
     document.getElementById('dbNewRecovery').value = '';
     renderRecoveryWallets();
     showNotif('✅ Recovery wallet set on-chain!', 'green');
@@ -5840,8 +6099,6 @@ async function dbAddRecoveryWallet() {
 
 async function dbRemoveRecoveryWallet(idx) {
   const _ok4 = await ghostConfirm({ icon:'🔑', title:'Remove Recovery Wallet', message:'Remove this recovery wallet on-chain? You can set a new one at any time.', okLabel:'REMOVE', danger:true }); if (!_ok4) return;
-
-  const slotIndex = ghostState.recoveryWallets[idx]?.slotIndex ?? idx;
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.recoveryWallets.splice(idx, 1);
@@ -5857,12 +6114,11 @@ async function dbRemoveRecoveryWallet(idx) {
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const programId = new PublicKey(PROGRAM_ID);
 
-    const disc = [17, 163, 88, 154, 97, 78, 169, 93];
-    // Args: index(u8) + wallet(Option<Pubkey>: None=1 byte)
-    const data = new Uint8Array(8 + 2);
+    const disc = [17, 163, 88, 154, 97, 78, 169, 93]; // sha256('global:update_recovery_wallet')[0:8]
+    // Option::None = [0x00]
+    const data = new Uint8Array(9);
     data.set(disc, 0);
-    data[8] = slotIndex;
-    data[9] = 0; // None
+    data[8] = 0; // None
 
     const ix = new TransactionInstruction({
       programId,
@@ -5877,7 +6133,8 @@ async function dbRemoveRecoveryWallet(idx) {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
     tx.add(ix);
-    tx.instructions.forEach((ix, i) =>
+    // Debug: log each instruction individually so console doesn't collapse
+    tx.instructions.forEach((ix, i) => 
       console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
     );
     const signed = await ghostState.provider.signTransaction(tx);
@@ -5891,6 +6148,18 @@ async function dbRemoveRecoveryWallet(idx) {
   } catch(err) {
     showNotif('Failed: ' + (err.message || err), 'error');
   }
+}
+
+// ─── Account migration ──────────────────────────────────────────
+async function dbMigrateAccount() {
+  const _ok = await ghostConfirm({
+    icon: '🔄',
+    title: 'Migrate to v1.7',
+    message: 'This will abandon your current ghost account (burns 50% staked $GHOST) and open the registration form. Your vault assets are NOT affected. Proceed?',
+    okLabel: 'MIGRATE', danger: true
+  });
+  if (!_ok) return;
+  await dbAbandon(true); // skipConfirm=true since we already confirmed above
 }
 
 function toggleRecoveryWithdraw(idx, val) {
@@ -6092,7 +6361,7 @@ async function dbWithdrawAll() {
     }
     ghostState.vaultTokens = [];
     const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
-    buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', vaultAssignableTokens());
+    buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
     ghostState.selectedTokens.deposit = null;
     if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
     renderVaultHoldings(); renderVaultOverview();
@@ -6235,7 +6504,7 @@ async function dbWithdrawAll() {
 
   if (successCount > 0) {
     const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
-    buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', vaultAssignableTokens());
+    buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
     ghostState.selectedTokens.deposit = null;
     if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
     renderVaultHoldings(); renderVaultOverview();
@@ -6458,7 +6727,7 @@ async function dbDeposit() {
       });
     }
     buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]);
-    buildPickerDropdown('burn', vaultAssignableTokens());
+    buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
     document.getElementById('depositPickerBal').textContent =
       t.balance.toLocaleString(undefined, {maximumFractionDigits:6}) + ' available';
     document.getElementById('depositPickerLogo').innerHTML = tokenLogoEl(displaySym, 26, t.logoUrl||null);
@@ -6723,7 +6992,7 @@ async function dbWithdrawAsset(vaultIdx) {
     }
     buildPickerDropdown('deposit', ghostState.walletTokens.filter(tok => tok.balance > 0));
     buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]);
-    buildPickerDropdown('burn', vaultAssignableTokens());
+    buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
     renderVaultHoldings(); renderVaultOverview(); saveSession();
   };
 
@@ -7017,9 +7286,9 @@ async function dbUpdateGrace() {
 
 
 
-async function dbAbandon() {
+async function dbAbandon(skipConfirm) {
   // Step 1: Confirmation modal
-  const confirmed = await new Promise(resolve => {
+  const confirmed = skipConfirm ? true : await new Promise(resolve => {
     const modal = document.createElement('div');
     modal.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(5,5,15,0.9);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)';
     modal.innerHTML = `
