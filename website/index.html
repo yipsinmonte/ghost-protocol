@@ -3264,19 +3264,15 @@ async function initializeGhost() {
       }
     }
 
-    // Pack args: interval(i64=8) + grace(i64=8) + recovery_wallets(u32_len=4 + 99 data) + stake(u64=8) = 127 bytes
-    // Anchor serializes fixed arrays with a u32 length prefix
-    const buf = new ArrayBuffer(8 + 8 + 4 + 99 + 8);
-    const dv = new DataView(buf);
-    dv.setBigInt64(0, BigInt(intervalDays * 86400), true);
-    dv.setBigInt64(8, BigInt(graceDays * 86400), true);
-    dv.setUint32(16, 3, true); // u32 length prefix = 3 slots
-    new Uint8Array(buf).set(recoveryBytes, 20);
-    dv.setBigUint64(119, stakeRaw, true); // offset 16 + 4 + 99 = 119
-
-    const data = new Uint8Array(8 + buf.byteLength);
+    // Pack args into final data array directly (avoids DataView offset bugs)
+    // Layout: disc(8) + interval(8) + grace(8) + recovery(99) + stake(8) = 131 bytes
+    const data = new Uint8Array(8 + 8 + 8 + 99 + 8);
+    const dv = new DataView(data.buffer);
     data.set(discriminator, 0);
-    data.set(new Uint8Array(buf), 8);
+    dv.setBigInt64(8,  BigInt(intervalDays * 86400), true);  // offset 8
+    dv.setBigInt64(16, BigInt(graceDays * 86400), true);     // offset 16
+    data.set(recoveryBytes, 24);                              // offset 24, 99 bytes
+    dv.setBigUint64(123, stakeRaw, true);                    // offset 24+99=123
 
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const vaultPda = new PublicKey(ghostState.vaultPda);
