@@ -634,6 +634,15 @@
   web3Script.onload = function() {
     solanaWeb3 = window.solanaWeb3;
     console.log('Solana web3.js loaded:', !!solanaWeb3);
+    // Load Bonfida SNS SDK after web3 is ready
+    var snsScript = document.createElement('script');
+    snsScript.src = 'https://cdn.jsdelivr.net/npm/@bonfida/spl-name-service@3/dist/index.iife.js';
+    snsScript.onload = function() {
+      window.SNS = window.splNameService || window.SNS || null;
+      console.log('[Ghost] SNS SDK loaded:', !!window.SNS);
+    };
+    snsScript.onerror = function() { console.warn('[Ghost] SNS SDK failed to load'); };
+    document.head.appendChild(snsScript);
     // Retry token metadata fetch now that we have proper PDA derivation
     pumpFunFetched.clear();
     setTimeout(fetchPumpFunData, 500);
@@ -1029,7 +1038,7 @@
           <div class="settings-current-item">
             <div class="settings-current-label">⏱️ Heartbeat Interval</div>
             <div class="settings-current-value" id="settingsIntervalVal">365</div>
-            <div class="settings-current-sub" id="settingsIntervalSub">days · ~12.2 months</div>
+            <div class="settings-current-sub" id="settingsIntervalSub">days · ~12 months</div>
           </div>
           <div class="settings-current-item">
             <div class="settings-current-label">⏳ Grace Period</div>
@@ -1049,7 +1058,7 @@
           <div class="db-form-grid">
             <div class="db-form-group">
               <label>New Interval (Days)</label>
-              <input type="number" id="dbNewInterval" placeholder="365" min="7" oninput="document.getElementById('dbIntervalPreview').textContent=this.value+' days ≈ '+(this.value/30).toFixed(1)+' months'">
+              <input type="number" id="dbNewInterval" placeholder="365" min="7" oninput="document.getElementById('dbIntervalPreview').textContent=this.value+' days ≈ '+Math.round(this.value/30.44)+' months'">
             </div>
             <div class="db-form-group">
               <label>Preview</label>
@@ -3034,7 +3043,7 @@ function updateWalletIdentity() {
 function _resolveAndShowSolDomain(addr, domainEl, updateName) {
   if (_walletIdentityAddr === addr && !updateName) return;
   _walletIdentityAddr = addr;
-  // Try Bonfida SNS proxy first, fall back to AllDomains API
+
   const tryShowDomain = (domain) => {
     if (domain && typeof domain === 'string' && domain.length > 0 && !domain.includes(' ')) {
       if (domainEl && updateName) domainEl.textContent = domain + '.sol';
@@ -3044,26 +3053,39 @@ function _resolveAndShowSolDomain(addr, domainEl, updateName) {
     }
     return false;
   };
-  fetch('https://sns-sdk-proxy.bonfida.workers.dev/reverse-lookup/' + addr)
-    .then(r => r.ok ? r.json() : null)
-    .then(data => {
-      if (tryShowDomain(data?.result)) return;
-      // Fallback: AllDomains API
-      return fetch('https://api.alldomains.id/v1/reverse/' + addr)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          const dom = d?.domain || d?.name || d?.result;
-          tryShowDomain(dom);
-        }).catch(() => {});
-    }).catch(() => {
-      // Primary failed — try fallback directly
-      fetch('https://api.alldomains.id/v1/reverse/' + addr)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          const dom = d?.domain || d?.name || d?.result;
-          tryShowDomain(dom);
-        }).catch(() => {});
-    });
+
+  // Use Bonfida SNS SDK getPrimaryDomain via RPC if available
+  const trySDK = async () => {
+    try {
+      if (typeof window.SNS !== 'undefined' && window.SNS.getPrimaryDomain) {
+        const conn = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+        const { PublicKey } = solanaWeb3;
+        const { domain } = await window.SNS.getPrimaryDomain(conn, new PublicKey(addr));
+        if (tryShowDomain(domain)) return true;
+      }
+    } catch(_) {}
+    return false;
+  };
+
+  // Fall back to REST proxies
+  const tryRest = () => {
+    fetch('https://sns-sdk-proxy.bonfida.workers.dev/reverse-lookup/' + addr)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (tryShowDomain(data?.result)) return;
+        return fetch('https://api.alldomains.id/v1/reverse/' + addr)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => tryShowDomain(d?.domain || d?.name || d?.result))
+          .catch(() => {});
+      }).catch(() => {
+        fetch('https://api.alldomains.id/v1/reverse/' + addr)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => tryShowDomain(d?.domain || d?.name || d?.result))
+          .catch(() => {});
+      });
+  };
+
+  trySDK().then(found => { if (!found) tryRest(); });
 }
 
 // ─── Copy wallet address ──────────────────────────────────────
@@ -7226,7 +7248,7 @@ function syncSettingsDisplay() {
   const gDays = Math.round(g.gracePeriodSeconds / 86400);
   const el = id => document.getElementById(id);
   if (el('settingsIntervalVal')) el('settingsIntervalVal').textContent = iDays;
-  if (el('settingsIntervalSub')) el('settingsIntervalSub').textContent = 'days · ~' + (iDays/30).toFixed(1) + ' months';
+  if (el('settingsIntervalSub')) el('settingsIntervalSub').textContent = 'days · ~' + (Math.round(iDays/30.44)) + ' months';
   if (el('settingsGraceVal')) el('settingsGraceVal').textContent = gDays;
   if (el('settingsGraceSub')) el('settingsGraceSub').textContent = 'days after silence detected';
   if (el('settingsStakedVal')) {
@@ -7246,7 +7268,7 @@ async function dbUpdateInterval() {
     ghostState.ghost.intervalSeconds = seconds;
     document.getElementById('dbInterval').textContent = days + ' days';
     document.getElementById('dbNewInterval').value = '';
-    document.getElementById('dbIntervalPreview').textContent = days + ' days ≈ ' + (days/30).toFixed(1) + ' months';
+    document.getElementById('dbIntervalPreview').textContent = days + ' days ≈ ' + (Math.round(days/30.44)) + ' months';
     syncSettingsDisplay(); updateCountdown();
     showNotif('✅ Interval updated [demo]', 'green'); return;
   }
@@ -7281,7 +7303,7 @@ async function dbUpdateInterval() {
     ghostState.ghost.intervalSeconds = seconds;
     document.getElementById('dbInterval').textContent = days + ' days';
     document.getElementById('dbNewInterval').value = '';
-    document.getElementById('dbIntervalPreview').textContent = days + ' days ≈ ' + (days/30).toFixed(1) + ' months';
+    document.getElementById('dbIntervalPreview').textContent = days + ' days ≈ ' + (Math.round(days/30.44)) + ' months';
     syncSettingsDisplay(); updateCountdown();
     showNotif('✅ Interval updated on-chain: ' + days + ' days', 'green');
   } catch(err) { showNotif('Failed: ' + (err.message || err), 'error'); }
