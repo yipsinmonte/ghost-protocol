@@ -3044,35 +3044,22 @@ async function _resolveAndShowSolDomain(addr, domainEl, updateName) {
     return false;
   };
 
-  // SNS resolution: primary domain first, then any owned domain as fallback
+  // SNS resolution: /reverse-lookup/ only — returns primary domain
+  // /domains/ fallback intentionally removed: returns arbitrary ordering,
+  // showing wrong domain is worse than showing none
   const BONFIDA = 'https://sns-sdk-proxy.bonfida.workers.dev';
 
-  // 1. Try /reverse-lookup/ — returns primary domain if set
   try {
     const res = await fetch(BONFIDA + '/reverse-lookup/' + addr);
     if (res.ok) {
       const data = await res.json();
       const domain = data?.result;
-      console.log('[Ghost] SNS /reverse-lookup result:', domain);
+      console.log('[Ghost] SNS primary domain:', domain);
       if (tryShowDomain(domain)) return;
     }
   } catch(_) {}
 
-  // 2. Fallback: /domains/ — returns all owned domains (works without primary set)
-  try {
-    const res = await fetch(BONFIDA + '/domains/' + addr);
-    if (res.ok) {
-      const data = await res.json();
-      const domains = data?.result || data;
-      if (Array.isArray(domains) && domains.length > 0) {
-        const first = typeof domains[0] === 'string' ? domains[0] : domains[0]?.domain;
-        console.log('[Ghost] SNS /domains fallback:', first);
-        if (tryShowDomain(first)) return;
-      }
-    }
-  } catch(_) {}
-
-  console.log('[Ghost] SNS: no domain found for', addr.slice(0,8))
+  console.log('[Ghost] SNS: no primary domain set for', addr.slice(0,8))
 }
 
 // ─── Copy wallet address ──────────────────────────────────────
