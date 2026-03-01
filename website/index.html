@@ -2652,21 +2652,23 @@ function parseGhostAccount(bytes) {
   const view = new DataView(bytes.buffer);
   let offset = 8; // skip discriminator
 
-  // GhostAccount field layout (offsets after 8-byte discriminator, matches lib.rs exactly):
-  // owner(32), recovery_wallets([Option<Pubkey>;3]=99), last_heartbeat(8),
-  // interval_seconds(8), grace_period_seconds(8),
-  // awakened(1), awakened_at(Option<i64>=9), executed(1), executed_at(Option<i64>=9),
+  // GhostAccount field layout — Borsh encoding rules:
+  //   Option<T>::None = 1 byte (0x00 tag only)
+  //   Option<T>::Some(v) = 1 byte (0x01 tag) + serialized T
+  //   Fixed arrays have NO length prefix
+  // owner(32), recovery_wallets([Option<Pubkey>;3] = 3-99 bytes dynamic),
+  // last_heartbeat(8), interval_seconds(8), grace_period_seconds(8),
+  // awakened(1), awakened_at(Option<i64>=1or9), executed(1), executed_at(Option<i64>=1or9),
   // staked_ghost(8), bump(1), vault_bump(1), registered_at(8), ping_count(8),
   // beneficiary_count(1), beneficiaries([Beneficiary;10]=750),
-  // whole_vault_recipient(Option<Pubkey>=33), paused(1), pending_owner(Option<Pubkey>=33),
+  // whole_vault_recipient(Option<Pubkey>=1or33), paused(1), pending_owner(Option<Pubkey>=1or33),
   // whole_vault_action(1), display_name([u8;32]=32), image_uri([u8;128]=128)
   
   try {
     // owner: Pubkey (32 bytes)
     offset += 32;
-    // recovery_wallets: [Option<Pubkey>; 3]
-    // Anchor serializes fixed arrays with a u32 length prefix (4 bytes) + 3 slots x 33 bytes = 103 bytes
-    offset += 4; // u32 length prefix
+    // recovery_wallets: [Option<Pubkey>; 3] — NO length prefix (fixed array)
+    // Borsh: None = 1 byte, Some = 1 + 32 bytes
     const recoveryWallets = [];
     for (let _ri = 0; _ri < 3; _ri++) {
       const tag = bytes[offset]; offset += 1;
@@ -2678,10 +2680,10 @@ function parseGhostAccount(bytes) {
         let r = ''; let tmp = n;
         while (tmp > 0n) { const rem = tmp % 58n; r = B58[Number(rem)] + r; tmp = tmp / 58n; }
         recoveryWallets.push(r);
-        offset += 32;
+        offset += 32; // only advance 32 extra bytes for Some
       } else {
         recoveryWallets.push(null);
-        offset += 32; // fixed 33-byte slot, tag already consumed
+        // None = tag byte only, already consumed — no extra bytes
       }
     }
     // last_heartbeat: i64
@@ -2754,8 +2756,8 @@ function parseGhostAccount(bytes) {
       const amtRaw = view.getBigUint64(offset, true); offset += 8;
       const mintTag = bytes[offset]; offset += 1;
       let mintPk = null;
-      if (mintTag === 1) { mintPk = _bDecodePk(bytes.slice(offset, offset + 32)); }
-      offset += 32; // always advance 32 (Borsh fixed-size Option<Pubkey>)
+      if (mintTag === 1) { mintPk = _bDecodePk(bytes.slice(offset, offset + 32)); offset += 32; }
+      // None = tag only, no extra bytes
       const actionByte = bytes[offset]; offset += 1;
       const execByte = bytes[offset]; offset += 1;
       // Empty slot: no recipient AND no amount AND no mint
@@ -2809,13 +2811,14 @@ function parseGhostAccount(bytes) {
         offset += 32;
       }
       ghostState.ghost.wholeVaultRecipient = wholeVaultRecipient;
-      // v1.4: paused bool (1) + pending_owner Option<Pubkey> (33) come before whole_vault_action
+      // v1.4: paused bool (1) + pending_owner Option<Pubkey> come before whole_vault_action
+      // Borsh: Option None = tag only (1 byte), Some = tag + 32 bytes
       const _isV14 = bytes.length >= 1028;
       if (_isV14) {
         offset += 1; // paused bool
         const _poTag = bytes[offset]; offset += 1;
-        if (_poTag === 1) offset += 32; // pending_owner Some(Pubkey)
-        else offset += 32; // pending_owner None — still 32 bytes (Borsh fixed Option<Pubkey>)
+        if (_poTag === 1) offset += 32; // pending_owner Some(Pubkey) — advance 32 for pubkey
+        // pending_owner None = tag only, already consumed, no extra bytes
       }
       // v1.6: whole_vault_action u8 follows whole_vault_recipient (1 byte)
       const _isV16 = bytes.length >= 1060;
