@@ -2093,6 +2093,7 @@ function retryTokenData() {
 // ─── Unknown SPL token: price + logo ────────────────────────────
 const pumpFunFetched = new Set(); // logo fetched
 const priceFetched = new Set(); // price fetched
+const largestFetched = new Set(); // getTokenLargestAccounts already done
 const METAPLEX_PROGRAM = 'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s';
 
 // Pure-JS base58 decode
@@ -2352,7 +2353,9 @@ async function fetchPumpFunData() {
     // Works for any bonded token regardless of trading volume
     if (getTokenPrice(token) === 0) {
       try {
-        // Get the largest token accounts — pool vault holds the bulk of supply
+        // Get the largest token accounts — pool vault holds the bulk of supply (once per mint)
+        if (largestFetched.has(token.mint)) return;
+        largestFetched.add(token.mint);
         const largestRes = await rpcFetch({jsonrpc:'2.0',id:'lrg',method:'getTokenLargestAccounts',params:[token.mint]});
         const accounts = largestRes?.result?.value || [];
         console.log('[Ghost] Largest accounts for', token.symbol, ':', accounts.slice(0,3).map(a=>a.address.slice(0,8)+'='+a.uiAmountString));
@@ -3044,34 +3047,66 @@ async function _resolveAndShowSolDomain(addr, domainEl, updateName) {
     return false;
   };
 
-  // SNS: try SNS API cached endpoint first (perfect for UI, lags by a few minutes)
-  // GET https://sns-api.bonfida.workers.dev/v2/user/domains/:owner  <- primary + all domains
-  // Fallback: on-chain via Helius (two getAccountInfo calls)
+  const PROXY = 'https://sns-sdk-proxy.bonfida.workers.dev';
 
+  // ── Step 1: try on-chain primary domain pointer (ptrKey) via Helius ──
   try {
-    // SNS API: get user profile including primary domain
-    const apiRes = await fetch('https://sns-api.bonfida.workers.dev/v2/user/domains/' + addr);
-    if (apiRes.ok) {
-      const apiData = await apiRes.json();
-      console.log('[Ghost] SNS API response:', JSON.stringify(apiData)?.slice(0,200));
-      // Response has primaryDomain or primary field
-      const primary = apiData?.primaryDomain || apiData?.primary || apiData?.result?.primaryDomain;
-      if (tryShowDomain(primary)) return;
-    }
-  } catch(e) { console.warn('[Ghost] SNS API failed:', e.message); }
+    const { PublicKey } = solanaWeb3;
+    const programKey = new PublicKey('namesLPAXkSnS6VoK3M3AoUBYSbkTr3YUidbEMrCXLF');
+    const [centralState] = await PublicKey.findProgramAddress([programKey.toBytes()], programKey);
+    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('SPL Name Service' + addr));
+    const [ptrKey] = await PublicKey.findProgramAddress(
+      [new Uint8Array(hashBuf), new Uint8Array(32), centralState.toBytes()], programKey);
+    console.log('[Ghost] SNS ptrKey:', ptrKey.toString().slice(0,8));
 
+    const ptrData = await fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ jsonrpc:'2.0', id:'snsp', method:'getAccountInfo', params:[ptrKey.toString(), {encoding:'base64'}] }) }).then(r=>r.json());
+    const ptrB64 = ptrData?.result?.value?.data?.[0];
+
+    if (ptrB64) {
+      const ptrRaw = Uint8Array.from(atob(ptrB64), c => c.charCodeAt(0));
+      if (ptrRaw.length >= 128) {
+        const domainKey = new PublicKey(ptrRaw.slice(96, 128));
+        console.log('[Ghost] SNS domainKey:', domainKey.toString().slice(0,8));
+        const rl = await fetch(PROXY + '/reverse-lookup/' + domainKey.toString());
+        const rlData = await rl.json();
+        console.log('[Ghost] SNS primary reverse-lookup:', rlData?.result);
+        if (tryShowDomain(rlData?.result)) return;
+      }
+    } else {
+      console.log('[Ghost] SNS: no primary ptr on-chain, falling back to proxy /domains');
+    }
+  } catch(e) { console.warn('[Ghost] SNS on-chain primary failed:', e.message); }
+
+  // ── Step 2: fallback — get all owned domains, show first one ──
   try {
-    // Fallback: SNS all-primary cached endpoint — lookup by wallet key
-    const allRes = await fetch('https://sns-api.bonfida.workers.dev/v2/domains/all-primary');
-    if (allRes.ok) {
-      const allData = await allRes.json();
-      const entry = allData?.[addr];
-      console.log('[Ghost] SNS all-primary entry:', JSON.stringify(entry));
-      if (entry?.domain && tryShowDomain(entry.domain)) return;
-    }
-  } catch(e) { console.warn('[Ghost] SNS all-primary failed:', e.message); }
+    const domsRes = await fetch(PROXY + '/domains/' + addr);
+    if (!domsRes.ok) throw new Error('HTTP ' + domsRes.status);
+    const domsData = await domsRes.json();
+    console.log('[Ghost] SNS proxy /domains:', JSON.stringify(domsData)?.slice(0,300));
+    const items = Array.isArray(domsData?.result) ? domsData.result
+                : Array.isArray(domsData) ? domsData : [];
+    if (items.length === 0) throw new Error('no domains');
 
-  console.log('[Ghost] SNS: no primary domain for', addr.slice(0,8))
+    // If items have embedded names use the first
+    const withNames = items.filter(i => typeof i === 'object' && i.domain);
+    if (withNames.length > 0) {
+      console.log('[Ghost] SNS fallback (named):', withNames[0].domain);
+      if (tryShowDomain(withNames[0].domain)) return;
+    }
+
+    // Items are pubkeys — reverse-lookup each (max 5)
+    const pubkeys = items.slice(0, 5).map(i => typeof i === 'string' ? i : (i.key || i.pubkey)).filter(Boolean);
+    const names = await Promise.all(pubkeys.map(async pk => {
+      try { const r = await fetch(PROXY + '/reverse-lookup/' + pk); const d = await r.json(); return d?.result || null; }
+      catch { return null; }
+    }));
+    const valid = names.filter(Boolean);
+    console.log('[Ghost] SNS fallback reverse-lookups:', valid);
+    if (valid.length > 0 && tryShowDomain(valid[0])) return;
+  } catch(e) { console.warn('[Ghost] SNS proxy failed:', e.message); }
+
+  console.log('[Ghost] SNS: no domain for', addr.slice(0,8))
 }
 
 // ─── Copy wallet address ──────────────────────────────────────
