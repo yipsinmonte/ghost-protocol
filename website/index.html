@@ -2594,18 +2594,18 @@ function parseGhostAccount(bytes) {
   const view = new DataView(bytes.buffer);
   let offset = 8; // skip discriminator
 
-  // GhostAccount field order (matches lib.rs v1.5 exactly):
-  // owner(32), recovery_wallets([Option<Pubkey>;3]=99), last_heartbeat(i64=8),
+  // GhostAccount field order (matches lib.rs v1.5):
+  // owner(32), recovery_wallets([Option<Pubkey>;3]=variable), last_heartbeat(i64=8),
   // interval_seconds(i64=8), grace_period_seconds(i64=8),
   // awakened(bool=1), awakened_at(Option<i64>=9), executed(bool=1), executed_at(Option<i64>=9),
   // staked_ghost(u64=8), bump(u8=1), vault_bump(u8=1),
   // registered_at(i64=8), ping_count(u64=8), beneficiary_count(u8=1)
+  // NOTE: Borsh Option<T> is variable — None=1 byte, Some=1+32 bytes. Array is NOT fixed 99 bytes.
 
   try {
     // owner: Pubkey (32 bytes)
     offset += 32;
-    // recovery_wallets: [Option<Pubkey>; 3] — 3 slots × 33 bytes = 99 bytes fixed
-    // Each slot: 1-byte tag (0=None, 1=Some) + 32-byte pubkey if Some
+    // recovery_wallets: [Option<Pubkey>; 3] — variable length, loop 3 slots
     const _B58rv = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     const recoveryWalletPubkeys = [];
     for (let _ri = 0; _ri < 3; _ri++) {
@@ -2618,8 +2618,9 @@ function parseGhostAccount(bytes) {
         while (tmp > 0n) { const rem = tmp % 58n; r = _B58rv[Number(rem)] + r; tmp = tmp / 58n; }
         const pk = '1'.repeat(pkBytes.findIndex(b => b !== 0) === -1 ? 32 : Math.max(0, pkBytes.findIndex(b => b !== 0))) + r;
         recoveryWalletPubkeys.push(pk);
+        offset += 32;
       }
-      offset += 32; // always advance 32 bytes (tag already consumed above)
+      // None: only the 1-byte tag was consumed, don't advance further
     }
     // last_heartbeat: i64
     const lastBeat = Number(view.getBigInt64(offset, true));
@@ -2779,17 +2780,15 @@ function parseGhostAccount(bytes) {
     if (recoveryWalletPubkeys.length > 0) {
       const existing = ghostState.recoveryWallets.map(w => w.address);
       let changed = false;
-      // Merge: add any chain-derived wallets not already in local state
       for (const pk of recoveryWalletPubkeys) {
         if (!existing.includes(pk)) {
           ghostState.recoveryWallets.push({ address: pk, canWithdraw: false, slotIndex: recoveryWalletPubkeys.indexOf(pk) });
           changed = true;
         }
       }
-      // Remove any local wallets that are no longer on-chain
-      const original = ghostState.recoveryWallets.length;
+      const origLen = ghostState.recoveryWallets.length;
       ghostState.recoveryWallets = ghostState.recoveryWallets.filter(w => recoveryWalletPubkeys.includes(w.address));
-      if (ghostState.recoveryWallets.length !== original) changed = true;
+      if (ghostState.recoveryWallets.length !== origLen) changed = true;
       if (changed) renderRecoveryWallets();
     } else if (ghostState.recoveryWallets.length > 0) {
       ghostState.recoveryWallets = [];
@@ -3005,32 +3004,34 @@ async function initializeGhost() {
     // Anchor discriminator: sha256("global:initialize_ghost")[0:8]
     const discriminator = [51, 255, 136, 226, 138, 175, 174, 211];
 
-    // Args match lib.rs v1.5 fn signature exactly:
+    // Args match lib.rs v1.5 fn signature:
     // initialize_ghost(interval_seconds: i64, grace_period_seconds: i64, recovery_wallets: [Option<Pubkey>; 3], stake_amount: u64)
-    // recovery_wallets: 3 × Option<Pubkey> = 3 × 33 bytes = 99 bytes fixed
+    // Borsh [Option<Pubkey>; 3]: variable length — None=1 byte, Some=33 bytes per slot
     const stakeRaw = BigInt(stakeAmt) * BigInt(1_000_000);
     console.log('[Ghost] stakeAmt:', stakeAmt, 'stakeRaw:', stakeRaw.toString());
 
-    // Encode recovery_wallets: 3 fixed-size Option<Pubkey> slots
-    // Slot: [0x00] if None, [0x01] + 32 bytes if Some
-    const recoveryBytes = new Uint8Array(99); // 3 × 33
+    // Build recovery_wallets bytes: 3 slots, each None(1) or Some(33)
+    const _rvParts = [];
     for (let _ri = 0; _ri < 3; _ri++) {
       const w = ghostState.recoveryWallets?.[_ri]?.address || null;
-      const slotOff = _ri * 33;
       if (w) {
-        recoveryBytes[slotOff] = 1;
-        recoveryBytes.set(new PublicKey(w).toBytes(), slotOff + 1);
+        const slot = new Uint8Array(33); slot[0] = 1; slot.set(new PublicKey(w).toBytes(), 1);
+        _rvParts.push(slot);
+      } else {
+        _rvParts.push(new Uint8Array([0]));
       }
-      // else byte stays 0 (None)
     }
+    const recoveryBytes = new Uint8Array(_rvParts.reduce((s, p) => s + p.length, 0));
+    let _rvOff = 0; for (const p of _rvParts) { recoveryBytes.set(p, _rvOff); _rvOff += p.length; }
+    const recoverySize = recoveryBytes.length; // 3–99 bytes depending on slots filled
 
-    // Pack args: interval(i64=8) + grace(i64=8) + recovery_wallets(99) + stake(u64=8)
-    const buf = new ArrayBuffer(8 + 8 + 99 + 8);
+    // Pack args: interval(i64=8) + grace(i64=8) + recovery_wallets(variable) + stake(u64=8)
+    const buf = new ArrayBuffer(8 + 8 + recoverySize + 8);
     const dv = new DataView(buf);
     dv.setBigInt64(0, BigInt(intervalDays * 86400), true);
     dv.setBigInt64(8, BigInt(graceDays * 86400), true);
     new Uint8Array(buf).set(recoveryBytes, 16);
-    dv.setBigUint64(16 + 99, stakeRaw, true);
+    dv.setBigUint64(16 + recoverySize, stakeRaw, true);
 
     const data = new Uint8Array(8 + buf.byteLength);
     data.set(discriminator, 0);
@@ -4374,8 +4375,8 @@ async function dbLookupSoul() {
     const view = new DataView(bytes.buffer);
     
     let offset = 8 + 32; // skip discriminator + owner
-    // recovery_wallets: [Option<Pubkey>; 3] — 3 × 33 bytes = 99 bytes fixed (v1.5)
-    offset += 99;
+    // recovery_wallets: [Option<Pubkey>; 3] — variable Borsh, loop 3 slots (v1.5)
+    for (let _ri = 0; _ri < 3; _ri++) { const _rt = bytes[offset]; offset += 1; if (_rt === 1) offset += 32; }
     const lastBeat = Number(view.getBigInt64(offset, true)); offset += 8;
     const interval = Number(view.getBigInt64(offset, true)); offset += 8;
     const grace = Number(view.getBigInt64(offset, true)); offset += 8;
@@ -4515,27 +4516,36 @@ async function scanGuardianAssignments() {
     const myPk = new PublicKey(ghostState.publicKey);
     const myBytes = myPk.toBytes();
 
-    // getProgramAccounts with memcmp filters:
-    // GhostAccount layout after 8-byte discriminator (v1.5):
-    // owner(32), recovery_wallets([Option<Pubkey>;3]=99)
-    // Each slot: 1-byte tag + 32-byte pubkey. Offsets for pubkeys:
-    //   slot 0 pubkey: off 8+32+1 = 41
-    //   slot 1 pubkey: off 8+32+34 = 74
-    //   slot 2 pubkey: off 8+32+67 = 107
-    // We run 3 separate queries and deduplicate.
-    const slotOffsets = [41, 74, 107];
-    const allAccounts = [];
-    for (const slotOff of slotOffsets) {
-      const results = await connection.getProgramAccounts(programId, {
-        filters: [
-          { memcmp: { offset: slotOff, bytes: myPk.toBase58() } }
-        ]
-      });
-      for (const r of results) {
-        if (!allAccounts.find(a => a.pubkey.equals(r.pubkey))) allAccounts.push(r);
+    // getProgramAccounts — scan all 3 recovery wallet slots (v1.5)
+    // Slot 0 pubkey starts at: 8(disc)+32(owner)+1(tag0) = 41
+    // Slot 1 pubkey: slot0 is Some(33) → 41+32=73, +1(tag1)=74; or None(1) → 41+1(tag1)=42... variable
+    // Since slots are variable we can't use fixed memcmp for slots 1+2 reliably.
+    // Safe approach: fetch all program accounts and decode in JS, or use slot-0 offset
+    // and supplement with a broader scan. For now use slot-0 memcmp (covers most cases)
+    // plus a full scan fallback filtered client-side.
+    const _slot0Accounts = await connection.getProgramAccounts(programId, {
+      filters: [ { memcmp: { offset: 41, bytes: myPk.toBase58() } } ]
+    });
+    // Full scan for slots 1 & 2: getProgramAccounts without memcmp, filter client-side
+    // (only viable on devnet/small programs; on mainnet use an indexer)
+    let accounts = _slot0Accounts;
+    try {
+      const _allAccounts = await connection.getProgramAccounts(programId, { filters: [{ dataSize: 1059 }] });
+      const _myBytes = myPk.toBytes();
+      for (const a of _allAccounts) {
+        if (_slot0Accounts.find(s => s.pubkey.equals(a.pubkey))) continue; // already have it
+        const _b = new Uint8Array(a.account.data);
+        // Walk all 3 slots looking for our key
+        let _o = 8 + 32;
+        for (let _ri = 0; _ri < 3; _ri++) {
+          const _t = _b[_o]; _o++;
+          if (_t === 1) {
+            if (_myBytes.every((x, i) => x === _b[_o + i])) { accounts = [...accounts, a]; break; }
+            _o += 32;
+          }
+        }
       }
-    }
-    const accounts = allAccounts;
+    } catch(_scanErr) { /* non-fatal — slot-0 results still used */ }
 
     if (accounts.length === 0) {
       statusEl.textContent = '— No guardian assignments found for this wallet';
@@ -4559,8 +4569,8 @@ async function scanGuardianAssignments() {
         let n = 0n; for (const b of ownerBytes) n = n*256n+BigInt(b);
         let ownerB58 = ''; let tmp = n;
         while(tmp>0n){ownerB58=B58[Number(tmp%58n)]+ownerB58;tmp=tmp/58n;}
-        // skip recovery_wallets [Option<Pubkey>; 3] = 99 bytes (v1.5)
-        off += 99;
+        // skip recovery_wallets [Option<Pubkey>; 3] — variable Borsh (v1.5)
+        for (let _ri = 0; _ri < 3; _ri++) { const _rt = bytes[off]; off++; if (_rt === 1) off += 32; }
         // last_heartbeat, interval, grace
         const lastBeat = Number(view.getBigInt64(off,true)); off+=8;
         const interval = Number(view.getBigInt64(off,true)); off+=8;
@@ -4934,20 +4944,18 @@ async function checkIfRecoveryWallet() {
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const acct = await connection.getAccountInfo(ghostPda);
     if (!acct) { showNotif('No ghost found for that address', 'error'); return; }
+    // Decode to verify connected wallet is one of the 3 recovery wallet slots (v1.5)
     const bytes = new Uint8Array(acct.data);
     const view = new DataView(bytes.buffer);
-    // Decode recovery_wallets [Option<Pubkey>; 3] = 99 bytes (v1.5)
-    // Check all 3 slots for the connected wallet
     let off = 8 + 32; // skip disc + owner
     const connectedBytes = new PublicKey(ghostState.publicKey).toBytes();
     let guardianSlot = -1;
     for (let _ri = 0; _ri < 3; _ri++) {
       const rTag = bytes[off]; off++;
       if (rTag === 1) {
-        const pkBytes = bytes.slice(off, off + 32);
-        if (pkBytes.every((b, i) => b === connectedBytes[i])) guardianSlot = _ri;
+        if (bytes.slice(off, off + 32).every((b, i) => b === connectedBytes[i])) guardianSlot = _ri;
+        off += 32;
       }
-      off += 32;
     }
     if (guardianSlot === -1) { showNotif('Your wallet is not a recovery wallet for this ghost', 'error'); return; }
     // Set recovery mode — store owner so cancelAwakening uses correct PDA
@@ -5808,11 +5816,11 @@ async function dbAddRecoveryWallet() {
 
     // Discriminator: sha256("global:update_recovery_wallet")[0:8]
     const disc = [17, 163, 88, 154, 97, 78, 169, 93];
-    // Args: index(u8=1) + wallet(Option<Pubkey>=33) = 34 bytes total
+    // Args: index(u8=1) + wallet(Option<Pubkey>: Some=33 bytes)
     const data = new Uint8Array(8 + 1 + 33);
     data.set(disc, 0);
-    data[8] = slotIndex; // index: u8
-    data[9] = 1;         // Some
+    data[8] = slotIndex;
+    data[9] = 1; // Some
     data.set(new PublicKey(addr).toBytes(), 10);
 
     const ix = new TransactionInstruction({
@@ -5865,11 +5873,11 @@ async function dbRemoveRecoveryWallet(idx) {
     const programId = new PublicKey(PROGRAM_ID);
 
     const disc = [17, 163, 88, 154, 97, 78, 169, 93];
-    // Args: index(u8=1) + wallet(Option<Pubkey>=None=1byte) = 2 bytes
+    // Args: index(u8=1) + wallet(Option<Pubkey>: None=1 byte)
     const data = new Uint8Array(8 + 2);
     data.set(disc, 0);
-    data[8] = slotIndex; // index: u8
-    data[9] = 0;         // None
+    data[8] = slotIndex;
+    data[9] = 0; // None
 
     const ix = new TransactionInstruction({
       programId,
