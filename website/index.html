@@ -2481,6 +2481,10 @@ const GHOST_DISC_LABELS = {
   '100a01cae999e4b4': '\u274C Guardian removed beneficiary',
   'eb374480b1fbb34b': '\u{1F5D1} Guardian cleared all beneficiaries',
   '62419b9a15df8b60': '\u{1F6D1} Guardian cancelled & cleared',
+  // v1.7 instructions
+  '2449c74f69af7e35': '\u{1F464} Ghost name / profile updated',
+  '0067cb5e88e55731': '\u2699\uFE0F Heartbeat interval updated',
+  '074c82ba565d4286': '\u2699\uFE0F Grace period updated',
 };
 // Discriminators that indicate a guardian action (for angel icon tagging)
 const GUARDIAN_DISCS = new Set([
@@ -2615,7 +2619,7 @@ async function fetchOnChainHistory() {
       if (!s) continue;
       const ts=((tx?.blockTime||s.blockTime)||0)*1000;
       if (!ts) continue;
-      let label=labelFromTx(tx)||'\u{1F4CB} On-chain action';
+      let label=labelFromTx(tx)||'\u{1F4CB} Ghost interaction';
       // Check if this tx contains a guardian withdrawal disc
       let rowIcon = null;
       try {
@@ -3030,17 +3034,36 @@ function updateWalletIdentity() {
 function _resolveAndShowSolDomain(addr, domainEl, updateName) {
   if (_walletIdentityAddr === addr && !updateName) return;
   _walletIdentityAddr = addr;
+  // Try Bonfida SNS proxy first, fall back to AllDomains API
+  const tryShowDomain = (domain) => {
+    if (domain && typeof domain === 'string' && domain.length > 0 && !domain.includes(' ')) {
+      if (domainEl && updateName) domainEl.textContent = domain + '.sol';
+      const badge = document.getElementById('dbSolBadge');
+      if (badge) badge.style.display = 'block';
+      return true;
+    }
+    return false;
+  };
   fetch('https://sns-sdk-proxy.bonfida.workers.dev/reverse-lookup/' + addr)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
-      const domain = data?.result;
-      // Validate domain is a real non-empty string (not an error object or null)
-      if (domain && typeof domain === 'string' && domain.length > 0) {
-        if (domainEl && updateName) domainEl.textContent = domain + '.sol';
-        const badge = document.getElementById('dbSolBadge');
-        if (badge) badge.style.display = 'block';
-      }
-    }).catch(() => {});
+      if (tryShowDomain(data?.result)) return;
+      // Fallback: AllDomains API
+      return fetch('https://api.alldomains.id/v1/reverse/' + addr)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          const dom = d?.domain || d?.name || d?.result;
+          tryShowDomain(dom);
+        }).catch(() => {});
+    }).catch(() => {
+      // Primary failed — try fallback directly
+      fetch('https://api.alldomains.id/v1/reverse/' + addr)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          const dom = d?.domain || d?.name || d?.result;
+          tryShowDomain(dom);
+        }).catch(() => {});
+    });
 }
 
 // ─── Copy wallet address ──────────────────────────────────────
