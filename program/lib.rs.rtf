@@ -4,17 +4,21 @@ use anchor_spl::token_interface::{self, Burn, TokenAccount, TokenInterface, Tran
 declare_id!("3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3");
 
 // ─────────────────────────────────────────────────────────────
-//  GHOST Protocol v1.5
-//  Changes from v1.4:
-//    - recovery_wallet: Option<Pubkey> → recovery_wallets: [Option<Pubkey>; 3]
-//    - initialize_ghost: accepts recovery_wallets: [Option<Pubkey>; 3]
-//    - update_recovery_wallet: now takes (index: u8, wallet: Option<Pubkey>) to
-//      set or clear a single slot (0–2)
-//    - All guardian auth checks updated to search the full array
-//    - cancel_awakening: any of the 3 wallets can cancel
-//    - GuardianManageBeneficiaries, RecoveryWithdraw: check array membership
-//    - GhostRegistered event: recovery_wallets field (array)
-//    - RecoveryWithdrawal event: recovery_wallet field unchanged (signer key)
+//  GHOST Protocol v1.7
+//  Changes from v1.6:
+//    - display_name: [u8; 32] field added to GhostAccount (UTF-8, null-padded)
+//    - image_uri: [u8; 128] field added to GhostAccount (IPFS/Arweave/HTTPS pointer)
+//    - set_ghost_profile(name: [u8; 32], image_uri: [u8; 128]) instruction added
+//    - GHOST_ACCOUNT_SPACE bumped 1060 → 1220
+//
+//  Changes from v1.5 (in v1.6):
+//    - whole_vault_action: u8 field added to GhostAccount (0=Transfer, 1=Burn)
+//    - set_whole_vault_recipient / guardian_set_whole_vault_recipient: action: u8 param added
+//    - execute_transfer: generic token_mint, action==0 guard, mint validation
+//    - execute_burn: new instruction — burns vault token for action==1 beneficiary
+//    - execute_whole_vault_transfer / execute_whole_vault_burn: new instructions
+//    - NotABurnBeneficiary, NotATransferBeneficiary, WrongMint errors added
+//    - GHOST_ACCOUNT_SPACE bumped 1059 → 1060
 //    - GHOST_ACCOUNT_SPACE bumped to 8 + 1019 + 32 = 1059
 //      (replaces 33-byte single Option<Pubkey> with 99-byte [Option<Pubkey>; 3])
 //    - New error: InvalidRecoveryWalletIndex
@@ -49,8 +53,11 @@ pub const BURN_ON_ABANDON_BPS: u64 = 5_000;
 //  off 960: whole_vault_recipient Option<Pubkey> (33) — ends at 993
 //  off 993: paused bool (1) — ends at 994
 //  off 994: pending_owner Option<Pubkey> (33) — ends at 1027
-//  GHOST_ACCOUNT_SPACE = 8 + 1019 + 32 headroom = 1059
-pub const GHOST_ACCOUNT_SPACE: usize = 1059;
+//  off 1027: whole_vault_action u8 (1) — ends at 1028  ← v1.6
+//  off 1028: display_name [u8; 32] (32) — ends at 1060  ← v1.7
+//  off 1060: image_uri [u8; 128] (128) — ends at 1188  ← v1.7
+//  struct total: 1188 bytes | GHOST_ACCOUNT_SPACE = 1220 (32 bytes headroom)
+pub const GHOST_ACCOUNT_SPACE: usize = 1220;
 
 // ─── HELPER ───────────────────────────────────────────────────
 
@@ -96,6 +103,9 @@ pub mod ghost_protocol {
         ghost.registered_at = clock.unix_timestamp;
         ghost.ping_count = 0;
         ghost.beneficiary_count = 0;
+        ghost.whole_vault_action = 0; // default: Transfer
+        ghost.display_name = [0u8; 32];
+        ghost.image_uri = [0u8; 128];
         ghost.whole_vault_recipient = None;
         ghost.paused = false;
         ghost.pending_owner = None;
@@ -289,6 +299,7 @@ pub mod ghost_protocol {
     pub fn guardian_set_whole_vault_recipient(
         ctx: Context<GuardianManageBeneficiaries>,
         recipient: Option<Pubkey>,
+        action: u8,
     ) -> Result<()> {
         let ghost = &mut ctx.accounts.ghost;
 
@@ -300,6 +311,7 @@ pub mod ghost_protocol {
 
         let previous = ghost.whole_vault_recipient;
         ghost.whole_vault_recipient = recipient;
+        ghost.whole_vault_action = if recipient.is_some() { action } else { 0 };
 
         emit!(WholeVaultRecipientSet {
             soul: ghost.owner,
@@ -307,7 +319,7 @@ pub mod ghost_protocol {
             cleared: recipient.is_none(),
             previous,
         });
-        msg!("Guardian updated whole vault recipient");
+        msg!("Guardian updated whole vault recipient — action: {}", action);
         Ok(())
     }
 
@@ -318,6 +330,7 @@ pub mod ghost_protocol {
     pub fn set_whole_vault_recipient(
         ctx: Context<UpdateSettings>,
         recipient: Option<Pubkey>,
+        action: u8,
     ) -> Result<()> {
         let ghost = &mut ctx.accounts.ghost;
         require!(!ghost.awakened, GhostError::GhostAlreadyAwakened);
@@ -325,6 +338,7 @@ pub mod ghost_protocol {
 
         let previous = ghost.whole_vault_recipient;
         ghost.whole_vault_recipient = recipient;
+        ghost.whole_vault_action = if recipient.is_some() { action } else { 0 };
 
         emit!(WholeVaultRecipientSet {
             soul: ghost.owner,
@@ -332,7 +346,26 @@ pub mod ghost_protocol {
             cleared: recipient.is_none(),
             previous,
         });
-        msg!("Whole vault recipient updated");
+        msg!("Whole vault recipient updated — action: {}", action);
+        Ok(())
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // PROFILE METADATA (owner)
+    // ─────────────────────────────────────────────────────────
+
+    /// Set display name and/or image URI for this ghost.
+    /// Pass zeroed arrays to clear. Name is UTF-8, null-padded to 32 bytes.
+    /// Image URI is null-padded to 128 bytes (IPFS CID, Arweave TX ID, or HTTPS URL).
+    pub fn set_ghost_profile(
+        ctx: Context<UpdateSettings>,
+        display_name: [u8; 32],
+        image_uri: [u8; 128],
+    ) -> Result<()> {
+        let ghost = &mut ctx.accounts.ghost;
+        ghost.display_name = display_name;
+        ghost.image_uri = image_uri;
+        msg!("Ghost profile updated");
         Ok(())
     }
 
@@ -559,7 +592,13 @@ pub mod ghost_protocol {
 
         let beneficiary = ctx.accounts.ghost.beneficiaries[beneficiary_index as usize];
         require!(!beneficiary.executed, GhostError::BeneficiaryAlreadyPaid);
+        require!(beneficiary.action == 0, GhostError::NotATransferBeneficiary);
         require!(beneficiary.recipient == ctx.accounts.recipient.key(), GhostError::WrongRecipient);
+        // Verify the caller passed the correct mint for this beneficiary
+        require!(
+            Some(ctx.accounts.token_mint.key()) == beneficiary.token_mint,
+            GhostError::WrongMint
+        );
 
         let owner = ctx.accounts.ghost.owner;
         let vault_bump = ctx.accounts.ghost.vault_bump;
@@ -572,15 +611,145 @@ pub mod ghost_protocol {
                 from: ctx.accounts.vault_token_account.to_account_info(),
                 to: ctx.accounts.recipient_token_account.to_account_info(),
                 authority: ctx.accounts.vault.to_account_info(),
-                mint: ctx.accounts.ghost_mint.to_account_info(),
+                mint: ctx.accounts.token_mint.to_account_info(),
             },
             signer_seeds,
         );
-        token_interface::transfer_checked(cpi_ctx, beneficiary.amount, ctx.accounts.ghost_mint.decimals)?;
+        token_interface::transfer_checked(cpi_ctx, beneficiary.amount, ctx.accounts.token_mint.decimals)?;
 
         ctx.accounts.ghost.beneficiaries[beneficiary_index as usize].executed = true;
         emit!(TransferExecuted { soul: owner, recipient: beneficiary.recipient, amount: beneficiary.amount });
         msg!("Transferred {} to {}", beneficiary.amount, beneficiary.recipient);
+        Ok(())
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // EXECUTE BURN
+    // ─────────────────────────────────────────────────────────
+
+    /// Execute a burn beneficiary: burns SPL tokens from the vault.
+    /// Only callable after the ghost has been executed (grace period expired).
+    /// The beneficiary must have action == 1 (Burn).
+    pub fn execute_burn(ctx: Context<ExecuteBurn>, beneficiary_index: u8) -> Result<()> {
+        require!(ctx.accounts.ghost.executed, GhostError::GhostNotExecuted);
+        require!(
+            (beneficiary_index as usize) < ctx.accounts.ghost.beneficiary_count as usize,
+            GhostError::InvalidBeneficiary
+        );
+
+        let beneficiary = ctx.accounts.ghost.beneficiaries[beneficiary_index as usize];
+        require!(!beneficiary.executed, GhostError::BeneficiaryAlreadyPaid);
+        require!(beneficiary.action == 1, GhostError::NotABurnBeneficiary);
+        // Verify the caller passed the correct mint for this beneficiary
+        require!(
+            Some(ctx.accounts.mint.key()) == beneficiary.token_mint,
+            GhostError::WrongMint
+        );
+
+        let owner = ctx.accounts.ghost.owner;
+        let vault_bump = ctx.accounts.ghost.vault_bump;
+        let seeds = &[VAULT_SEED, owner.as_ref(), &[vault_bump]];
+        let signer_seeds = &[&seeds[..]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            Burn {
+                mint: ctx.accounts.mint.to_account_info(),
+                from: ctx.accounts.vault_token_account.to_account_info(),
+                authority: ctx.accounts.vault.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token_interface::burn(cpi_ctx, beneficiary.amount)?;
+
+        ctx.accounts.ghost.beneficiaries[beneficiary_index as usize].executed = true;
+        emit!(BurnExecuted {
+            soul: owner,
+            mint: ctx.accounts.mint.key(),
+            amount: beneficiary.amount,
+        });
+        msg!("Burned {} tokens from vault", beneficiary.amount);
+        Ok(())
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // WHOLE VAULT EXECUTION
+    // ─────────────────────────────────────────────────────────
+
+    /// Execute whole-vault transfer: moves the entire balance of one token
+    /// from the vault to whole_vault_recipient.
+    /// Call once per token type held in vault after execute_legacy.
+    /// action == 0 (Transfer) only; for burns use execute_whole_vault_burn.
+    pub fn execute_whole_vault_transfer(ctx: Context<ExecuteWholeVaultTransfer>) -> Result<()> {
+        require!(ctx.accounts.ghost.executed, GhostError::GhostNotExecuted);
+        require!(ctx.accounts.ghost.whole_vault_action == 0, GhostError::NotATransferBeneficiary);
+        require!(ctx.accounts.ghost.whole_vault_recipient.is_some(), GhostError::InvalidBeneficiary);
+        require!(
+            ctx.accounts.ghost.whole_vault_recipient.unwrap() == ctx.accounts.recipient.key(),
+            GhostError::WrongRecipient
+        );
+
+        let amount = ctx.accounts.vault_token_account.amount;
+        require!(amount > 0, GhostError::Overflow); // nothing to transfer
+
+        let owner = ctx.accounts.ghost.owner;
+        let vault_bump = ctx.accounts.ghost.vault_bump;
+        let seeds = &[VAULT_SEED, owner.as_ref(), &[vault_bump]];
+        let signer_seeds = &[&seeds[..]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.vault_token_account.to_account_info(),
+                to: ctx.accounts.recipient_token_account.to_account_info(),
+                authority: ctx.accounts.vault.to_account_info(),
+                mint: ctx.accounts.token_mint.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token_interface::transfer_checked(cpi_ctx, amount, ctx.accounts.token_mint.decimals)?;
+
+        emit!(TransferExecuted {
+            soul: owner,
+            recipient: ctx.accounts.recipient.key(),
+            amount,
+        });
+        msg!("Whole vault transfer: {} of mint {} to {}", amount, ctx.accounts.token_mint.key(), ctx.accounts.recipient.key());
+        Ok(())
+    }
+
+    /// Execute whole-vault burn: burns the entire balance of one token from the vault.
+    /// Call once per token type held in vault after execute_legacy.
+    /// action == 1 (Burn) only.
+    pub fn execute_whole_vault_burn(ctx: Context<ExecuteWholeVaultBurn>) -> Result<()> {
+        require!(ctx.accounts.ghost.executed, GhostError::GhostNotExecuted);
+        require!(ctx.accounts.ghost.whole_vault_action == 1, GhostError::NotABurnBeneficiary);
+
+        let amount = ctx.accounts.vault_token_account.amount;
+        require!(amount > 0, GhostError::Overflow); // nothing to burn
+
+        let owner = ctx.accounts.ghost.owner;
+        let vault_bump = ctx.accounts.ghost.vault_bump;
+        let seeds = &[VAULT_SEED, owner.as_ref(), &[vault_bump]];
+        let signer_seeds = &[&seeds[..]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            Burn {
+                mint: ctx.accounts.token_mint.to_account_info(),
+                from: ctx.accounts.vault_token_account.to_account_info(),
+                authority: ctx.accounts.vault.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token_interface::burn(cpi_ctx, amount)?;
+
+        emit!(BurnExecuted {
+            soul: owner,
+            mint: ctx.accounts.token_mint.key(),
+            amount,
+        });
+        msg!("Whole vault burn: {} of mint {}", amount, ctx.accounts.token_mint.key());
         Ok(())
     }
 
@@ -750,6 +919,11 @@ pub struct GhostAccount {
     pub paused: bool,
     pub pending_owner: Option<Pubkey>,
     // v1.5: recovery_wallets array replaces single recovery_wallet (see offset table above)
+    // v1.6: whole_vault_action u8 — 0=Transfer, 1=Burn (default 0)
+    pub whole_vault_action: u8,
+    // v1.7: profile metadata
+    pub display_name: [u8; 32],   // UTF-8, null-padded. Empty = not set.
+    pub image_uri: [u8; 128],     // IPFS/Arweave/HTTPS URL, null-padded. Empty = not set.
 }
 
 // ─── CONTEXTS ─────────────────────────────────────────────────
@@ -864,13 +1038,70 @@ pub struct ExecuteTransfer<'info> {
     /// CHECK: Vault PDA authority
     #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
     pub vault: UncheckedAccount<'info>,
-    pub ghost_mint: InterfaceAccount<'info, Mint>,
-    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    /// The token mint for this beneficiary — must match beneficiary.token_mint (validated in instruction)
+    #[account(mut)]
+    pub token_mint: InterfaceAccount<'info, Mint>,
+    /// Vault's token account for this mint
+    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
     pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
-    /// CHECK: validated against beneficiary list inside instruction
+    /// CHECK: validated against beneficiary.recipient inside instruction
     pub recipient: UncheckedAccount<'info>,
-    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    /// Recipient's token account for this mint
+    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
     pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub caller: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteWholeVaultTransfer<'info> {
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump)]
+    pub ghost: Account<'info, GhostAccount>,
+    /// CHECK: Vault PDA authority
+    #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
+    pub vault: UncheckedAccount<'info>,
+    /// The token mint to transfer
+    #[account(mut)]
+    pub token_mint: InterfaceAccount<'info, Mint>,
+    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
+    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
+    /// CHECK: validated against ghost.whole_vault_recipient inside instruction
+    pub recipient: UncheckedAccount<'info>,
+    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
+    pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub caller: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteWholeVaultBurn<'info> {
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump)]
+    pub ghost: Account<'info, GhostAccount>,
+    /// CHECK: Vault PDA authority
+    #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
+    pub vault: UncheckedAccount<'info>,
+    /// The token mint to burn
+    #[account(mut)]
+    pub token_mint: InterfaceAccount<'info, Mint>,
+    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
+    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub caller: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteBurn<'info> {
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump)]
+    pub ghost: Account<'info, GhostAccount>,
+    /// CHECK: Vault PDA authority — signs the burn CPI
+    #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
+    pub vault: UncheckedAccount<'info>,
+    /// The mint of the token to burn. Must match the beneficiary's token_mint.
+    #[account(mut)]
+    pub mint: InterfaceAccount<'info, Mint>,
+    /// Vault token account holding the tokens to burn.
+    #[account(mut, token::mint = mint, token::token_program = token_program)]
+    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
     pub caller: Signer<'info>,
 }
@@ -971,6 +1202,13 @@ pub struct AbandonGhost<'info> {
 
 // ─── ERRORS ───────────────────────────────────────────────────
 
+#[event]
+pub struct BurnExecuted {
+    pub soul: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+}
+
 #[error_code]
 pub enum GhostError {
     #[msg("Insufficient $GHOST staked. Minimum 10,000 $GHOST required.")] InsufficientStake,
@@ -995,4 +1233,8 @@ pub enum GhostError {
     #[msg("No pending ownership transfer. Call transfer_ownership first.")] NoPendingOwnerTransfer,
     // v1.5
     #[msg("Invalid recovery wallet index. Must be 0, 1, or 2.")] InvalidRecoveryWalletIndex,
+    // v1.6
+    #[msg("Beneficiary action is not Burn (action must be 1).")] NotABurnBeneficiary,
+    #[msg("Beneficiary action is not Transfer (action must be 0).")] NotATransferBeneficiary,
+    #[msg("Wrong token mint — does not match beneficiary.token_mint.")] WrongMint,
 }
