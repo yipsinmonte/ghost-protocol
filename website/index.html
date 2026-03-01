@@ -3241,25 +3241,29 @@ async function initializeGhost() {
     const discriminator = [51, 255, 136, 226, 138, 175, 174, 211];
 
     // Args match lib.rs fn signature exactly:
-    // initialize_ghost(interval_seconds: i64, grace_period_seconds: i64, recovery_wallet: Option<Pubkey>, stake_amount: u64)
+    // initialize_ghost(interval_seconds: i64, grace_period_seconds: i64, recovery_wallets: [Option<Pubkey>; 3], stake_amount: u64)
     // stake_amount in base units (6 decimals): UI value × 1_000_000
     const stakeRaw = BigInt(stakeAmt) * BigInt(1_000_000);
     console.log('[Ghost] stakeAmt:', stakeAmt, 'stakeRaw:', stakeRaw.toString());
-    const recoveryWallet = ghostState.recoveryWallets?.[0]?.address || null;
 
-    // Borsh Option<Pubkey>: None = [0x00] (1 byte), Some = [0x01] + 32 bytes
-    const recoveryBytes = recoveryWallet
-      ? (() => { const b = new Uint8Array(33); b[0] = 1; b.set(new PublicKey(recoveryWallet).toBytes(), 1); return b; })()
-      : new Uint8Array([0]);
+    // Borsh [Option<Pubkey>; 3] = exactly 99 bytes (3 slots × 33 bytes each)
+    // Each slot: None = [0x00] + 32 zero bytes, Some = [0x01] + pubkey[32]
+    const recoveryBytes = new Uint8Array(99); // all zeros = [None, None, None]
+    for (let _si = 0; _si < 3; _si++) {
+      const _w = ghostState.recoveryWallets?.[_si]?.address || null;
+      if (_w) {
+        recoveryBytes[_si * 33] = 1; // Some tag
+        recoveryBytes.set(new PublicKey(_w).toBytes(), _si * 33 + 1);
+      }
+    }
 
-    // Pack args: interval(i64=8) + grace(i64=8) + recovery(1 or 33) + stake(u64=8)
-    const recoverySize = recoveryBytes.length; // 1 if None, 33 if Some
-    const buf = new ArrayBuffer(8 + 8 + recoverySize + 8);
+    // Pack args: interval(i64=8) + grace(i64=8) + recovery_wallets(99) + stake(u64=8) = 123 bytes
+    const buf = new ArrayBuffer(8 + 8 + 99 + 8);
     const dv = new DataView(buf);
     dv.setBigInt64(0, BigInt(intervalDays * 86400), true);
     dv.setBigInt64(8, BigInt(graceDays * 86400), true);
     new Uint8Array(buf).set(recoveryBytes, 16);
-    dv.setBigUint64(16 + recoverySize, stakeRaw, true);
+    dv.setBigUint64(115, stakeRaw, true); // offset 16 + 99 = 115
 
     const data = new Uint8Array(8 + buf.byteLength);
     data.set(discriminator, 0);
