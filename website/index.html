@@ -635,8 +635,8 @@
     solanaWeb3 = window.solanaWeb3;
     console.log('Solana web3.js loaded:', !!solanaWeb3);
     // Retry token metadata fetch now that we have proper PDA derivation
-    pumpFunFetched.clear();
-    setTimeout(fetchPumpFunData, 500);
+    // Defer — pumpFunFetched is declared in a later script block
+    setTimeout(function() { pumpFunFetched.clear(); fetchPumpFunData(); }, 500);
   };
   web3Script.onerror = function() {
     console.warn('Solana web3.js failed to load - demo mode only');
@@ -3102,9 +3102,11 @@ async function _resolveAndShowSolDomain(addr, domainEl, updateName) {
   };
 
   if (solanaWeb3?.PublicKey) {
+    console.log('[Ghost] SNS: trying direct RPC for', addr.slice(0,8) + '...');
     const found = await tryRPC();
-    if (!found) tryRest();
+    if (!found) { console.log('[Ghost] SNS RPC miss, trying REST'); tryRest(); }
   } else {
+    console.log('[Ghost] SNS: web3 not ready, using REST');
     tryRest();
   }
 }
