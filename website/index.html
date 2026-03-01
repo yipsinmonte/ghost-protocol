@@ -3247,33 +3247,19 @@ async function initializeGhost() {
     // Anchor discriminator: sha256("global:initialize_ghost")[0:8]
     const discriminator = [51, 255, 136, 226, 138, 175, 174, 211];
 
-    // Args match lib.rs fn signature exactly:
-    // initialize_ghost(interval_seconds: i64, grace_period_seconds: i64, recovery_wallets: [Option<Pubkey>; 3], stake_amount: u64)
-    // stake_amount in base units (6 decimals): UI value × 1_000_000
+    // Args match lib.rs v1.7b fn signature:
+    // initialize_ghost(interval_seconds: i64, grace_period_seconds: i64, stake_amount: u64)
+    // recovery_wallets removed from init — set post-init via update_recovery_wallet
     const stakeRaw = BigInt(stakeAmt) * BigInt(1_000_000);
     console.log('[Ghost] stakeAmt:', stakeAmt, 'stakeRaw:', stakeRaw.toString());
 
-    // Borsh [Option<Pubkey>; 3] = exactly 99 bytes (3 slots × 33 bytes each)
-    // Each slot: None = [0x00] + 32 zero bytes, Some = [0x01] + pubkey[32]
-    const recoveryBytes = new Uint8Array(99); // all zeros = [None, None, None]
-    for (let _si = 0; _si < 3; _si++) {
-      const _w = ghostState.recoveryWallets?.[_si]?.address || null;
-      if (_w) {
-        recoveryBytes[_si * 33] = 1; // Some tag
-        recoveryBytes.set(new PublicKey(_w).toBytes(), _si * 33 + 1);
-      }
-    }
-
-    // Pack args into final data array directly (avoids DataView offset bugs)
-    // Layout: disc(8) + interval(8) + grace(8) + recovery(99) + stake(8) = 131 bytes
-    const data = new Uint8Array(8 + 8 + 8 + 99 + 8);
+    // Layout: disc(8) + interval(8) + grace(8) + stake(8) = 32 bytes total
+    const data = new Uint8Array(8 + 8 + 8 + 8);
     const dv = new DataView(data.buffer);
     data.set(discriminator, 0);
     dv.setBigInt64(8,  BigInt(intervalDays * 86400), true);  // offset 8
     dv.setBigInt64(16, BigInt(graceDays * 86400), true);     // offset 16
-    data.set(recoveryBytes, 24);                              // offset 24, 99 bytes
-    dv.setBigUint64(123, stakeRaw, true);                    // offset 24+99=123
-
+    dv.setBigUint64(24, stakeRaw, true);                     // offset 24
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const vaultPda = new PublicKey(ghostState.vaultPda);
     const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
