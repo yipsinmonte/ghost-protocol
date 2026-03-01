@@ -2635,7 +2635,7 @@ function parseGhostAccount(bytes) {
   let offset = 8; // skip discriminator
 
   // GhostAccount field order (matches lib.rs exactly):
-  // owner(32), recovery_wallet(Option<Pubkey>=33), last_heartbeat(i64=8),
+  // owner(32), recovery_wallets([Option<Pubkey>;3]=99), last_heartbeat(i64=8),
   // interval_seconds(i64=8), grace_period_seconds(i64=8),
   // awakened(bool=1), awakened_at(Option<i64>=9), executed(bool=1), executed_at(Option<i64>=9),
   // staked_ghost(u64=8), bump(u8=1), vault_bump(u8=1),
@@ -2644,18 +2644,23 @@ function parseGhostAccount(bytes) {
   try {
     // owner: Pubkey (32 bytes)
     offset += 32;
-    // recovery_wallet: Option<Pubkey> — Borsh: 1 byte tag, +32 bytes only if Some
-    const recoveryTag = bytes[offset]; offset += 1;
-    let recoveryWalletPubkey = null;
-    if (recoveryTag === 1) {
-      const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-      const pkBytes = bytes.slice(offset, offset + 32);
-      let n = BigInt(0);
-      for (const b of pkBytes) n = n * BigInt(256) + BigInt(b);
-      let r = ''; let tmp = n;
-      while (tmp > 0n) { const rem = tmp % 58n; r = B58[Number(rem)] + r; tmp = tmp / 58n; }
-      recoveryWalletPubkey = '1'.repeat(pkBytes.findIndex(b => b !== 0) === -1 ? 32 : Math.max(0, pkBytes.findIndex(b => b !== 0))) + r;
-      offset += 32;
+    // recovery_wallets: [Option<Pubkey>; 3] — each slot = 1 byte tag + 32 bytes if Some = 99 bytes total
+    const recoveryWallets = [];
+    for (let _ri = 0; _ri < 3; _ri++) {
+      const tag = bytes[offset]; offset += 1;
+      if (tag === 1) {
+        const pkBytes = bytes.slice(offset, offset + 32);
+        const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        let n = BigInt(0);
+        for (const b of pkBytes) n = n * BigInt(256) + BigInt(b);
+        let r = ''; let tmp = n;
+        while (tmp > 0n) { const rem = tmp % 58n; r = B58[Number(rem)] + r; tmp = tmp / 58n; }
+        recoveryWallets.push(r);
+        offset += 32;
+      } else {
+        recoveryWallets.push(null);
+        offset += 32; // still 32 zero bytes for None slot
+      }
     }
     // last_heartbeat: i64
     const lastBeat = Number(view.getBigInt64(offset, true));
@@ -2702,7 +2707,7 @@ function parseGhostAccount(bytes) {
     if (chainHeartbeatMs > 0) {
       ghostState.ghost.lastHeartbeat = chainHeartbeatMs;
     }
-    if (recoveryWalletPubkey) ghostState.ghost.recoveryWallet = recoveryWalletPubkey;
+    if (recoveryWallets.some(w => w !== null)) ghostState.ghost.recoveryWallet = recoveryWallets.find(w => w !== null);
     ghostState.ghost.awakened = awakened;
     ghostState.ghost.awakenedAt = awakenedAt ? awakenedAt * 1000 : null;
     ghostState.ghost.executed = executed;
@@ -2842,9 +2847,10 @@ function parseGhostAccount(bytes) {
       _countEl.textContent = _tr + (_wv > 0 ? 1 : 0);
     }
 
-    // Populate recovery wallet from on-chain state if present
-    if (recoveryWalletPubkey && !ghostState.recoveryWallets.find(w => w.address === recoveryWalletPubkey)) {
-      ghostState.recoveryWallets = [{ address: recoveryWalletPubkey, canWithdraw: false }];
+    // Populate recovery wallets from on-chain state
+    const _chainWallets = recoveryWallets.filter(w => w !== null);
+    if (_chainWallets.length > 0) {
+      ghostState.recoveryWallets = _chainWallets.map(addr => ({ address: addr, canWithdraw: false }));
       renderRecoveryWallets();
     }
     
