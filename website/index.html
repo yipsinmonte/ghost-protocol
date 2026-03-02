@@ -489,6 +489,8 @@
   .db-form-group { display: flex; flex-direction: column; gap: 6px; }
   .db-form-group label { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 0.15em; color: #b0b0c8; text-transform: uppercase; }
   .db-form-group input, .db-form-group select { background: #07070f; border: 1px solid rgba(102,51,255,0.2); color: #e8e8f4; font-family: 'Share Tech Mono', monospace; font-size: 14px; padding: 12px 14px; outline: none; transition: border-color 0.2s; -webkit-appearance: none; appearance: none; width: 100%; }
+  .unit-input-row input, .unit-input-row select { width: auto; border: none; background: transparent; padding: 10px 14px; font-size: 16px; color: #f0f0f8; }
+  .unit-input-row input:focus, .unit-input-row select:focus { border: none; outline: none; }
   .db-form-group input:focus, .db-form-group select:focus { border-color: #7744ff; }
   .db-form-group input::placeholder { color: rgba(120,80,255,0.35); }
   .db-form-group select option { background: #07070f; }
@@ -1142,7 +1144,7 @@
           <div class="db-form-grid">
             <div class="db-form-group">
               <label>New Interval</label>
-              <div style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.3);overflow:hidden;background:#07070f">
+              <div class="unit-input-row" style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.3);overflow:hidden;background:#07070f">
                 <input type="text" inputmode="numeric" id="dbNewInterval" placeholder="365" style="flex:1;background:transparent;border:none;color:#f0f0f8;font-family:'Share Tech Mono',monospace;font-size:16px;padding:10px 14px;outline:none;min-width:0" oninput="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(toSeconds(this.value,document.getElementById('dbIntervalUnit').value),true)">
                 <div style="width:1px;background:rgba(102,51,255,0.25);flex-shrink:0"></div>
                 <select id="dbIntervalUnit" onchange="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('dbNewInterval').value,this.value),true)" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto">
@@ -1165,7 +1167,7 @@
           <div class="db-form-grid">
             <div class="db-form-group">
               <label>New Grace Period</label>
-              <div style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.3);overflow:hidden;background:#07070f">
+              <div class="unit-input-row" style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.3);overflow:hidden;background:#07070f">
                 <input type="text" inputmode="numeric" id="dbNewGrace" placeholder="30" style="flex:1;background:transparent;border:none;color:#f0f0f8;font-family:'Share Tech Mono',monospace;font-size:16px;padding:10px 14px;outline:none;min-width:0" oninput="document.getElementById('dbGracePreview').textContent=formatIntervalPreview(toSeconds(this.value,document.getElementById('dbGraceUnit').value),true)">
                 <div style="width:1px;background:rgba(102,51,255,0.25);flex-shrink:0"></div>
                 <select id="dbGraceUnit" onchange="document.getElementById('dbGracePreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('dbNewGrace').value,this.value),true)" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto">
@@ -1228,7 +1230,7 @@
                 <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">Window to cancel after awakening begins</div>
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-<div style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.25);overflow:hidden;background:#07070f">
+<div class="unit-input-row" style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.25);overflow:hidden;background:#07070f">
                   <input type="text" inputmode="numeric" id="initGrace" value="30" style="width:70px;background:transparent;border:none;color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center">
                   <div style="width:1px;background:rgba(102,51,255,0.2);flex-shrink:0"></div>
                   <select id="initGraceUnit" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto"><option value="hours">hours</option><option value="days" selected>days</option></select>
@@ -3936,13 +3938,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     openDashboard();
-    // Only restore last page if ghost is active — not for none/needs-migration
+    // Always land on overview when connecting/reconnecting — never restore last page on fresh load
     const _status = ghostState.ghost.status;
-    if (_status !== 'none' && _status !== 'needs-migration' && lastPage !== 'init') {
-      dbShowPage(lastPage, document.getElementById('nav-' + lastPage));
-    } else {
-      dbShowPage('overview', document.getElementById('nav-overview'));
-    }
+    dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
   }, 100);
 });
