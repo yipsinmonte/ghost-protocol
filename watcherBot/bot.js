@@ -205,7 +205,10 @@ async function buildCheckSilence(ghost) {
 
   // Dynamically resolve token program from mint owner — same as frontend
   const ghostTokenProg = await resolveTokenProgram(ghostMintPk);
-  const botAta         = deriveATA(botKp.publicKey, ghostMintPk, ghostTokenProg);
+  // Use BOT_GHOST_ATA env var if set (avoids derivation issues with Token-2022)
+  const botAta = process.env.BOT_GHOST_ATA
+    ? new PublicKey(process.env.BOT_GHOST_ATA)
+    : deriveATA(botKp.publicKey, ghostMintPk, ghostTokenProg);
 
   console.log(`    [check_silence] ghost_mint token program: ${ghostTokenProg.toBase58().slice(0,8)}... botAta: ${botAta.toBase58().slice(0,8)}...`);
 
