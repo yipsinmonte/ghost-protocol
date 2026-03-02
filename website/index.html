@@ -798,13 +798,13 @@
         <div class="db-page-title">Your Ghost</div>
         <div class="db-page-sub">Vault Status · Digital Legacy Protocol</div>
 
-        <!-- Migration required banner (shown for pre-v1.7 accounts) -->
+        <!-- Migration required banner (shown for v1.7 accounts that need on-chain migrate_ghost) -->
         <div id="overviewMigrationBanner" style="display:none;background:rgba(255,170,51,0.08);border:1px solid rgba(255,170,51,0.4);border-radius:8px;padding:20px 24px;margin-bottom:20px">
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:var(--amber);margin-bottom:8px">⚠️ Account Migration Required</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:var(--amber);margin-bottom:8px">⚠️ Account Migration Available</div>
           <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#c0a060;line-height:1.8;margin-bottom:16px">
-            Your ghost was registered on an older version of the protocol. Re-register to upgrade to v1.7. Your vault assets are not affected.
+            Your ghost account is on the v1.7 layout. A free on-chain migration to v1.8 is available — adds 1 byte to your account. All settings, beneficiaries, vault assets, and staked $GHOST are completely untouched.
           </div>
-          <button onclick="dbMigrateAccount()" style="background:rgba(255,170,51,0.15);border:1px solid rgba(255,170,51,0.5);color:var(--amber);padding:10px 24px;border-radius:6px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:0.1em">🔄 RE-REGISTER NOW</button>
+          <button onclick="dbMigrateAccount()" style="background:rgba(255,170,51,0.15);border:1px solid rgba(255,170,51,0.5);color:var(--amber);padding:10px 24px;border-radius:6px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:0.1em">🔄 MIGRATE TO v1.8</button>
         </div>
 
         <!-- Wallet identity -->
@@ -1138,11 +1138,11 @@
 
         <div class="db-form">
           <div class="db-form-title">⏱️ Update Heartbeat Interval</div>
-          <div class="db-info">Minimum 7 days. This is how long you have between pings before your ghost awakens.</div>
+          <div class="db-info">Minimum 1 hour. This is how long you have between pings before your ghost awakens.</div>
           <div class="db-form-grid">
             <div class="db-form-group">
               <label>New Interval (Days)</label>
-              <input type="number" id="dbNewInterval" placeholder="365" min="7" oninput="document.getElementById('dbIntervalPreview').textContent=this.value+' days ≈ '+Math.round(this.value/30.44)+' months'">
+              <input type="number" id="dbNewInterval" placeholder="8760" min="1" step="1" oninput="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(this.value)">
             </div>
             <div class="db-form-group">
               <label>Preview</label>
@@ -1154,11 +1154,11 @@
 
         <div class="db-form">
           <div class="db-form-title">⏳ Update Grace Period</div>
-          <div class="db-info">Minimum 1 day. After your ghost awakens, this is your window to cancel via ping or recovery wallet.</div>
+          <div class="db-info">Minimum 0 days (0 = instant execution). After your ghost awakens, this is your window to cancel via ping or recovery wallet.</div>
           <div class="db-form-grid">
             <div class="db-form-group">
               <label>New Grace Period (Days)</label>
-              <input type="number" id="dbNewGrace" placeholder="30" min="1" oninput="document.getElementById('dbGracePreview').textContent=this.value+' days'">
+              <input type="number" id="dbNewGrace" placeholder="30" min="0" oninput="document.getElementById('dbGracePreview').textContent=this.value+' days'">
             </div>
             <div class="db-form-group">
               <label>Preview</label>
@@ -1169,9 +1169,9 @@
         </div>
 
         <div class="db-form" id="migrationCard" style="border-color:rgba(255,170,51,0.3);display:none">
-          <div class="db-form-title" style="color:var(--amber)">⚠️ Account Migration Required</div>
-          <div class="db-info" style="border-color:rgba(255,170,51,0.3)">Your ghost account was registered under a previous version of the protocol. The contract has been upgraded and your account layout is outdated — some operations may fail until you re-register.<br><br>Re-registering will: abandon your current ghost (burns 50% staked $GHOST), then open the registration form so you can create a fresh v1.7 account. Your vault assets are <strong>not</strong> affected.</div>
-          <button class="db-btn" style="border-color:var(--amber);color:var(--amber)" onclick="dbMigrateAccount()">🔄 Re-register (Migrate to v1.7)</button>
+          <div class="db-form-title" style="color:var(--amber)">⚠️ Account Migration Available</div>
+          <div class="db-info" style="border-color:rgba(255,170,51,0.3)">Your ghost account is on the v1.7 layout (1220 bytes). Run the free on-chain migration to v1.8 (1221 bytes).<br><br>All beneficiaries, settings, vault assets, and staked $GHOST are completely untouched. Costs ~1 lamport extra rent. Idempotent — safe to run multiple times.</div>
+          <button class="db-btn" style="border-color:var(--amber);color:var(--amber)" onclick="dbMigrateAccount()">🔄 Migrate to v1.8</button>
         </div>
 
         <div class="db-form" style="border-color:rgba(255,61,90,0.2)">
@@ -1202,8 +1202,8 @@
                 <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">How long before your ghost awakens after silence</div>
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-                <input type="number" id="initInterval" value="365" min="7" style="width:90px;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center" oninput="document.getElementById('initPreview').textContent=this.value+' days'">
-                <span style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">days</span>
+                <input type="number" id="initInterval" value="8760" min="1" style="width:90px;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center" oninput="document.getElementById('initPreview').textContent=formatIntervalPreview(this.value)">
+                <span style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">hours</span>
               </div>
             </div>
 
@@ -1214,7 +1214,7 @@
                 <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">Window to cancel after awakening begins</div>
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-                <input type="number" id="initGrace" value="30" min="1" style="width:90px;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center">
+                <input type="number" id="initGrace" value="30" min="0" style="width:90px;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center">
                 <span style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">days</span>
               </div>
             </div>
@@ -1240,7 +1240,7 @@
           <!-- Summary bar -->
           <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#07070f;border:1px solid rgba(102,51,255,0.15);margin-bottom:20px">
             <span style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0b0c8">Ghost awakens after</span>
-            <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#f0f0f8" id="initPreview">365 days</span>
+            <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#f0f0f8" id="initPreview">1 year (8760 hours)</span>
             <span style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0b0c8">of silence</span>
           </div>
 
@@ -2848,6 +2848,8 @@ async function fetchOnChainHistory() {
 
 // Parse raw account bytes into ghostState
 // Anchor account layout: 8 bytes discriminator, then fields
+// v1.7 = 1220 bytes, v1.8 = 1221 bytes (schema_version byte appended by migrate_ghost)
+// Pre-v1.7 accounts (<1220 bytes) land on needs-migration status
 function parseGhostAccount(bytes) {
   const view = new DataView(bytes.buffer);
   let offset = 8; // skip discriminator
@@ -2857,6 +2859,13 @@ function parseGhostAccount(bytes) {
     ghostState.ghost.status = 'needs-migration';
     return;
   }
+
+  // Detect schema version from trailing byte (v1.8+)
+  // 1220 bytes = v1.7 (needs on-chain migrate_ghost call)
+  // 1221+ bytes = v1.8 (migrated — schema_version byte present at offset 1220)
+  const _schemaVersion = bytes.length >= 1221 ? bytes[1220] : 17;
+  ghostState.ghost._schemaVersion = _schemaVersion;
+  ghostState.ghost._needsMigration = bytes.length === 1220; // exactly v1.7 size → show migration prompt
 
   // GhostAccount field layout — Borsh encoding rules:
   //   Option<T>::None = 1 byte (0x00 tag only)
@@ -3072,9 +3081,9 @@ function parseGhostAccount(bytes) {
     else if (awakened) ghostState.ghost.status = 'awakened';
     else ghostState.ghost.status = 'alive';
 
-    // Show migration card if account is pre-v1.7 (< 1220 bytes)
+    // Show migration card if account is v1.7 (exactly 1220 bytes, not yet migrated to v1.8)
     const _migCard = document.getElementById('migrationCard');
-    if (_migCard) _migCard.style.display = bytes.length < 1220 ? 'block' : 'none';
+    if (_migCard) _migCard.style.display = ghostState.ghost._needsMigration ? 'block' : 'none';
 
     // Sync profile data to settings UI if open
     _syncProfileToSettingsUI();
@@ -3105,8 +3114,10 @@ function updateDashboardUI() {
   const isMigration = g.status === 'needs-migration';
 
   // Show/hide overview migration banner
+  // isMigration = true for pre-v1.7 accounts (status=needs-migration, <1220 bytes — these can't parse normally)
+  // _needsMigration = true for v1.7 accounts (1220 bytes — parsed fine but need migrate_ghost on-chain call for v1.8)
   const _migBanner = document.getElementById('overviewMigrationBanner');
-  if (_migBanner) _migBanner.style.display = isMigration ? 'block' : 'none';
+  if (_migBanner) _migBanner.style.display = (isMigration || g._needsMigration) ? 'block' : 'none';
 
   // ── Sidebar nav lock/unlock ──────────────────────────────────
   const lockedIds = ['nav-vault','nav-beneficiaries','nav-heartbeat','nav-recovery','nav-settings'];
@@ -3188,9 +3199,9 @@ function updateDashboardUI() {
 
   // Interval / grace / registered display
   const intervalEl = document.getElementById('dbInterval');
-  if (intervalEl) intervalEl.textContent = Math.round(g.intervalSeconds/86400) + ' days';
+  if (intervalEl) intervalEl.textContent = formatIntervalLabel(g.intervalSeconds || 0);
   const graceEl = document.getElementById('dbGrace');
-  if (graceEl) graceEl.textContent = Math.round(g.gracePeriodSeconds/86400) + ' days';
+  if (graceEl) graceEl.textContent = (g.gracePeriodSeconds || 0) === 0 ? 'Instant (0)' : Math.round(g.gracePeriodSeconds/86400) + ' days';
   const regEl = document.getElementById('dbRegistered');
   if (regEl && g.registeredAt) {
     const d = new Date(g.registeredAt);
@@ -3510,13 +3521,13 @@ function validateStakeInput(el) {
 
 // ─── Initialize Ghost ────────────────────────────────────────────
 async function initializeGhost() {
-  const intervalDays = parseInt(document.getElementById('initInterval')?.value) || 365;
-  const graceDays = parseInt(document.getElementById('initGrace')?.value) || 30;
+  const intervalHours = parseInt(document.getElementById('initInterval')?.value) || 8760;
+  const graceDays = parseInt(document.getElementById('initGrace')?.value ?? '30');  // ?? not || so 0 is valid
   const _isMigrationReg2 = ghostState.ghost._isMigration === true;
   const stakeAmt = _isMigrationReg2 ? 0 : (parseInt(document.getElementById('initStake')?.value) || 10000);
 
-  if (intervalDays < 7) { showNotif('⚠️ Minimum interval is 7 days', 'error'); return; }
-  if (graceDays < 1) { showNotif('⚠️ Minimum grace period is 1 day', 'error'); return; }
+  if (intervalHours < 1) { showNotif('⚠️ Minimum interval is 1 hour', 'error'); return; }
+  if (graceDays < 0) { showNotif('⚠️ Grace period cannot be negative', 'error'); return; }
   if (!_isMigrationReg2 && stakeAmt < 10000) {
     showNotif('⚠️ Minimum 10,000 $GHOST required to summon', 'error');
     const el = document.getElementById('initStake');
@@ -3529,7 +3540,7 @@ async function initializeGhost() {
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.status = 'alive';
-    ghostState.ghost.intervalSeconds = intervalDays * 86400;
+    ghostState.ghost.intervalSeconds = intervalHours * 3600;
     ghostState.ghost.gracePeriodSeconds = graceDays * 86400;
     ghostState.ghost.stakedGhost = stakeAmt;
     ghostState.ghost.lastHeartbeat = Date.now();
@@ -3589,7 +3600,7 @@ async function initializeGhost() {
     const data = new Uint8Array(8 + 8 + 8 + 8);
     const dv = new DataView(data.buffer);
     data.set(discriminator, 0);
-    dv.setBigInt64(8,  BigInt(intervalDays * 86400), true);  // offset 8
+    dv.setBigInt64(8,  BigInt(intervalHours * 3600), true);  // offset 8
     dv.setBigInt64(16, BigInt(graceDays * 86400), true);     // offset 16
     dv.setBigUint64(24, stakeRaw, true);                     // offset 24
     const ghostPda = new PublicKey(ghostState.ghostPda);
@@ -3693,6 +3704,7 @@ async function initializeGhost() {
     const signerAtaInfo = await connection.getAccountInfo(signerGhostAta);
     console.log('[Ghost] signerGhostAta exists:', !!signerAtaInfo);
 
+    showNotif((vaultTokens.length > 0 ? 'Step 2/2: ' : '') + 'Sign to close ghost and return stake...', '');
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
@@ -3709,7 +3721,7 @@ async function initializeGhost() {
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
     ghostState.ghost.status = 'alive';
-    ghostState.ghost.intervalSeconds = intervalDays * 86400;
+    ghostState.ghost.intervalSeconds = intervalHours * 3600;
     ghostState.ghost.gracePeriodSeconds = graceDays * 86400;
     ghostState.ghost.stakedGhost = Number(stakeRaw) / 1_000_000;
     ghostState.ghost.lastHeartbeat = Date.now();
@@ -3907,6 +3919,26 @@ function dbShowPage(pageId, navEl) {
 }
 
 // ─── Countdown ─────────────────────────────────────────────────
+// Format interval seconds into a human-readable label (used in overview / settings display)
+function formatIntervalLabel(seconds) {
+  const h = Math.round(seconds / 3600);
+  if (h < 24) return h + (h === 1 ? ' hour' : ' hours');
+  const d = Math.round(h / 24);
+  if (d < 30) return d + (d === 1 ? ' day' : ' days');
+  const mo = Math.round(d / 30.44);
+  return mo + (mo === 1 ? ' month' : ' months') + ' (' + d + ' days)';
+}
+
+// Format hours input into a preview string for the interval settings input
+function formatIntervalPreview(hours) {
+  const h = parseInt(hours) || 0;
+  if (h < 24) return h + (h === 1 ? ' hour' : ' hours');
+  const d = Math.round(h / 24);
+  if (d < 30) return d + ' days';
+  const mo = Math.round(d / 30.44);
+  return mo + ' months ≈ ' + d + ' days';
+}
+
 function formatDuration(ms) {
   const s = Math.floor(ms / 1000);
   const d = Math.floor(s / 86400);
@@ -6519,16 +6551,85 @@ async function dbRemoveRecoveryWallet(idx) {
 }
 
 // ─── Account migration ──────────────────────────────────────────
+// Sends migrate_ghost instruction: reallocates ghost PDA from 1220 → 1221 bytes,
+// writes schema_version=18 at offset 1220. All account data preserved unchanged.
+// Owner pays ~1 extra lamport for rent. Idempotent — safe to call on already-migrated accounts.
 async function dbMigrateAccount() {
   const _ok = await ghostConfirm({
     icon: '🔄',
-    title: 'Migrate to v1.7',
-    message: 'This resets your local account state and opens the registration form. Your vault assets remain untouched on-chain. No $GHOST is burned. Proceed?',
-    okLabel: 'MIGRATE', danger: true
+    title: 'Migrate to v1.8',
+    message: 'Upgrades your ghost account layout on-chain (1220 → 1221 bytes).\n\nAll settings, beneficiaries, vault assets, and staked $GHOST are completely untouched.\nCosts ~1 lamport extra rent. Idempotent — safe to run more than once.',
+    okLabel: 'MIGRATE NOW', danger: false
   });
   if (!_ok) return;
-  addActivityRow('🔄 Migrated account to v1.7', '', '🔄');
-  await dbAbandon(true);
+
+  // Demo mode
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    ghostState.ghost._schemaVersion = 18;
+    addActivityRow('🔄 Ghost migrated to v1.8 [demo]', '');
+    showNotif('✅ Account migrated to v1.8 [demo]', 'green');
+    // Hide migration banner
+    const _migBanner = document.getElementById('overviewMigrationBanner');
+    if (_migBanner) _migBanner.style.display = 'none';
+    const _migCard = document.getElementById('migrationCard');
+    if (_migCard) _migCard.style.display = 'none';
+    return;
+  }
+
+  try {
+    showNotif('Migrating account to v1.8...', '');
+    const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = solanaWeb3;
+    const walletPubkey = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const programId = new PublicKey(PROGRAM_ID);
+
+    // sha256("global:migrate_ghost")[0:8]
+    // Anchor discriminator for migrate_ghost instruction
+    const disc = [53, 196, 153, 211, 44, 218, 7, 104];
+
+    // MigrateGhost accounts (matches MigrateGhost context in lib.rs):
+    // ghost (mut, realloc), signer (mut), system_program
+    const data = new Uint8Array(8);
+    data.set(disc, 0);
+    const ix = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda,                isSigner: false, isWritable: true },
+        { pubkey: walletPubkey,            isSigner: true,  isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data
+    });
+
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
+    tx.add(ix);
+    tx.instructions.forEach((ix, i) =>
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+    console.log('[Ghost] Migrate TX sent:', sig);
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+    ghostState.ghost._schemaVersion = 18;
+    addActivityRow('🔄 Ghost migrated to v1.8', sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif('✅ Account migrated to v1.8 successfully!', 'green');
+
+    // Hide migration banners — account is now current
+    const _migBanner = document.getElementById('overviewMigrationBanner');
+    if (_migBanner) _migBanner.style.display = 'none';
+    const _migCard = document.getElementById('migrationCard');
+    if (_migCard) _migCard.style.display = 'none';
+
+    // Re-fetch to confirm new account size
+    await fetchGhostAccount(ghostState.publicKey);
+  } catch(err) {
+    console.error('[Ghost] Migration error:', err);
+    showNotif('Migration failed: ' + (err.message || err), 'error');
+  }
 }
 
 function toggleRecoveryWithdraw(idx, val) {
@@ -6659,227 +6760,348 @@ function renderVaultHoldings() {
 }
 
 // ─── Bulk deposit / withdraw ────────────────────────────────────
-function dbDepositAll() {
-  if (ghostState.provider && !ghostState.walletName?.includes('demo')) {
-    showNotif('Use individual deposits for each asset — Deposit All coming soon', 'error');
-    return;
-  }
-  const tokens = ghostState.walletTokens.filter(tok => tok.balance > 0);
-  if (tokens.length === 0) { showNotif('No assets with balance in wallet', 'error'); return; }
-  let count = 0;
-  for (const t of tokens) {
-    const amount = t.balance;
-    if (!amount || amount <= 0) continue;
-    const symbol = t.symbol;
-    const mint = t.mint;
-    t.balance = 0;
-    const existing = ghostState.vaultTokens.find(v => v.mint === mint);
-    if (existing) {
-      existing.balance += amount;
-      if (!existing.logoUrl && t.logoUrl) existing.logoUrl = t.logoUrl;
-    } else {
-      ghostState.vaultTokens.push({ symbol, mint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl || null, name: t.name || null });
-    }
-    addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + symbol, randomTx(), 'deposit');
-    count++;
-  }
-  if (count === 0) { showNotif('Nothing to deposit', 'error'); return; }
+async function dbDepositAll() {
+const tokens = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
+if (tokens.length === 0) { showNotif('No assets with balance in wallet', 'error'); return; }
+if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+let count = 0;
+for (const t of tokens) {
+const amount = t.balance; if (!amount || amount <= 0) continue;
+t.balance = 0;
+const vaultMint = t.mint === 'native' ? 'native' : t.mint;
+const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
+if (existing) { existing.balance += amount; if (!existing.logoUrl && t.logoUrl) existing.logoUrl = t.logoUrl; }
+else ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, name: t.name||null });
+addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol + ' [demo]', randomTx(), 'deposit');
+count++;
+}
+if (count === 0) { showNotif('Nothing to deposit', 'error'); return; }
+buildPickerDropdown('deposit', []);
+ghostState.selectedTokens.deposit = null;
+renderVaultHoldings(); renderVaultOverview(); _refreshBenePickers();
+showNotif('📥 Deposited all ' + count + ' asset(s) to vault! [demo]', 'green');
+saveSession(); loadWalletTokens().catch(()=>{}); return;
+}
+const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = solanaWeb3;
+const walletPk  = new PublicKey(ghostState.publicKey);
+const ghostPda  = new PublicKey(ghostState.ghostPda);
+const vaultPda  = new PublicKey(ghostState.vaultPda);
+const programId = new PublicKey(PROGRAM_ID);
+const WSOL_MINT_PK  = new PublicKey('So11111111111111111111111111111111111111112');
+const TOKEN_PROG_PK = new PublicKey(TOKEN_PROGRAM_STR);
+const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+const depositDisc = [18, 62, 110, 8, 26, 106, 248, 151];
+const solTokens = tokens.filter(t => t.mint === 'native');
+const splTokens = tokens.filter(t => t.mint !== 'native' && t.mint !== GHOST_MINT);
+let successCount = 0;
+showNotif('Preparing deposit of ' + tokens.length + ' asset(s)...', '');
+const vaultPdaInfo = await connection.getAccountInfo(vaultPda);
+if (!vaultPdaInfo || vaultPdaInfo.lamports === 0) {
+showNotif('Activating vault...', '');
+const minRent = await connection.getMinimumBalanceForRentExemption(0);
+const { blockhash: fundBh } = await connection.getLatestBlockhash();
+const fundTx = new Transaction({ recentBlockhash: fundBh, feePayer: walletPk });
+fundTx.add(SystemProgram.transfer({ fromPubkey: walletPk, toPubkey: vaultPda, lamports: minRent }));
+const fundSigned = await ghostState.provider.signTransaction(fundTx);
+const fundSig = await connection.sendRawTransaction(fundSigned.serialize(), { skipPreflight: true });
+await connection.confirmTransaction(fundSig, 'confirmed');
+}
+const splMeta = await Promise.all(splTokens.map(async t => {
+const mintPk = new PublicKey(effectiveMint(t.mint));
+let rawMintOwner = TOKEN_PROGRAM_STR;
+try { const ma = await connection.getAccountInfo(mintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
+const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
+const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
+const tokenProgPk    = new PublicKey(normalizedTokenProg);
+let ownerAta;
+if (rawMintOwner === TOKEN_PROGRAM_STR) { ownerAta = await findATA(walletPk, mintPk); }
+else { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, mintPk); }
+let vaultAta;
+try { const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: mintPk }); if (ex.value.length > 0) vaultAta = ex.value[0].pubkey; } catch(e) {}
+if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, mintPk, tokenProgPk);
+const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
+let createdVaultAta = vaultAta;
+if (!vaultAtaInfo) {
+const { createIx, initIx, kp } = await buildManualTokenAccountIxs(walletPk, mintPk, vaultPda, rawTokenProgPk, connection);
+const { blockhash: initBh } = await connection.getLatestBlockhash();
+const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
+initTx.add(createIx, initIx);
+const initWalletSigned = await ghostState.provider.signTransaction(initTx);
+initWalletSigned.partialSign(kp);
+const initSig = await connection.sendRawTransaction(initWalletSigned.serialize(), { skipPreflight: true });
+await connection.confirmTransaction(initSig, 'confirmed');
+createdVaultAta = kp.publicKey;
+}
+return { t, mintPk, rawTokenProgPk, ownerAta, vaultAta: createdVaultAta };
+}));
+const BATCH_SIZE = 3;
+for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
+const batch = splMeta.slice(i, i + BATCH_SIZE);
+try {
+const { blockhash } = await connection.getLatestBlockhash();
+const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+for (const { t, mintPk, rawTokenProgPk, ownerAta, vaultAta } of batch) {
+const amountRaw = BigInt(Math.round(t.balance * Math.pow(10, t.decimals)));
+const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
+tx.add(new TransactionInstruction({ programId, keys: [
+{ pubkey: ghostPda,       isSigner: false, isWritable: false },
+{ pubkey: walletPk,       isSigner: true,  isWritable: true  },
+{ pubkey: mintPk,         isSigner: false, isWritable: false },
+{ pubkey: ownerAta,       isSigner: false, isWritable: true  },
+{ pubkey: vaultAta,       isSigner: false, isWritable: true  },
+{ pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
+], data }));
+}
+showNotif('Sign to deposit: ' + batch.map(m => m.t.symbol).join(', ') + '...', '');
+const signed = await ghostState.provider.signTransaction(tx);
+let sig;
+try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
+catch(simErr) {
+let logs=[]; try { logs=await simErr.getLogs(connection); } catch(e){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
+throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
+}
+const conf = await connection.confirmTransaction(sig, 'confirmed');
+if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+for (const { t } of batch) {
+const amount = t.balance;
+const vaultMint = t.mint;
+const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
+if (existing) { existing.balance += amount; } else { ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, _pendingDeposit: Date.now() }); }
+t.balance = 0;
+addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'deposit');
+successCount++;
+}
+} catch(err) {
+const syms = batch.map(m => m.t.symbol).join(', ');
+console.error('Batch deposit error [' + syms + ']:', err);
+showNotif('Batch failed [' + syms + ']: ' + (err.message || err), 'error');
+}
+}
+for (const t of solTokens) {
+try {
+const amount = t.balance;
+const lamports = Math.round(amount * 1e9);
+const { instructions: wrapIxs, wsolAta, kp: wsolKp } = await buildWrapSOLInstructions(walletPk, lamports, connection);
+showNotif('Sign to wrap SOL...', '');
+const { blockhash: wrapBh } = await connection.getLatestBlockhash();
+const wrapTx = new Transaction({ recentBlockhash: wrapBh, feePayer: walletPk });
+wrapIxs.forEach(ix => wrapTx.add(ix));
+const wrapSigned = await ghostState.provider.signTransaction(wrapTx);
+if (wsolKp) wrapSigned.partialSign(wsolKp);
+const wrapSig = await connection.sendRawTransaction(wrapSigned.serialize(), { skipPreflight: true });
+await connection.confirmTransaction(wrapSig, 'confirmed');
+let vaultWsolAta;
+try { const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK }); if (ex.value.length > 0) vaultWsolAta = ex.value[0].pubkey; } catch(e) {}
+if (!vaultWsolAta) vaultWsolAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
+const vaultWsolInfo = await connection.getAccountInfo(vaultWsolAta);
+if (!vaultWsolInfo) {
+const { createIx, initIx, kp: vaultKp } = await buildManualTokenAccountIxs(walletPk, WSOL_MINT_PK, vaultPda, TOKEN_PROG_PK, connection);
+const { blockhash: initBh } = await connection.getLatestBlockhash();
+const initTx = new Transaction({ recentBlockhash: initBh, feePayer: walletPk });
+initTx.add(createIx, initIx);
+const initSigned = await ghostState.provider.signTransaction(initTx);
+initSigned.partialSign(vaultKp);
+const initSig = await connection.sendRawTransaction(initSigned.serialize(), { skipPreflight: true });
+await connection.confirmTransaction(initSig, 'confirmed');
+vaultWsolAta = vaultKp.publicKey;
+}
+const amountRaw = BigInt(lamports);
+const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
+const { blockhash: depBh } = await connection.getLatestBlockhash();
+const depTx = new Transaction({ recentBlockhash: depBh, feePayer: walletPk });
+depTx.add(new TransactionInstruction({ programId, keys: [
+{ pubkey: ghostPda,     isSigner: false, isWritable: false },
+{ pubkey: walletPk,     isSigner: true,  isWritable: true  },
+{ pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
+{ pubkey: wsolAta,      isSigner: false, isWritable: true  },
+{ pubkey: vaultWsolAta, isSigner: false, isWritable: true  },
+{ pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
+], data }));
+showNotif('Sign to deposit SOL to vault...', '');
+const depSigned = await ghostState.provider.signTransaction(depTx);
+const depSig = await connection.sendRawTransaction(depSigned.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+const conf = await connection.confirmTransaction(depSig, 'confirmed');
+if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+const existing = ghostState.vaultTokens.find(v => v.mint === 'native' || v.mint === 'So11111111111111111111111111111111111111112');
+if (existing) { existing.balance += amount; existing.mint = 'native'; } else { ghostState.vaultTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null, _pendingDeposit: Date.now() }); }
+t.balance = 0;
+addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' SOL', depSig.slice(0,4)+'...'+depSig.slice(-4), 'deposit');
+successCount++;
+} catch(err) { console.error('SOL deposit error:', err); showNotif('SOL deposit failed: ' + (err.message || err), 'error'); }
+}
+if (successCount > 0) {
+const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
+buildPickerDropdown('deposit', depositPool);
+ghostState.selectedTokens.deposit = null;
+renderVaultHoldings(); renderVaultOverview(); _refreshBenePickers();
+showNotif('Deposited ' + successCount + '/' + tokens.length + ' asset(s) to vault!', 'green');
+saveSession(); loadWalletTokens().catch(()=>{});
+}
+}
 
-  // Rebuild deposit picker — all tokens now 0
-  buildPickerDropdown('deposit', []);
-  const symEl = document.getElementById('depositPickerSymbol');
-  const balEl = document.getElementById('depositPickerBal');
-  const logoEl = document.getElementById('depositPickerLogo');
-  if (symEl) symEl.textContent = 'Select asset';
-  if (balEl) balEl.textContent = '';
-  if (logoEl) logoEl.innerHTML = '';
-  document.getElementById('depositBalance').value = '—';
-  document.getElementById('depositAmt').value = '';
-  document.getElementById('depositAmtDisplay').value = '';
-  ghostState.selectedTokens.deposit = null;
-
-  renderVaultHoldings();
-  renderVaultOverview();
-  _refreshBenePickers();
-  showNotif('📥 Deposited all ' + count + ' asset' + (count > 1 ? 's' : '') + ' to vault!', 'green');
-  saveSession();
-  // Chain re-fetch: rebuild vaultTokens + bene picker + chart from RPC
-  loadWalletTokens().catch(()=>{});
+async function drainVaultOnChain(tokens, { connection, walletPk, ghostPda, vaultPda, programId, isDemo } = {}) {
+if (!tokens || tokens.length === 0) return { success: 0, total: 0 };
+const { PublicKey, Transaction, TransactionInstruction, Keypair, SystemProgram } = solanaWeb3;
+const WSOL_MINT_PK  = new PublicKey(WSOL_MINT_PK_STR);
+const TOKEN_PROG_PK = new PublicKey(TOKEN_PROGRAM_STR);
+const disc = [180, 34, 37, 46, 156, 0, 211, 238];
+let successCount = 0;
+const solTokens = tokens.filter(vt => vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
+const splTokens = tokens.filter(vt => vt.mint !== WSOL_MINT_PK_STR && vt.mint !== 'native');
+if (isDemo) {
+for (const vt of tokens) {
+const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
+if (wt) { wt.balance += vt.balance; } else { ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl||null }); }
+successCount++;
+}
+ghostState.vaultTokens = [];
+return { success: successCount, total: tokens.length };
+}
+const splMeta = await Promise.all(splTokens.map(async vt => {
+const withdrawMintPk = new PublicKey(effectiveMint(vt.mint));
+let rawMintOwner = TOKEN_PROGRAM_STR;
+try { const ma = await connection.getAccountInfo(withdrawMintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
+const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
+const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
+let vaultAta;
+try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: withdrawMintPk }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
+if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, withdrawMintPk, new PublicKey(normalizedTokenProg));
+let ownerAta;
+if (rawMintOwner === TOKEN_PROGRAM_STR) { ownerAta = await findATA(walletPk, withdrawMintPk); }
+else { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: withdrawMintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, withdrawMintPk); }
+const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
+return { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing: !ownerAtaInfo };
+}));
+const BATCH_SIZE = 3;
+for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
+const batch = splMeta.slice(i, i + BATCH_SIZE);
+try {
+const { blockhash } = await connection.getLatestBlockhash();
+const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+for (const { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing } of batch) {
+const amountRaw = BigInt(Math.round(vt.balance * Math.pow(10, vt.decimals)));
+const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+if (ownerAtaMissing) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
+tx.add(new TransactionInstruction({ programId, keys: [
+{ pubkey: ghostPda,       isSigner: false, isWritable: false },
+{ pubkey: vaultPda,       isSigner: false, isWritable: false },
+{ pubkey: walletPk,       isSigner: true,  isWritable: true  },
+{ pubkey: withdrawMintPk, isSigner: false, isWritable: false },
+{ pubkey: ownerAta,       isSigner: false, isWritable: true  },
+{ pubkey: vaultAta,       isSigner: false, isWritable: true  },
+{ pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
+], data }));
+}
+showNotif('Sign to withdraw: ' + batch.map(m => m.vt.symbol).join(', ') + '...', '');
+const signed = await ghostState.provider.signTransaction(tx);
+let sig;
+try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
+catch(simErr) {
+let logs=[]; try { logs=await simErr.getLogs(connection); } catch(e){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(e){} }
+console.error('[Ghost] batch TX logs:', logs); throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
+}
+const conf = await connection.confirmTransaction(sig, 'confirmed');
+if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+for (const { vt } of batch) {
+const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
+if (wt) { wt.balance += vt.balance; } else { ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl||null }); }
+const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
+addActivityRow('Vault Withdrawal ' + vt.balance.toLocaleString() + ' ' + vt.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
+successCount++;
+}
+} catch(err) {
+const syms = batch.map(m => m.vt.symbol).join(', ');
+console.error('Batch withdraw error [' + syms + ']:', err);
+showNotif('Batch failed [' + syms + ']: ' + (err.message || err), 'error');
+}
+}
+for (const vt of solTokens) {
+try {
+const amount = vt.balance;
+let vaultAta;
+try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
+if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
+const amountRaw = BigInt(Math.round(amount * 1e9));
+const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+const wsolKp = Keypair.generate(); const wsolAcct = wsolKp.publicKey;
+const space = 165; const rent = await connection.getMinimumBalanceForRentExemption(space);
+const { blockhash } = await connection.getLatestBlockhash();
+const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+tx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
+const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
+tx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK, keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }], data: initData }));
+tx.add(new TransactionInstruction({ programId, keys: [
+{ pubkey: ghostPda,     isSigner: false, isWritable: false },
+{ pubkey: vaultPda,     isSigner: false, isWritable: false },
+{ pubkey: walletPk,     isSigner: true,  isWritable: true  },
+{ pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
+{ pubkey: wsolAcct,     isSigner: false, isWritable: true  },
+{ pubkey: vaultAta,     isSigner: false, isWritable: true  },
+{ pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
+], data }));
+tx.add(buildUnwrapIx(walletPk, wsolAcct));
+showNotif('Sign to withdraw SOL...', '');
+const signed = await ghostState.provider.signTransaction(tx);
+signed.partialSign(wsolKp);
+let sig;
+try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
+catch(simErr) {
+let logs=[]; try { logs=await simErr.getLogs(connection); } catch(e){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
+throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
+}
+const conf = await connection.confirmTransaction(sig, 'confirmed');
+if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+const wt = ghostState.walletTokens.find(w => w.mint === 'native');
+if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
+const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
+addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
+successCount++;
+} catch(err) { console.error('SOL withdraw error:', err); showNotif('SOL withdraw failed: ' + (err.message || err), 'error'); }
+}
+return { success: successCount, total: tokens.length };
 }
 
 async function dbWithdrawAll() {
-  if (ghostState.ghost.status === 'awakened') { showNotif('⚠️ Withdrawals blocked while awakened', 'error'); return; }
-  const wholeVaultActive = ghostState.ghost.beneficiaries.some(b => b.action === 'whole-vault-share');
-  if (wholeVaultActive) {
-    const rec = ghostState.ghost.beneficiaries.find(b => b.action === 'whole-vault-share')?.recipient || '';
-    showNotif('⚠️ Vault is assigned to ' + rec + ' — remove beneficiary first', 'error'); return;
-  }
-  const tokens = [...ghostState.vaultTokens];
-  if (tokens.length === 0) { showNotif('Vault is empty', 'error'); return; }
-
-  // ── Demo mode ──────────────────────────────────────────────────
-  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
-    let count = 0;
-    for (const vt of tokens) {
-      const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
-      if (wt) { wt.balance += vt.balance; } else {
-        ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl || null });
-      }
-      addActivityRow('Vault Withdrawal ' + vt.balance.toLocaleString() + ' ' + vt.symbol + ' [demo]', randomTx(), 'withdraw');
-      count++;
-    }
-    ghostState.vaultTokens = [];
-    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
-    buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
-    ghostState.selectedTokens.deposit = null;
-    if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
-    renderVaultHoldings(); renderVaultOverview();
-    showNotif('📤 Withdrew all ' + count + ' asset' + (count > 1 ? 's' : '') + ' from vault! [demo]', 'green');
-    saveSession(); return;
-  }
-
-  // ── On-chain ───────────────────────────────────────────────────
-  const { PublicKey, Transaction, TransactionInstruction, Keypair, SystemProgram } = solanaWeb3;
-  const walletPk  = new PublicKey(ghostState.publicKey);
-  const ghostPda  = new PublicKey(ghostState.ghostPda);
-  const vaultPda  = new PublicKey(ghostState.vaultPda);
-  const programId = new PublicKey(PROGRAM_ID);
-  const WSOL_MINT_PK = new PublicKey(WSOL_MINT_PK_STR);
-  const TOKEN_PROG_PK = new PublicKey(TOKEN_PROGRAM_STR);
-  const disc = [180, 34, 37, 46, 156, 0, 211, 238];
-  const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
-  let successCount = 0;
-  showNotif('Preparing withdrawal of ' + tokens.length + ' asset' + (tokens.length > 1 ? 's' : '') + '...', '');
-
-  // Separate SOL (needs keypair co-sig) from SPL (can batch)
-  const solTokens = tokens.filter(vt => vt.mint === WSOL_MINT_PK_STR || vt.mint === 'native');
-  const splTokens = tokens.filter(vt => vt.mint !== WSOL_MINT_PK_STR && vt.mint !== 'native');
-
-  // ── Pre-fetch all SPL metadata in parallel ──────────────────────
-  const splMeta = await Promise.all(splTokens.map(async vt => {
-    const withdrawMintPk = new PublicKey(effectiveMint(vt.mint));
-    let rawMintOwner = TOKEN_PROGRAM_STR;
-    try { const ma = await connection.getAccountInfo(withdrawMintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
-    const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
-    const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
-    let vaultAta;
-    try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: withdrawMintPk }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
-    if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, withdrawMintPk, new PublicKey(normalizedTokenProg));
-    let ownerAta;
-    if (rawMintOwner === TOKEN_PROGRAM_STR) { ownerAta = await findATA(walletPk, withdrawMintPk); }
-    else { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: withdrawMintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, withdrawMintPk); }
-    const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
-    return { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing: !ownerAtaInfo };
-  }));
-
-  // ── Batch SPL: up to 3 withdrawals per tx (one Phantom prompt per batch) ──
-  const BATCH_SIZE = 3;
-  for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
-    const batch = splMeta.slice(i, i + BATCH_SIZE);
-    try {
-      const { blockhash } = await connection.getLatestBlockhash();
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-      for (const m of batch) {
-        const { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing } = m;
-        const amountRaw = BigInt(Math.round(vt.balance * Math.pow(10, vt.decimals)));
-        const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
-        const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
-        if (ownerAtaMissing) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
-        tx.add(new TransactionInstruction({ programId, keys: [
-          { pubkey: ghostPda,       isSigner: false, isWritable: false },
-          { pubkey: vaultPda,       isSigner: false, isWritable: false },
-          { pubkey: walletPk,       isSigner: true,  isWritable: true  },
-          { pubkey: withdrawMintPk, isSigner: false, isWritable: false },
-          { pubkey: ownerAta,       isSigner: false, isWritable: true  },
-          { pubkey: vaultAta,       isSigner: false, isWritable: true  },
-          { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
-        ], data }));
-      }
-      showNotif('Sign to withdraw: ' + batch.map(m => m.vt.symbol).join(', ') + '...', '');
-      const signed = await ghostState.provider.signTransaction(tx);
-      let sig;
-      try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
-      catch(simErr) {
-        let logs=[]; try { logs=await simErr.getLogs(connection); } catch(_){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
-        console.error('[Ghost] batch TX logs:', logs); throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
-      }
-      const conf = await connection.confirmTransaction(sig, 'confirmed');
-      if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
-      for (const m of batch) {
-        const { vt } = m;
-        const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
-        if (wt) { wt.balance += vt.balance; } else { ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl || null }); }
-        const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
-        addActivityRow('Vault Withdrawal ' + vt.balance.toLocaleString() + ' ' + vt.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
-        successCount++;
-      }
-    } catch(err) {
-      const syms = batch.map(m => m.vt.symbol).join(', ');
-      console.error('Batch withdraw error [' + syms + ']:', err);
-      showNotif('⚠️ Batch failed [' + syms + ']: ' + (err.message || err), 'error');
-    }
-  }
-
-  // ── SOL: always separate tx (needs keypair co-sig) ───────────────
-  for (const vt of solTokens) {
-    try {
-      const amount = vt.balance;
-      let vaultAta;
-      try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
-      if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
-      const amountRaw = BigInt(Math.round(amount * 1e9));
-      const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
-      const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
-      // Combine wSOL account creation + withdraw + unwrap into ONE tx (1 sign total)
-      const wsolKp = Keypair.generate(); const wsolAcct = wsolKp.publicKey;
-      const space = 165; const rent = await connection.getMinimumBalanceForRentExemption(space);
-      const { blockhash } = await connection.getLatestBlockhash();
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-      // 1. Create wSOL account
-      tx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
-      // 2. InitializeAccount3 (no rent-sysvar needed)
-      const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
-      tx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK, keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }], data: initData }));
-      // 3. Withdraw from vault
-      tx.add(new TransactionInstruction({ programId, keys: [
-        { pubkey: ghostPda,     isSigner: false, isWritable: false },
-        { pubkey: vaultPda,     isSigner: false, isWritable: false },
-        { pubkey: walletPk,     isSigner: true,  isWritable: true  },
-        { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
-        { pubkey: wsolAcct,     isSigner: false, isWritable: true  },
-        { pubkey: vaultAta,     isSigner: false, isWritable: true  },
-        { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
-      ], data }));
-      // 4. Unwrap wSOL → native SOL
-      tx.add(buildUnwrapIx(walletPk, wsolAcct));
-      showNotif('Sign to withdraw SOL...', '');
-      const signed = await ghostState.provider.signTransaction(tx);
-      signed.partialSign(wsolKp);
-      let sig;
-      try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
-      catch(simErr) {
-        let logs=[]; try { logs=await simErr.getLogs(connection); } catch(_){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
-        throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
-      }
-      const conf = await connection.confirmTransaction(sig, 'confirmed');
-      if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
-      const wt = ghostState.walletTokens.find(w => w.mint === 'native');
-      if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
-      const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
-      addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
-      successCount++;
-    } catch(err) { console.error('SOL withdraw error:', err); showNotif('⚠️ SOL withdraw failed: ' + (err.message || err), 'error'); }
-  }
-
-  if (successCount > 0) {
-    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
-    buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
-    ghostState.selectedTokens.deposit = null;
-    if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
-    renderVaultHoldings(); renderVaultOverview();
-    showNotif('✅ Withdrew ' + successCount + '/' + tokens.length + ' asset' + (successCount > 1 ? 's' : '') + ' from vault!', 'green');
-    saveSession();
-  }
+if (ghostState.ghost.status === 'awakened') { showNotif('Withdrawals blocked while awakened', 'error'); return; }
+const wholeVaultActive = ghostState.ghost.beneficiaries.some(b => b.action === 'whole-vault-share');
+if (wholeVaultActive) {
+const rec = ghostState.ghost.beneficiaries.find(b => b.action === 'whole-vault-share')?.recipient || '';
+showNotif('Vault is assigned to ' + rec + ' — remove beneficiary first', 'error'); return;
+}
+const tokens = [...ghostState.vaultTokens];
+if (tokens.length === 0) { showNotif('Vault is empty', 'error'); return; }
+if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+const { success } = await drainVaultOnChain(tokens, { isDemo: true });
+for (const vt of tokens) addActivityRow('Vault Withdrawal ' + vt.balance.toLocaleString() + ' ' + vt.symbol + ' [demo]', randomTx(), 'withdraw');
+const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
+buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
+ghostState.selectedTokens.deposit = null;
+if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
+renderVaultHoldings(); renderVaultOverview();
+showNotif('Withdrew all ' + success + ' asset(s) from vault! [demo]', 'green');
+saveSession(); return;
+}
+const { PublicKey } = solanaWeb3;
+const walletPk  = new PublicKey(ghostState.publicKey);
+const ghostPda  = new PublicKey(ghostState.ghostPda);
+const vaultPda  = new PublicKey(ghostState.vaultPda);
+const programId = new PublicKey(PROGRAM_ID);
+const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+showNotif('Preparing withdrawal of ' + tokens.length + ' asset(s)...', '');
+const { success, total } = await drainVaultOnChain(tokens, { connection, walletPk, ghostPda, vaultPda, programId });
+if (success > 0) {
+const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
+buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
+ghostState.selectedTokens.deposit = null;
+if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
+renderVaultHoldings(); renderVaultOverview();
+showNotif('Withdrew ' + success + '/' + total + ' asset(s) from vault!', 'green');
+saveSession();
+}
 }
 
 // ─── Comma-formatted amount helpers ─────────────────────────────
@@ -7538,31 +7760,33 @@ async function dbWithdrawAsset(vaultIdx) {
 // ─── Settings ───────────────────────────────────────────────────
 function syncSettingsDisplay() {
   const g = ghostState.ghost;
-  const iDays = Math.round(g.intervalSeconds / 86400);
-  const gDays = Math.round(g.gracePeriodSeconds / 86400);
   const el = id => document.getElementById(id);
-  if (el('settingsIntervalVal')) el('settingsIntervalVal').textContent = iDays;
-  if (el('settingsIntervalSub')) el('settingsIntervalSub').textContent = 'days · ~' + (Math.round(iDays/30.44)) + ' months';
-  if (el('settingsGraceVal')) el('settingsGraceVal').textContent = gDays;
-  if (el('settingsGraceSub')) el('settingsGraceSub').textContent = 'days after silence detected';
+  const iSeconds = g.intervalSeconds || 0;
+  const gSeconds = g.gracePeriodSeconds || 0;
+  const iHours = Math.round(iSeconds / 3600);
+  const gDays = Math.round(gSeconds / 86400);
+  if (el('settingsIntervalVal')) el('settingsIntervalVal').textContent = formatIntervalLabel(iSeconds);
+  if (el('settingsIntervalSub')) el('settingsIntervalSub').textContent = iHours + 'h · ' + formatIntervalPreview(iHours);
+  if (el('settingsGraceVal')) el('settingsGraceVal').textContent = gSeconds === 0 ? '0' : gDays;
+  if (el('settingsGraceSub')) el('settingsGraceSub').textContent = gSeconds === 0 ? 'instant execution (no grace window)' : 'days after silence detected';
   if (el('settingsStakedVal')) {
     const _ssAmt = g.stakedGhost || 10000;
     const _ssPrice = PRICE_CACHE[GHOST_MINT] || 0;
-    const _ssUsd = _ssPrice > 0 ? '<span style="font-size:11px;color:#9090b8;margin-left:6px">\u2248 $' + (_ssAmt * _ssPrice).toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>' : '';
+    const _ssUsd = _ssPrice > 0 ? '<span style="font-size:11px;color:#9090b8;margin-left:6px">u2248 $' + (_ssAmt * _ssPrice).toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>' : '';
     el('settingsStakedVal').innerHTML = _ssAmt.toLocaleString() + ' $GHOST' + _ssUsd;
   }
 }
 
 async function dbUpdateInterval() {
-  const days = parseInt(document.getElementById('dbNewInterval').value);
-  if (!days || days < 7) { showNotif('⚠️ Minimum 7 days required', 'error'); return; }
-  const seconds = days * 86400;
+  const hours = parseInt(document.getElementById('dbNewInterval').value);
+  if (!hours || hours < 1) { showNotif('⚠️ Minimum 1 hour required', 'error'); return; }
+  const seconds = hours * 3600;
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.intervalSeconds = seconds;
-    document.getElementById('dbInterval').textContent = days + ' days';
+    document.getElementById('dbInterval').textContent = formatIntervalLabel(seconds);
     document.getElementById('dbNewInterval').value = '';
-    document.getElementById('dbIntervalPreview').textContent = days + ' days ≈ ' + (Math.round(days/30.44)) + ' months';
+    document.getElementById('dbIntervalPreview').textContent = formatIntervalPreview(hours);
     syncSettingsDisplay(); updateCountdown();
     showNotif('✅ Interval updated [demo]', 'green'); return;
   }
@@ -7584,7 +7808,6 @@ async function dbUpdateInterval() {
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
     tx.add(ix);
-    // Debug: log each instruction individually so console doesn't collapse
     tx.instructions.forEach((ix, i) => 
       console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
     );
@@ -7595,24 +7818,25 @@ async function dbUpdateInterval() {
     console.log('[Ghost] TX confirmed:', conf);
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
     ghostState.ghost.intervalSeconds = seconds;
-    document.getElementById('dbInterval').textContent = days + ' days';
+    document.getElementById('dbInterval').textContent = formatIntervalLabel(seconds);
     document.getElementById('dbNewInterval').value = '';
-    document.getElementById('dbIntervalPreview').textContent = days + ' days ≈ ' + (Math.round(days/30.44)) + ' months';
+    document.getElementById('dbIntervalPreview').textContent = formatIntervalPreview(hours);
     syncSettingsDisplay(); updateCountdown();
-    showNotif('✅ Interval updated on-chain: ' + days + ' days', 'green');
+    showNotif('✅ Interval updated on-chain: ' + formatIntervalLabel(seconds), 'green');
   } catch(err) { showNotif('Failed: ' + (err.message || err), 'error'); }
 }
 
 async function dbUpdateGrace() {
   const days = parseInt(document.getElementById('dbNewGrace').value);
-  if (!days || days < 1) { showNotif('⚠️ Minimum 1 day required', 'error'); return; }
+  if (isNaN(days) || days < 0) { showNotif('⚠️ Grace period cannot be negative', 'error'); return; }
   const seconds = days * 86400;
+  const label = days === 0 ? 'Instant execution (0 days)' : days + ' days';
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.gracePeriodSeconds = seconds;
-    document.getElementById('dbGrace').textContent = days + ' days';
+    document.getElementById('dbGrace').textContent = label;
     document.getElementById('dbNewGrace').value = '';
-    document.getElementById('dbGracePreview').textContent = days + ' days';
+    document.getElementById('dbGracePreview').textContent = label;
     syncSettingsDisplay();
     showNotif('✅ Grace period updated [demo]', 'green'); return;
   }
@@ -7645,35 +7869,141 @@ async function dbUpdateGrace() {
     console.log('[Ghost] TX confirmed:', conf);
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
     ghostState.ghost.gracePeriodSeconds = seconds;
-    document.getElementById('dbGrace').textContent = days + ' days';
+    document.getElementById('dbGrace').textContent = label;
     document.getElementById('dbNewGrace').value = '';
-    document.getElementById('dbGracePreview').textContent = days + ' days';
+    document.getElementById('dbGracePreview').textContent = label;
     syncSettingsDisplay();
-    showNotif('✅ Grace period updated on-chain: ' + days + ' days', 'green');
+    showNotif('✅ Grace period updated on-chain: ' + label, 'green');
   } catch(err) { showNotif('Failed: ' + (err.message || err), 'error'); }
 }
 
 
 
-// ── On-chain Abandon Ghost (settings danger zone) ───────────────
-// NOTE: AbandonGhost on-chain instruction not yet implemented.
-// When ready: send AbandonGhost ix → vault closes, 50% GHOST burned, 50% returned.
+// ── On-chain Abandon Ghost ──────────────────────────────────────
+// Sends AbandonGhost instruction: burns 50% staked $GHOST, returns 50% to owner,
+// closes the ghost PDA (lamports returned to signer).
 async function dbAbandonOnChain() {
+  const staked = ghostState.ghost.stakedGhost || 0;
+  const burnAmt = Math.floor(staked * 0.5).toLocaleString();
+  const returnAmt = Math.ceil(staked * 0.5).toLocaleString();
+
   const _ok = await ghostConfirm({
     icon: '💀',
     title: 'Abandon Ghost',
-    message: 'This permanently closes your vault on-chain. Burns 50% of your staked $GHOST. All vault assets returned to your wallet. CANNOT be undone.',
+    message: `This permanently closes your ghost on-chain.\n\nBurns ${burnAmt} $GHOST (50% of stake).\nReturns ${returnAmt} $GHOST to your wallet.\nVault assets remain in vault — withdraw them first if needed.\n\nCANNOT be undone.`,
     okLabel: 'ABANDON FOREVER', danger: true
   });
   if (!_ok) return;
-  showNotif('⚠️ On-chain abandon not yet available — coming soon.', 'error');
-  // TODO: build & send AbandonGhost instruction here
-  // Discriminator: sha256("global:abandon_ghost")[0:8]
-  // On success: reset state, show aftermath
+
+  // Demo mode
+  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+    showNotif('💀 Ghost abandoned [demo]', 'green');
+    ghostState.ghost = { status: 'abandoned', stakedGhost: 0, pingCount: 0, beneficiaries: [], wholeVaultShares: [] };
+    ghostState.walletConnected = true;
+    saveSession();
+    updateDashboardUI();
+    return;
+  }
+
+  try {
+    showNotif('Abandoning ghost...', '');
+    const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+    const walletPubkey = new PublicKey(ghostState.publicKey);
+    const ghostPda = new PublicKey(ghostState.ghostPda);
+    const vaultPda = new PublicKey(ghostState.vaultPda);
+    const programId = new PublicKey(PROGRAM_ID);
+    const ghostMint = new PublicKey(GHOST_MINT);
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+
+    // ── Step 1: sweep vault assets back to owner (batched via shared helper) ─
+    const vaultTokens = [...ghostState.vaultTokens];
+    if (vaultTokens.length > 0) {
+      showNotif('Step 1/2: Returning ' + vaultTokens.length + ' vault asset(s) to wallet...', '');
+      const { success, total } = await drainVaultOnChain(vaultTokens, { connection, walletPk: walletPubkey, ghostPda, vaultPda, programId });
+      if (success < total) {
+        showNotif((total - success) + ' asset(s) failed to withdraw. Continuing with abandon...', 'error');
+      } else {
+        showNotif('All vault assets returned. Closing ghost...', 'green');
+      }
+    }
+
+    // sha256("global:abandon_ghost")[0:8]
+    const disc = [119, 54, 173, 140, 202, 18, 134, 100];
+
+    // Derive ghost_stake_vault: seeds = ["stake_vault", signer]
+    const [ghostStakeVault] = await PublicKey.findProgramAddress(
+      [new TextEncoder().encode('stake_vault'), walletPubkey.toBytes()],
+      programId
+    );
+
+    // Find owner's $GHOST ATA for the return transfer
+    let ownerTokenAccount;
+    try {
+      const tokenAccounts = await connection.getTokenAccountsByOwner(walletPubkey, { mint: ghostMint });
+      if (tokenAccounts.value.length > 0) {
+        ownerTokenAccount = tokenAccounts.value[0].pubkey;
+      } else {
+        throw new Error('No $GHOST token account found. Create one first.');
+      }
+    } catch(e) {
+      showNotif('⚠️ No $GHOST token account found — you need one to receive the returned stake', 'error');
+      return;
+    }
+
+    // Detect ghost mint token program
+    const ghostMintInfo = await connection.getAccountInfo(ghostMint);
+    const mintOwner = ghostMintInfo?.owner?.toBase58() || '';
+    const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    function b58dec(s) {
+      const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      let n = BigInt(0); for (const c of s) n = n * BigInt(58) + BigInt(B58.indexOf(c));
+      const b = new Uint8Array(32); for (let i = 31; i >= 0; i--) { b[i] = Number(n & BigInt(0xff)); n >>= BigInt(8); } return b;
+    }
+    const ghostTokenProgramId = mintOwner ? new PublicKey(new Uint8Array(b58dec(mintOwner))) : TOKEN_PROGRAM_ID;
+
+    // AbandonGhost accounts (matches AbandonGhost context in lib.rs):
+    // ghost (mut, close=signer), signer (mut), ghost_mint, ghost_stake_vault (mut), owner_token_account (mut), token_program
+    const data = new Uint8Array(8);
+    data.set(disc, 0);
+    const ix = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda,              isSigner: false, isWritable: true  },
+        { pubkey: walletPubkey,          isSigner: true,  isWritable: true  },
+        { pubkey: ghostMint,             isSigner: false, isWritable: false },
+        { pubkey: ghostStakeVault,       isSigner: false, isWritable: true  },
+        { pubkey: ownerTokenAccount,     isSigner: false, isWritable: true  },
+        { pubkey: ghostTokenProgramId,   isSigner: false, isWritable: false },
+      ],
+      data
+    });
+
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
+    tx.add(ix);
+    tx.instructions.forEach((ix, i) =>
+      console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
+    );
+    const signed = await ghostState.provider.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+    console.log('[Ghost] Abandon TX sent:', sig);
+    const conf = await connection.confirmTransaction(sig, 'confirmed');
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+    addActivityRow('💀 Ghost abandoned on-chain', sig.slice(0,4)+'...'+sig.slice(-4));
+
+    // Show abandon animation then aftermath
+    await dbAbandon(true, true); // skip confirm, onChain=true
+  } catch(err) {
+    console.error('[Ghost] Abandon error:', err);
+    showNotif('Failed: ' + (err.message || err), 'error');
+  }
 }
 
-// ── UI-only account reset (used for migration re-register) ───────
-async function dbAbandon(skipConfirm) {
+// ── UI account reset / animation after abandon ───────────────────
+// skipConfirm: skip the confirmation modal (used when on-chain tx already done)
+// onChain: true = real tx was just executed (50% burned); false = UI-only reset
+async function dbAbandon(skipConfirm, onChain) {
   // Step 1: Confirmation modal
   const confirmed = skipConfirm ? true : await new Promise(resolve => {
     const modal = document.createElement('div');
@@ -7718,10 +8048,10 @@ async function dbAbandon(skipConfirm) {
       ${particles}
       <span class="ghost-fly-char">👻</span>
       <div id="abandonMsg" style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#a060ff;margin-top:20px;opacity:0;transition:opacity 0.6s">
-        Account reset…
+        ${onChain ? 'Ghost abandoned on-chain' : 'Account reset…'}
       </div>
       <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#6050a0;margin-top:8px;opacity:0;transition:opacity 0.6s" id="abandonSub">
-        Vault assets untouched on-chain
+        ${onChain ? '50% staked $GHOST burned · 50% returned to wallet' : 'Vault assets untouched on-chain'}
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -7767,21 +8097,24 @@ async function dbAbandon(skipConfirm) {
   document.getElementById('nav-overview')?.classList.add('active');
 
   overviewPage.innerHTML = `
-    <div class="db-page-title">Account Reset</div>
-    <div class="db-page-sub">Ready to re-register</div>
+    <div class="db-page-title">${onChain ? 'Ghost Abandoned' : 'Account Reset'}</div>
+    <div class="db-page-sub">${onChain ? 'On-chain execution complete' : 'Ready to re-register'}</div>
     <div style="animation:aftermath-fade-in 0.8s ease-out both">
       <div style="background:rgba(102,51,255,0.04);border:1px solid rgba(102,51,255,0.15);border-radius:10px;padding:32px;margin-bottom:20px;text-align:center">
         <div style="font-size:56px;margin-bottom:16px;opacity:0.6">👻</div>
-        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#a060ff;margin-bottom:8px">Ghost account cleared</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#a060ff;margin-bottom:8px">${onChain ? 'Ghost permanently closed' : 'Ghost account cleared'}</div>
         <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#7060a0;line-height:1.7">
-          Your local account state has been reset.<br>Your vault assets are untouched on-chain.<br>Register a new ghost account to continue.
+          ${onChain 
+            ? '50% of your staked $GHOST was burned.<br>50% was returned to your wallet.<br>Your vault assets remain — withdraw them via direct SPL transfer.'
+            : 'Your local account state has been reset.<br>Your vault assets are untouched on-chain.<br>Register a new ghost account to continue.'
+          }
         </div>
       </div>
 
       <div style="text-align:center">
-        <button onclick="dbSummonNew()" style="background:rgba(102,51,255,0.15);border:1px solid rgba(102,51,255,0.4);color:#a060ff;padding:12px 32px;border-radius:8px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;transition:all 0.2s" onmouseover="this.style.background='rgba(102,51,255,0.25)'" onmouseout="this.style.background='rgba(102,51,255,0.15)'">
+        ${onChain ? '' : `<button onclick="dbSummonNew()" style="background:rgba(102,51,255,0.15);border:1px solid rgba(102,51,255,0.4);color:#a060ff;padding:12px 32px;border-radius:8px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;transition:all 0.2s" onmouseover="this.style.background='rgba(102,51,255,0.25)'" onmouseout="this.style.background='rgba(102,51,255,0.15)'">
           👻 Register New Ghost
-        </button>
+        </button>`}
       </div>
     </div>`;
 
