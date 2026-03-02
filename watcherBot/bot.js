@@ -264,8 +264,8 @@ async function scanAndExecute() {
   try {
     // Fetch v1.7 (1220 bytes) and v1.8 (1221 bytes) accounts using gpaConnection
     // (separate from main RPC — Helius free tier blocks gPA from server-side IPs)
-    const ACCOUNT_SIZE_V17 = 1220;
-    const ACCOUNT_SIZE_V18 = 1221;
+    const ACCOUNT_SIZE_V17 = 1228;
+    const ACCOUNT_SIZE_V18 = 1229;
     const [v17, v18] = await Promise.all([
       gpaConnection.getProgramAccounts(programIdPk, {
         commitment: 'confirmed',
