@@ -3092,13 +3092,11 @@ function parseGhostAccount(bytes) {
       // Only parse slots within beneficiary_count — skip rest to avoid phantom entries
       // from leftover bytes of previously removed beneficiaries
       if (_bi >= _slotsToRead) {
-        // Skip remainder of this slot: amount(8) + mintTag(1) + optional mint(0or32) + action(1) + executed(1)
-        // We don't know if mintTag=1 for skipped slots — conservatively skip max 8+1+32+1+1=43 extra
-        // BUT: we must skip the correct amount. For empty/old slots, mintTag should be 0 (None).
-        // Read mintTag to decide:
-        const _skipMintTag = bytes[offset]; offset += 8 + 1; // amount + mintTag
-        if (_skipMintTag === 1) offset += 32;
-        offset += 1 + 1; // action + executed
+        // Skip: amount(8) + mintTag(1) + pubkey if Some(0or32) + action(1) + executed(1)
+        offset += 8; // skip amount first
+        const _skipMintTag = bytes[offset]; offset += 1; // THEN read mintTag
+        if (_skipMintTag === 1) offset += 32; // skip pubkey only if Some
+        offset += 2; // action + executed
         continue;
       }
       const amtRaw = view.getBigUint64(offset, true); offset += 8;
@@ -5121,6 +5119,8 @@ async function dbSaveWholeVaultPlan(wvAction, _directRecipient) {
     _applyWholeVaultLocally(share);
     addActivityRow(isBurnAll ? '🔥 Whole vault burn set on-chain' : ('Whole vault recipient → ' + share.addr), sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif(isBurnAll ? '🔥 Whole vault burn set on-chain!' : 'Whole vault recipient set on-chain!', 'green');
+    // Re-fetch after short delay to confirm chain state matches local optimistic update
+    setTimeout(() => fetchGhostAccount().catch(() => {}), 2000);
   } catch(err) {
     console.error('set_whole_vault_recipient error:', err);
     showNotif('Failed: ' + (err.message || err), 'error');
