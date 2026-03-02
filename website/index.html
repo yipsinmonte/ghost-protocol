@@ -3646,6 +3646,32 @@ async function initializeGhost() {
     );
     console.log('[Ghost] Derived ghostStakeVault:', ghostStakeVault.toBase58());
 
+    // For migration re-register: read existing stake from ghost_stake_vault
+    // so we pass the correct amount (program enforces min stake on-chain)
+    if (_isMigrationReg2) {
+      try {
+        const stakeVaultInfo = await connection.getTokenAccountBalance(ghostStakeVault);
+        const onChainStake = stakeVaultInfo?.value?.uiAmount || 0;
+        if (onChainStake > 0) {
+          // Override stakeRaw with actual on-chain balance
+          const stakeRawMig = BigInt(Math.round(onChainStake * 1_000_000));
+          console.log('[Ghost] Migration: using existing stake vault balance:', onChainStake, 'raw:', stakeRawMig.toString());
+          // Overwrite the data buffer with correct stake amount
+          dv.setBigUint64(24, stakeRawMig, true);
+          // Update ghostState so UI shows correct staked amount after init
+          ghostState.ghost.stakedGhost = onChainStake;
+        } else {
+          console.log('[Ghost] Migration: stake vault empty or not found — using default');
+          // Vault empty — use minimum stake, will need tokens in wallet
+          dv.setBigUint64(24, BigInt(10000) * BigInt(1_000_000), true);
+        }
+      } catch(e) {
+        console.log('[Ghost] Migration: could not fetch stake vault balance:', e.message);
+        // Fall back to minimum
+        dv.setBigUint64(24, BigInt(10000) * BigInt(1_000_000), true);
+      }
+    }
+
     // Account order matches InitializeGhost context in lib.rs:
     // ghost, vault, ghost_stake_vault, signer_token_account, signer, token_program, system_program
     const ix = new TransactionInstruction({
