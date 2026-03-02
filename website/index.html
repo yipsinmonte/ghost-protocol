@@ -2679,23 +2679,6 @@ async function fetchGhostAccount() {
       const i64 = o => Number(v.getBigInt64(o, true));
       const u64 = o => Number(v.getBigUint64(o, true));
       console.log('[Ghost] ACCOUNT DUMP — total bytes:', bytes.length);
-      console.log('[Ghost] bytes[139-215]:', Array.from(bytes.slice(139,215)).map(b=>hex(b)).join(' '));
-      // Show key field values at both possible Option layouts
-      const _dumpOff = (label, off) => {
-        try { console.log(`[Ghost] DUMP ${label} @${off}: u64=${u64(off)} i64=${i64(off)} byte=${bytes[off]}`); } catch(_){}
-      };
-      // Confirmed: last_heartbeat@139, interval@147, grace@155, awakened@163, next@164
-      console.log('[Ghost] last_heartbeat@139:', i64(139));
-      console.log('[Ghost] interval@147:', i64(147), 'grace@155:', i64(155));
-      console.log('[Ghost] awakened@163:', bytes[163], 'byte164:', bytes[164], 'byte165:', bytes[165], 'byte166:', bytes[166]);
-      // Variable Option layout (None=1byte)
-      console.log('[Ghost] VAR: staked@167:', u64(167), 'bump@175:', bytes[175], 'vault_bump@176:', bytes[176]);
-      console.log('[Ghost] VAR: registered@177:', i64(177), 'pings@185:', u64(185), 'benefCount@193:', bytes[193]);
-      // Fixed 9-byte Option layout
-      console.log('[Ghost] FIX: staked@183:', u64(183), 'bump@191:', bytes[191], 'vault_bump@192:', bytes[192]);
-      console.log('[Ghost] FIX: registered@193:', i64(193), 'pings@201:', u64(201), 'benefCount@209:', bytes[209]);
-      // Dump bytes for manual inspection
-      console.log('[Ghost] bytes[163-215]:', Array.from(bytes.slice(163,215)).map(b=>hex(b)).join(' '));
     })();
     updateDashboardUI();
 
@@ -3029,17 +3012,17 @@ function parseGhostAccount(bytes) {
     // awakened: bool
     const awakened = bytes[offset] === 1;
     offset += 1;
-    // awakened_at: Option<i64> — FIXED 9 bytes in deployed program (tag + i64, zeros when None)
-    // Do NOT use variable Borsh (1 or 9 bytes) — deployed program stores always-9-byte layout
+    // awakened_at: Option<i64> — variable Borsh: None=1 byte, Some=9 bytes
     const hasAwakenedAt = bytes[offset] === 1;
-    const awakenedAt = hasAwakenedAt ? Number(view.getBigInt64(offset + 1, true)) : null;
-    offset += 9; // always 9 bytes (1 tag + 8 value, value=0 when "None")
+    offset += 1;
+    const awakenedAt = hasAwakenedAt ? Number(view.getBigInt64(offset, true)) : null;
+    if (hasAwakenedAt) offset += 8;
     // executed: bool
     const executed = bytes[offset] === 1;
     offset += 1;
-    // executed_at: Option<i64> — FIXED 9 bytes in deployed program
-    const exTag = bytes[offset];
-    offset += 9; // always 9 bytes
+    // executed_at: Option<i64> — variable Borsh: None=1 byte, Some=9 bytes
+    const exTag = bytes[offset]; offset += 1;
+    if (exTag === 1) offset += 8;
     // staked_ghost: u64
     const staked = Number(view.getBigUint64(offset, true));
     offset += 8;
@@ -3053,7 +3036,7 @@ function parseGhostAccount(bytes) {
     offset += 8;
     // beneficiary_count: u8
     const benefCount = bytes[offset];
-    console.log('[Ghost] benefCount offset:', offset, 'value:', benefCount); // diagnostic
+
     offset += 1;
 
     // ── Sanity guards: detect legacy/garbage layout ────────────────
@@ -3090,9 +3073,10 @@ function parseGhostAccount(bytes) {
     ghostState.ghost.beneficiaryCount = _validBenefCount ? _benefCount : 0;
     ghostState.ghost.registeredAt = _vRegistered ? _registeredAt * 1000 : null;
 
-    // Decode beneficiaries[10] from chain — 79 bytes each in deployed program:
-    // recipient(32) + amount(u64=8) + token_mint(Option<Pubkey>=33) + action(u8=1) + executed(bool=1) + unknown(4) = 79
-    // Note: uploaded lib.rs shows 75 bytes, but deployed account size (1228) confirms 79 bytes per slot
+    // Decode beneficiaries from chain — 75 bytes MAX per slot (variable):
+    // recipient(32) + amount(u64=8) + token_mint(Option<Pubkey>=1or33) + action(u8=1) + executed(bool=1)
+    // CRITICAL: only parse _benefCount slots — remaining slots may have leftover bytes from
+    // previously removed beneficiaries that would otherwise appear as phantoms
     const _B58c = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     function _bDecodePk(pkBytes) {
       let n = 0n; for (const b of pkBytes) n = n * 256n + BigInt(b);
@@ -3102,10 +3086,21 @@ function parseGhostAccount(bytes) {
     }
     const _SOL_MINT = 'So11111111111111111111111111111111111111112';
     const _chainBenefs = [];
+    const _slotsToRead = _validBenefCount ? _benefCount : 0;
     for (let _bi = 0; _bi < 10; _bi++) {
       const recipBytes = bytes.slice(offset, offset + 32); offset += 32;
-      // Sanity: if beneficiary_count was garbage, skip all slots (still advance full 79 bytes)
-      if (!_validBenefCount) { offset += 8 + 33 + 1 + 1 + 4; continue; }
+      // Only parse slots within beneficiary_count — skip rest to avoid phantom entries
+      // from leftover bytes of previously removed beneficiaries
+      if (_bi >= _slotsToRead) {
+        // Skip remainder of this slot: amount(8) + mintTag(1) + optional mint(0or32) + action(1) + executed(1)
+        // We don't know if mintTag=1 for skipped slots — conservatively skip max 8+1+32+1+1=43 extra
+        // BUT: we must skip the correct amount. For empty/old slots, mintTag should be 0 (None).
+        // Read mintTag to decide:
+        const _skipMintTag = bytes[offset]; offset += 8 + 1; // amount + mintTag
+        if (_skipMintTag === 1) offset += 32;
+        offset += 1 + 1; // action + executed
+        continue;
+      }
       const amtRaw = view.getBigUint64(offset, true); offset += 8;
       const mintTag = bytes[offset]; offset += 1;
       let mintPk = null;
@@ -3113,9 +3108,6 @@ function parseGhostAccount(bytes) {
       // None = tag only, no extra bytes
       const actionByte = bytes[offset]; offset += 1;
       const execByte = bytes[offset]; offset += 1;
-      // Deployed Beneficiary struct has 4 extra bytes (unknown field — not in uploaded lib.rs)
-      // Must consume them to keep offset aligned for subsequent slots
-      offset += 4;
       // Empty slot: no recipient AND no amount AND no mint
       const hasRecip = recipBytes.some(b => b !== 0);
       if (!hasRecip && amtRaw === 0n && !mintPk) continue;
@@ -4740,6 +4732,8 @@ async function dbAddBeneficiary(action) {
       if (!ghostState.ghost.wholeVaultShares) ghostState.ghost.wholeVaultShares = [];
       ghostState.ghost.wholeVaultAction = _wvAction;
       ghostState.ghost.wholeVaultShares = [{ addr: short, fullAddr: isWholeBurn ? null : recipient, pct: 100, action: _wvAction }];
+      // Filter before push — prevent duplication if chain refresh hasn't fired yet
+      ghostState.ghost.beneficiaries = ghostState.ghost.beneficiaries.filter(b => b.action !== 'whole-vault-share');
       ghostState.ghost.beneficiaries.push({
         recipient: short, fullAddr: isWholeBurn ? null : recipient,
         sharePct: 100, amount: 0,
