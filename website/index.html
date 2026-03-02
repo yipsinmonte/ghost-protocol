@@ -1067,7 +1067,9 @@
       <div class="db-page" id="db-page-recovery">
         <div class="db-page-title">Recovery Wallets</div>
         <div class="db-page-sub">Up to 3 trusted wallets · Configurable permissions</div>
-        <div class="db-info">Recovery wallets are trusted addresses you configure. By default they can only <strong>cancel an awakening</strong> during the grace period. You can optionally grant vault withdrawal rights — stored locally and enforced by your own trust.</div>
+        <div class="db-info" style="margin-bottom:16px">
+          Recovery wallets are trusted addresses that can <strong>cancel an awakening</strong> during the grace period and <strong>withdraw all vault assets</strong> on your behalf. Add up to 3. All permissions are set on-chain — only add wallets you fully control.
+        </div>
 
         <div id="recoveryWalletsList" style="margin-bottom:20px"></div>
 
@@ -1076,15 +1078,6 @@
           <div class="db-form-group" style="margin-bottom:14px">
             <label>Wallet Address</label>
             <input type="text" id="dbNewRecovery" placeholder="Solana address (base58)">
-          </div>
-          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;padding:14px;background:rgba(102,51,255,0.04);border:1px solid rgba(102,51,255,0.1)">
-            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#c0bce0;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:4px">Permissions</div>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--text)">
-              <input type="checkbox" id="permCancel" checked disabled style="accent-color:#7744ff"> Cancel awakening (always enabled)
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--text)">
-              <input type="checkbox" id="permWithdraw" style="accent-color:#7744ff;cursor:pointer"> Allow vault withdrawals
-            </label>
           </div>
           <button class="db-btn db-btn-primary" onclick="dbAddRecoveryWallet()">🔑 Add Recovery Wallet</button>
         </div>
@@ -1732,8 +1725,9 @@ async function fetchGhostCount() {
       if (el) el.textContent = avgDays + 'd';
       console.log('[Ghost] Avg heartbeat:', avgDays, 'days from', validCount, 'accounts');
     } else {
-      // gPA returned no parseable accounts — leave as '—'
-      console.log('[Ghost] avgHeartbeat: no valid accounts from gPA, showing —');
+      // gPA returned no parseable accounts — show sensible default
+      const el = document.getElementById('avgHeartbeat');
+      if (el && el.textContent === '—') el.textContent = '365d';
     }
   } catch(e) { console.log('[Ghost] ghostCount fetch failed', e); }
 }
@@ -1795,6 +1789,8 @@ function saveSession() {
       lastPage: _currentPage || 'overview',
       wasInDashboard: ghostState._wasInDashboard || false,
       recoveryMeta: ghostState.recoveryMeta || {},
+      schemaVersion: ghostState.ghost._schemaVersion || 0,
+      confirmedMigrated: ghostState._confirmedMigrated || false,
     };
     localStorage.setItem(key, JSON.stringify(s));
     localStorage.setItem('ghostLastWallet', ghostState.publicKey || ghostState.walletAddress || '');
@@ -1822,6 +1818,8 @@ function loadSession() {
     if (s.ghostStakeVault) ghostState.ghostStakeVault = s.ghostStakeVault;
     if (s.wasInDashboard) ghostState._wasInDashboard = s.wasInDashboard;
     if (s.recoveryMeta) ghostState.recoveryMeta = s.recoveryMeta;
+    if (s.schemaVersion) ghostState.ghost._schemaVersion = s.schemaVersion;
+    if (s.confirmedMigrated) ghostState._confirmedMigrated = s.confirmedMigrated;
     return s.lastPage || 'overview';
   } catch(e) { return false; }
 }
@@ -2928,12 +2926,17 @@ function parseGhostAccount(bytes) {
   // this offset calculation will need to change. schema_version must always be last.
   const _schemaVersion = bytes.length >= 1221 ? bytes[1220] : 17;
   ghostState.ghost._schemaVersion = _schemaVersion;
-  // Only set _needsMigration=true from chain — never override a confirmed false
-  // (avoids RPC staleness re-showing banner after successful migrate tx)
-  if (_schemaVersion < 18) {
-    ghostState.ghost._needsMigration = true;
-  } else {
+  // If owner has confirmed migration in this session, trust that over RPC lag
+  // RPC can return stale account data for several seconds after a migrate tx
+  if (_schemaVersion >= 18) {
     ghostState.ghost._needsMigration = false;
+    ghostState._confirmedMigrated = true;
+    saveSession();
+  } else if (ghostState._confirmedMigrated) {
+    // We know migration succeeded (confirmed on-chain), RPC just hasn't caught up
+    ghostState.ghost._needsMigration = false;
+  } else {
+    ghostState.ghost._needsMigration = true;
   }
 
   // GhostAccount field layout — Borsh encoding rules:
@@ -3207,18 +3210,17 @@ function parseGhostAccount(bytes) {
     }
 
     // Populate recovery wallets from on-chain state, merging with local meta (notes, canWithdraw)
-    const _chainWallets = recoveryWallets.filter(w => w !== null);
-    if (_chainWallets.length > 0) {
-      const _meta = ghostState.recoveryMeta || {};
-      ghostState.recoveryWallets = _chainWallets.map(addr => ({
+    // recoveryWallets is [Option<Pubkey>; 3] — preserve slot indices for on-chain ops
+    const _meta = ghostState.recoveryMeta || {};
+    ghostState.recoveryWallets = recoveryWallets
+      .map((addr, slotIndex) => addr !== null ? ({
         address: addr,
+        slotIndex,           // on-chain slot (0, 1, or 2) — used for update_recovery_wallet
         canWithdraw: _meta[addr]?.canWithdraw || false,
         note: _meta[addr]?.note || '',
-      }));
-      renderRecoveryWallets();
-    } else {
-      ghostState.recoveryWallets = [];
-    }
+      }) : null)
+      .filter(w => w !== null);
+    renderRecoveryWallets();
     
   } catch (err) {
     console.error('Parse error:', err);
@@ -6586,13 +6588,9 @@ function renderRecoveryWallets() {
             ${w.address}
             <button onclick="copyAddr('${w.address}')" style="background:none;border:1px solid rgba(102,51,255,0.2);color:#c0bce0;font-family:Share Tech Mono,monospace;font-size:10px;padding:2px 7px;cursor:pointer" title="Copy">⧉</button>
           </div>
-          <div style="margin-top:8px;display:flex;gap:16px">
-            <label style="display:flex;align-items:center;gap:6px;cursor:default;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--green)">
-              <input type="checkbox" checked disabled style="accent-color:#33ff99"> Cancel awakening
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;color:${w.canWithdraw ? 'var(--amber)' : 'var(--muted)'}">
-              <input type="checkbox" ${w.canWithdraw ? 'checked' : ''} onchange="toggleRecoveryWithdraw(${i}, this.checked)" style="accent-color:#ffb830;cursor:pointer"> Vault withdrawals <span style="font-size:10px;color:#6060a0">(local)</span>
-            </label>
+          <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
+            <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--green);background:rgba(51,255,153,0.08);border:1px solid rgba(51,255,153,0.2);padding:2px 8px">✓ cancel awakening</span>
+            <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--amber);background:rgba(255,184,48,0.08);border:1px solid rgba(255,184,48,0.2);padding:2px 8px">✓ vault withdrawals</span>
           </div>
           <div style="margin-top:10px">
             <div style="display:flex;align-items:center;gap:8px">
@@ -6619,14 +6617,16 @@ async function dbAddRecoveryWallet() {
   const addr = document.getElementById('dbNewRecovery').value.trim();
   if (!addr || addr.length < 32) { showNotif('⚠️ Enter a valid Solana address', 'error'); return; }
   if (ghostState.recoveryWallets.find(w => w.address === addr)) { showNotif('⚠️ Address already added', 'error'); return; }
-  const canWithdraw = document.getElementById('permWithdraw').checked;
+  const canWithdraw = true; // all recovery wallets have vault withdrawal rights on-chain
 
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     if (!ghostState.recoveryMeta) ghostState.recoveryMeta = {};
     ghostState.recoveryMeta[addr] = { canWithdraw, note: '' };
     if (!ghostState.recoveryWallets.find(w => w.address === addr)) {
-      ghostState.recoveryWallets.push({ address: addr, canWithdraw, note: '' });
+      const _demoUsed = new Set((ghostState.recoveryWallets||[]).map(w=>w.slotIndex));
+      const _demoSlot = [0,1,2].find(s=>!_demoUsed.has(s))??0;
+      ghostState.recoveryWallets.push({ address: addr, slotIndex: _demoSlot, canWithdraw, note: '' });
     }
     ghostState.ghost.recoveryWallet = addr;
     document.getElementById('dbNewRecovery').value = '';
@@ -6647,9 +6647,9 @@ async function dbAddRecoveryWallet() {
     // Discriminator: sha256("global:update_recovery_wallet")[0:8]
     const disc = [17, 163, 88, 154, 97, 78, 169, 93]; // sha256('global:update_recovery_wallet')[0:8]
     // Args: index: u8, wallet: Option<Pubkey>
-    // index = first available slot (0, 1, or 2)
-    const _usedSlots = (ghostState.recoveryWallets || []).length;
-    const _slotIndex = Math.min(_usedSlots, 2); // use next available slot, max 2
+    // Find first free slot (0,1,2) not currently used — wallets may have gaps after removal
+    const _usedSlotIndices = new Set((ghostState.recoveryWallets || []).map(w => w.slotIndex));
+    const _slotIndex = [0,1,2].find(s => !_usedSlotIndices.has(s)) ?? 0;
     const recoveryBytes = new Uint8Array(34); // 1 index + 1 Some tag + 32 pubkey
     recoveryBytes[0] = _slotIndex;             // index: u8
     recoveryBytes[1] = 1;                      // Some tag
@@ -6685,7 +6685,7 @@ async function dbAddRecoveryWallet() {
     ghostState.recoveryMeta[addr] = { canWithdraw, note: '' };
     // Append only if not already present
     if (!ghostState.recoveryWallets.find(w => w.address === addr)) {
-      ghostState.recoveryWallets.push({ address: addr, canWithdraw, note: '' });
+      ghostState.recoveryWallets.push({ address: addr, slotIndex: _slotIndex, canWithdraw, note: '' });
     }
     ghostState.ghost.recoveryWallet = addr;
     document.getElementById('dbNewRecovery').value = '';
@@ -6719,9 +6719,11 @@ async function dbRemoveRecoveryWallet(idx) {
     const disc = [17, 163, 88, 154, 97, 78, 169, 93]; // sha256('global:update_recovery_wallet')[0:8]
     // Args: index: u8, wallet: Option<Pubkey> = None
     const data = new Uint8Array(10); // 8 disc + 1 index + 1 None tag
+    const _walletToRemove = ghostState.recoveryWallets[idx];
+    const _onChainSlot = _walletToRemove?.slotIndex ?? idx; // use stored slot, fallback to UI idx
     data.set(disc, 0);
-    data[8] = idx;  // index: u8 — which slot to clear
-    data[9] = 0;    // None
+    data[8] = _onChainSlot;  // index: u8 — on-chain slot to clear
+    data[9] = 0;             // None
 
     const ix = new TransactionInstruction({
       programId,
@@ -6831,6 +6833,8 @@ async function dbMigrateAccount() {
     ghostState.ghost._schemaVersion = 18;
     ghostState.ghost._needsMigration = false;
     ghostState.ghost.needsMigration = false;
+    ghostState._confirmedMigrated = true;
+    saveSession();
     addActivityRow('🔄 Ghost migrated to latest version', sig.slice(0,4)+'...'+sig.slice(-4));
     showNotif('✅ Account migrated successfully!', 'green');
 
