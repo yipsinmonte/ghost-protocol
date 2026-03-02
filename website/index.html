@@ -802,9 +802,9 @@
         <div id="overviewMigrationBanner" style="display:none;background:rgba(255,170,51,0.08);border:1px solid rgba(255,170,51,0.4);border-radius:8px;padding:20px 24px;margin-bottom:20px">
           <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:var(--amber);margin-bottom:8px">⚠️ Account Migration Available</div>
           <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#c0a060;line-height:1.8;margin-bottom:16px">
-            Your ghost account is on the v1.7 layout. A free on-chain migration to v1.8 is available — adds 1 byte to your account. All settings, beneficiaries, vault assets, and staked $GHOST are completely untouched.
+            Your ghost account needs a one-time migration to the latest layout. All settings, beneficiaries, vault assets, and staked $GHOST are completely untouched.
           </div>
-          <button onclick="dbMigrateAccount()" style="background:rgba(255,170,51,0.15);border:1px solid rgba(255,170,51,0.5);color:var(--amber);padding:10px 24px;border-radius:6px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:0.1em">🔄 MIGRATE TO v1.8</button>
+          <button onclick="dbMigrateAccount()" style="background:rgba(255,170,51,0.15);border:1px solid rgba(255,170,51,0.5);color:var(--amber);padding:10px 24px;border-radius:6px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:0.1em">🔄 MIGRATE ACCOUNT</button>
         </div>
 
         <!-- Wallet identity -->
@@ -1170,8 +1170,8 @@
 
         <div class="db-form" id="migrationCard" style="border-color:rgba(255,170,51,0.3);display:none">
           <div class="db-form-title" style="color:var(--amber)">⚠️ Account Migration Available</div>
-          <div class="db-info" style="border-color:rgba(255,170,51,0.3)">Your ghost account is on the v1.7 layout (1220 bytes). Run the free on-chain migration to v1.8 (1221 bytes).<br><br>All beneficiaries, settings, vault assets, and staked $GHOST are completely untouched. Costs ~1 lamport extra rent. Idempotent — safe to run multiple times.</div>
-          <button class="db-btn" style="border-color:var(--amber);color:var(--amber)" onclick="dbMigrateAccount()">🔄 Migrate to v1.8</button>
+          <div class="db-info" style="border-color:rgba(255,170,51,0.3)">Your ghost account needs a one-time on-chain migration to the latest layout.<br><br>All beneficiaries, settings, vault assets, and staked $GHOST are completely untouched. Costs a small lamport fee for rent. Safe to run multiple times.<br><br>Migrating ensures compatibility with all current and future features.</div>
+          <button class="db-btn" style="border-color:var(--amber);color:var(--amber)" onclick="dbMigrateAccount()">🔄 Migrate Account</button>
         </div>
 
         <div class="db-form" style="border-color:rgba(255,61,90,0.2)">
@@ -2847,25 +2847,36 @@ async function fetchOnChainHistory() {
 
 
 // Parse raw account bytes into ghostState
-// Anchor account layout: 8 bytes discriminator, then fields
-// v1.7 = 1220 bytes, v1.8 = 1221 bytes (schema_version byte appended by migrate_ghost)
-// Pre-v1.7 accounts (<1220 bytes) land on needs-migration status
+// Anchor account layout: 8 bytes discriminator, then Borsh-serialized GhostAccount fields
+//
+// ── VERSION DETECTION ────────────────────────────────────────────────────
+// schema_version is the LAST field in GhostAccount (u8 = 1 byte).
+// Account sizes by version:
+//   < 1220 bytes  = pre-v1.7 (very old, cannot parse — show migration banner)
+//   = 1220 bytes  = v1.7 (schema_version field did not exist yet — needs migration)
+//   = 1221 bytes  = v1.8 (schema_version at offset 1220, value = 18)
+//   > 1221 bytes  = future version (schema_version byte position grows with account)
+//
+// When adding a new version: update the size checks below and the _schemaVersion read.
+// The frontend gates new features using isVersionSufficient(minVersion) — see that function.
+// ─────────────────────────────────────────────────────────────────────────
 function parseGhostAccount(bytes) {
   const view = new DataView(bytes.buffer);
-  let offset = 8; // skip discriminator
-  // Pre-v1.7 accounts have different layout — don't parse them fully
-  // Just mark as needs-migration; migrationCard will show
+  let offset = 8; // skip 8-byte Anchor discriminator
+  // Pre-v1.7 accounts have a different layout — don't attempt to parse them
   if (bytes.length < 1220) {
     ghostState.ghost.status = 'needs-migration';
     return;
   }
 
-  // Detect schema version from trailing byte (v1.8+)
-  // 1220 bytes = v1.7 (needs on-chain migrate_ghost call)
-  // 1221+ bytes = v1.8 (migrated — schema_version byte present at offset 1220)
+  // Read schema_version from the last byte of the account.
+  // v1.7 accounts are exactly 1220 bytes — no schema_version field, treat as v17.
+  // v1.8+ accounts have schema_version as the last struct field.
+  // UPGRADE NOTE: if a future version adds more fields after schema_version,
+  // this offset calculation will need to change. schema_version must always be last.
   const _schemaVersion = bytes.length >= 1221 ? bytes[1220] : 17;
   ghostState.ghost._schemaVersion = _schemaVersion;
-  ghostState.ghost._needsMigration = bytes.length === 1220; // exactly v1.7 size → show migration prompt
+  ghostState.ghost._needsMigration = _schemaVersion < 18; // gate: bump to 19 for next version
 
   // GhostAccount field layout — Borsh encoding rules:
   //   Option<T>::None = 1 byte (0x00 tag only)
@@ -6597,14 +6608,18 @@ async function dbRemoveRecoveryWallet(idx) {
 }
 
 // ─── Account migration ──────────────────────────────────────────
-// Sends migrate_ghost instruction: reallocates ghost PDA from 1220 → 1221 bytes,
-// writes schema_version=18 at offset 1220. All account data preserved unchanged.
-// Owner pays ~1 extra lamport for rent. Idempotent — safe to call on already-migrated accounts.
+// Sends migrate_ghost instruction: reallocates ghost PDA to current GHOST_ACCOUNT_SPACE,
+// sets schema_version = CURRENT_SCHEMA_VERSION via Anchor struct field.
+// Owner pays the small rent difference. Idempotent — safe to call multiple times.
+//
+// UPGRADE NOTE: when a new program version ships (v1.9+), update the dialog text below
+// to describe what new features the user unlocks by migrating. The on-chain logic is
+// handled by migrate_ghost in lib.rs — no JS tx changes needed.
 async function dbMigrateAccount() {
   const _ok = await ghostConfirm({
     icon: '🔄',
-    title: 'Migrate to v1.8',
-    message: 'Upgrades your ghost account layout on-chain (1220 → 1221 bytes).\n\nAll settings, beneficiaries, vault assets, and staked $GHOST are completely untouched.\nCosts ~1 lamport extra rent. Idempotent — safe to run more than once.',
+    title: 'Migrate Account',
+    message: 'Upgrades your ghost account to the latest on-chain layout.\n\nAll settings, beneficiaries, vault assets, and staked $GHOST are completely untouched.\nCosts a small lamport fee for rent. Safe to run more than once.\n\nMigrating ensures your account is compatible with all current and future features.',
     okLabel: 'MIGRATE NOW', danger: false
   });
   if (!_ok) return;
@@ -6612,29 +6627,31 @@ async function dbMigrateAccount() {
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost._schemaVersion = 18;
-    addActivityRow('🔄 Ghost migrated to v1.8 [demo]', '');
-    showNotif('✅ Account migrated to v1.8 [demo]', 'green');
-    // Hide migration banner
+    ghostState.ghost._needsMigration = false;
+    addActivityRow('🔄 Ghost migrated to latest version [demo]', '');
+    showNotif('✅ Account migrated [demo]', 'green');
     const _migBanner = document.getElementById('overviewMigrationBanner');
     if (_migBanner) _migBanner.style.display = 'none';
     const _migCard = document.getElementById('migrationCard');
     if (_migCard) _migCard.style.display = 'none';
+    enableAllVersionGatedFeatures();
     return;
   }
 
   try {
-    showNotif('Migrating account to v1.8...', '');
+    showNotif('Migrating account...', '');
     const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = solanaWeb3;
     const walletPubkey = new PublicKey(ghostState.publicKey);
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const programId = new PublicKey(PROGRAM_ID);
 
     // sha256("global:migrate_ghost")[0:8]
-    // Anchor discriminator for migrate_ghost instruction
+    // Anchor discriminator for migrate_ghost instruction.
+    // NOTE: if migrate_ghost is renamed or its args change, this discriminator must be recalculated.
     const disc = [233, 201, 87, 45, 9, 54, 200, 2];
 
-    // MigrateGhost accounts (matches MigrateGhost context in lib.rs):
-    // ghost (mut, realloc), signer (mut), system_program
+    // MigrateGhost accounts — must match MigrateGhost context in lib.rs exactly:
+    // ghost (mut), signer (mut), system_program
     const data = new Uint8Array(8);
     data.set(disc, 0);
     const ix = new TransactionInstruction({
@@ -6660,19 +6677,23 @@ async function dbMigrateAccount() {
     const conf = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
+    // Update local state immediately — don't wait for re-fetch
     ghostState.ghost._schemaVersion = 18;
     ghostState.ghost._needsMigration = false;
     ghostState.ghost.needsMigration = false;
-    addActivityRow('🔄 Ghost migrated to v1.8', sig.slice(0,4)+'...'+sig.slice(-4));
-    showNotif('✅ Account migrated to v1.8 successfully!', 'green');
+    addActivityRow('🔄 Ghost migrated to latest version', sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif('✅ Account migrated successfully!', 'green');
 
-    // Hide migration banners immediately — don't wait for re-fetch
+    // Hide migration banners immediately
     const _migBanner = document.getElementById('overviewMigrationBanner');
     if (_migBanner) _migBanner.style.display = 'none';
     const _migCard = document.getElementById('migrationCard');
     if (_migCard) _migCard.style.display = 'none';
 
-    // Re-fetch from chain and refresh UI — clears migration banner without page reload
+    // Re-enable any UI elements greyed out due to version gating
+    enableAllVersionGatedFeatures();
+
+    // Re-fetch from chain and refresh UI
     await fetchGhostAccount(ghostState.publicKey);
     updateDashboardUI();
   } catch(err) {
@@ -6684,6 +6705,66 @@ async function dbMigrateAccount() {
 function toggleRecoveryWithdraw(idx, val) {
   ghostState.recoveryWallets[idx].canWithdraw = val;
   showNotif(val ? '⚠️ Withdrawal rights granted' : 'Withdrawal rights revoked', val ? 'info' : 'info');
+}
+
+// ─── Feature version gating ─────────────────────────────────────────────
+// isVersionSufficient(minVersion) — returns true if the connected account's
+// schema_version meets the minimum required version for a feature.
+//
+// HOW TO USE FOR NEW FEATURES:
+//   if (!isVersionSufficient(19)) {
+//     greyOutElement('myNewFeatureButton');
+//     showMigrationHint('myNewFeatureButton', 'Migrate to v1.9 to unlock this feature');
+//     return;
+//   }
+//
+// HOW TO ADD A NEW VERSION GATE (e.g. v1.9):
+//   1. Deploy the new program with SCHEMA_VERSION_V19 = 19 and new fields appended.
+//   2. Update MIN_MIGRATION_VERSION below to 19.
+//   3. Wrap any new UI feature with: if (!isVersionSufficient(19)) { ... }
+//   4. Update the migration confirm dialog text in dbMigrateAccount() to mention new features.
+//   5. Update the migrationCard HTML text to explain what the user unlocks.
+//
+// Current minimum version to be considered "fully migrated": 18 (v1.8)
+const MIN_MIGRATION_VERSION = 18;
+
+function isVersionSufficient(minVersion) {
+  const v = ghostState.ghost._schemaVersion || 0;
+  return v >= minVersion;
+}
+
+// Applies a greyed-out disabled style to an element by ID.
+// Call this inside version gates to visually lock features.
+// Pair with showMigrationHint() to explain why the feature is locked.
+function greyOutElement(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.style.opacity = '0.35';
+  el.style.pointerEvents = 'none';
+  el.style.cursor = 'not-allowed';
+  el.setAttribute('data-version-locked', 'true');
+}
+
+// Removes the greyed-out style — call after successful migration to re-enable features.
+function enableElement(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.style.opacity = '';
+  el.style.pointerEvents = '';
+  el.style.cursor = '';
+  el.removeAttribute('data-version-locked');
+}
+
+// Re-enables all version-locked elements — call after a successful migration.
+// When new version-gated features are added, they will automatically be re-enabled here
+// as long as greyOutElement() was used (which sets data-version-locked).
+function enableAllVersionGatedFeatures() {
+  document.querySelectorAll('[data-version-locked="true"]').forEach(el => {
+    el.style.opacity = '';
+    el.style.pointerEvents = '';
+    el.style.cursor = '';
+    el.removeAttribute('data-version-locked');
+  });
 }
 
 // Legacy stubs for old calls
