@@ -433,10 +433,24 @@ async function runBeneficiaries(ghost, label, now) {
 
   // Whole vault
   if (ghost.wholeVaultRecipient) {
-    // The vault can hold any token. WHOLE_VAULT_MINT env var tells the bot which mint to use.
-    // Defaults to $GHOST mint if not set.
-    const wvMint = process.env.WHOLE_VAULT_MINT || GHOST_MINT_ADDR;
-    if (ghost.wholeVaultAction === 0) {
+    const wvMint   = process.env.WHOLE_VAULT_MINT || GHOST_MINT_ADDR;
+    const ownerPk  = new PublicKey(ghost.owner);
+    const [vaultPk] = deriveVaultPda(ownerPk);
+    const ghostTokenProg = await resolveTokenProgram(ghostMintPk);
+    const vaultAta = deriveATA(vaultPk, new PublicKey(wvMint), ghostTokenProg);
+
+    // Check vault token account balance before attempting — skip if empty or missing
+    let vaultBalance = 0;
+    try {
+      const vaultInfo = await connection.getTokenAccountBalance(vaultAta);
+      vaultBalance = Number(vaultInfo.value.amount);
+    } catch (_) {
+      // Account doesn't exist — vault is empty
+    }
+
+    if (vaultBalance === 0) {
+      console.log(`    [whole_vault] vault empty or no token account — skipping`);
+    } else if (ghost.wholeVaultAction === 0) {
       await sendTx([buildExecuteWholeVaultTransfer(ghost, wvMint)], `execute_whole_vault_transfer(${label})`);
     } else if (ghost.wholeVaultAction === 1) {
       await sendTx([buildExecuteWholeVaultBurn(ghost, wvMint)], `execute_whole_vault_burn(${label})`);
