@@ -186,13 +186,28 @@ async function sendTx(instructions, label) {
 
 // ─── Instruction builders ─────────────────────────────────────────────────────
 
-function buildCheckSilence(ghost) {
+// Resolve the token program for a given mint by reading its on-chain owner
+// (same approach as the frontend — avoids hardcoding Token vs Token-2022)
+async function resolveTokenProgram(mintPk) {
+  const info = await connection.getAccountInfo(mintPk);
+  if (!info) throw new Error(`Mint account not found: ${mintPk.toBase58()}`);
+  const owner = info.owner.toBase58();
+  if (owner === TOKEN22_PROG_ADDR) return token22ProgPk;
+  return tokenProgPk; // default to standard SPL
+}
+
+async function buildCheckSilence(ghost) {
   // CheckSilence accounts: ghost(mut), caller(mut,signer), ghost_mint,
   //   ghost_stake_vault(mut), caller_token_account(mut), token_program
   const ownerPk      = new PublicKey(ghost.owner);
   const ghostPdaPk   = new PublicKey(ghost.pubkey);
   const [stakeVault] = deriveStakeVault(ownerPk);
-  const botAta       = deriveATA(botKp.publicKey, ghostMintPk, token22ProgPk); // $GHOST is Token-2022
+
+  // Dynamically resolve token program from mint owner — same as frontend
+  const ghostTokenProg = await resolveTokenProgram(ghostMintPk);
+  const botAta         = deriveATA(botKp.publicKey, ghostMintPk, ghostTokenProg);
+
+  console.log(`    [check_silence] ghost_mint token program: ${ghostTokenProg.toBase58().slice(0,8)}... botAta: ${botAta.toBase58().slice(0,8)}...`);
 
   return new TransactionInstruction({
     programId: programIdPk,
@@ -201,8 +216,8 @@ function buildCheckSilence(ghost) {
       { pubkey: botKp.publicKey,  isSigner: true,  isWritable: true  }, // caller
       { pubkey: ghostMintPk,      isSigner: false, isWritable: false }, // ghost_mint
       { pubkey: stakeVault,       isSigner: false, isWritable: true  }, // ghost_stake_vault
-      { pubkey: botAta,           isSigner: false, isWritable: true  }, // caller_token_account (bounty)
-      { pubkey: token22ProgPk,     isSigner: false, isWritable: false }, // token_program (Token-2022)
+      { pubkey: botAta,           isSigner: false, isWritable: true  }, // caller_token_account
+      { pubkey: ghostTokenProg,   isSigner: false, isWritable: false }, // token_program (resolved)
     ],
     data: DISC.check_silence,
   });
@@ -355,7 +370,8 @@ async function processGhost(ghost) {
     // Overdue — call check_silence to awaken
     const overdueH = Math.floor((silence - ghost.intervalSeconds) / 3600);
     console.log(`  🔔 ${label} overdue by ${overdueH}h — calling check_silence`);
-    await sendTx([buildCheckSilence(ghost)], `check_silence(${label})`);
+    const checkSilenceIx = await buildCheckSilence(ghost);
+    await sendTx([checkSilenceIx], `check_silence(${label})`);
     // Grace period starts now — do NOT execute yet, wait for next poll
     console.log(`  ⏳ ${label} awakened. Grace: ${ghost.gracePeriodSeconds}s — checking again next poll`);
     return;
