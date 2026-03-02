@@ -1141,12 +1141,15 @@
           <div class="db-info">Minimum 1 hour. This is how long you have between pings before your ghost awakens.</div>
           <div class="db-form-grid">
             <div class="db-form-group">
-              <label>New Interval (Days)</label>
-              <input type="number" id="dbNewInterval" placeholder="8760" min="1" step="1" oninput="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(this.value)">
+              <label>New Interval</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="number" id="dbNewInterval" placeholder="365" min="1" step="1" style="flex:1" oninput="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(toSeconds(this.value,document.getElementById('dbIntervalUnit').value),true)">
+                <select id="dbIntervalUnit" onchange="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('dbNewInterval').value,this.value),true)" style="background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none"><option value="hours">hours</option><option value="days" selected>days</option></select>
+              </div>
             </div>
             <div class="db-form-group">
               <label>Preview</label>
-              <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--accent);padding:11px 0" id="dbIntervalPreview">Enter days above</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--accent);padding:11px 0" id="dbIntervalPreview">Enter value above</div>
             </div>
           </div>
           <button class="db-btn db-btn-primary" onclick="dbUpdateInterval()">⏱️ Update Interval</button>
@@ -1154,15 +1157,18 @@
 
         <div class="db-form">
           <div class="db-form-title">⏳ Update Grace Period</div>
-          <div class="db-info">Minimum 0 days (0 = instant execution). After your ghost awakens, this is your window to cancel via ping or recovery wallet.</div>
+          <div class="db-info">Minimum 0 (0 = instant execution). After your ghost awakens, this is your window to cancel via ping or recovery wallet.</div>
           <div class="db-form-grid">
             <div class="db-form-group">
-              <label>New Grace Period (Days)</label>
-              <input type="number" id="dbNewGrace" placeholder="30" min="0" oninput="document.getElementById('dbGracePreview').textContent=this.value+' days'">
+              <label>New Grace Period</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="number" id="dbNewGrace" placeholder="30" min="0" step="1" style="flex:1" oninput="document.getElementById('dbGracePreview').textContent=formatIntervalPreview(toSeconds(this.value,document.getElementById('dbGraceUnit').value),true)">
+                <select id="dbGraceUnit" onchange="document.getElementById('dbGracePreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('dbNewGrace').value,this.value),true)" style="background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none"><option value="hours">hours</option><option value="days" selected>days</option></select>
+              </div>
             </div>
             <div class="db-form-group">
               <label>Preview</label>
-              <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--accent);padding:11px 0" id="dbGracePreview">Enter days above</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--accent);padding:11px 0" id="dbGracePreview">Enter value above</div>
             </div>
           </div>
           <button class="db-btn db-btn-primary" onclick="dbUpdateGrace()">⏳ Update Grace Period</button>
@@ -1202,7 +1208,7 @@
                 <div style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">How long before your ghost awakens after silence</div>
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-                <input type="number" id="initInterval" value="8760" min="1" style="width:90px;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center" oninput="document.getElementById('initPreview').textContent=formatIntervalPreview(this.value)">
+                <input type="number" id="initInterval" value="8760" min="1" style="width:90px;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center" oninput="document.getElementById('initPreview').textContent=formatIntervalPreview(toSeconds(this.value,'hours'),true)">
                 <span style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">hours</span>
               </div>
             </div>
@@ -1215,7 +1221,7 @@
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
                 <input type="number" id="initGrace" value="30" min="0" style="width:90px;background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center">
-                <span style="font-family:'Share Tech Mono',monospace;font-size:13px;color:#b0a8d0">days</span>
+                <select id="initGraceUnit" style="background:#07070f;border:1px solid rgba(102,51,255,0.25);color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none"><option value="hours">hours</option><option value="days" selected>days</option></select>
               </div>
             </div>
 
@@ -3254,7 +3260,7 @@ function updateDashboardUI() {
   const intervalEl = document.getElementById('dbInterval');
   if (intervalEl) intervalEl.textContent = g.intervalSeconds != null ? formatIntervalLabel(g.intervalSeconds) : 'Unknown';
   const graceEl = document.getElementById('dbGrace');
-  if (graceEl) graceEl.textContent = g.gracePeriodSeconds == null ? 'Unknown' : g.gracePeriodSeconds === 0 ? 'Instant (0)' : Math.round(g.gracePeriodSeconds/86400) + ' days';
+  if (graceEl) graceEl.textContent = g.gracePeriodSeconds == null ? 'Unknown' : g.gracePeriodSeconds === 0 ? 'Instant (0)' : formatIntervalLabel(g.gracePeriodSeconds);
   const regEl = document.getElementById('dbRegistered');
   if (regEl) {
     if (g.registeredAt) {
@@ -3578,13 +3584,17 @@ function validateStakeInput(el) {
 
 // ─── Initialize Ghost ────────────────────────────────────────────
 async function initializeGhost() {
-  const intervalHours = parseInt(document.getElementById('initInterval')?.value) || 8760;
-  const graceDays = parseInt(document.getElementById('initGrace')?.value ?? '30');  // ?? not || so 0 is valid
+  const _initIntervalVal = parseFloat(document.getElementById('initInterval')?.value) || 8760;
+  const _initGraceVal = parseFloat(document.getElementById('initGrace')?.value ?? '0');
+  const _initGraceUnit = document.getElementById('initGraceUnit')?.value || 'days';
+  const intervalHours = _initIntervalVal; // interval is always in hours on init form
+  const intervalSeconds = Math.round(intervalHours * 3600);
+  const graceSeconds = toSeconds(_initGraceVal, _initGraceUnit);
   const _isMigrationReg2 = ghostState.ghost._isMigration === true;
   const stakeAmt = _isMigrationReg2 ? 0 : (parseInt(document.getElementById('initStake')?.value) || 10000);
 
-  if (intervalHours < 1) { showNotif('⚠️ Minimum interval is 1 hour', 'error'); return; }
-  if (graceDays < 0) { showNotif('⚠️ Grace period cannot be negative', 'error'); return; }
+  if (intervalSeconds < 3600) { showNotif('⚠️ Minimum interval is 1 hour', 'error'); return; }
+  if (graceSeconds < 0) { showNotif('⚠️ Grace period cannot be negative', 'error'); return; }
   if (!_isMigrationReg2 && stakeAmt < 10000) {
     showNotif('⚠️ Minimum 10,000 $GHOST required to summon', 'error');
     const el = document.getElementById('initStake');
@@ -3597,8 +3607,8 @@ async function initializeGhost() {
   // Demo mode
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.status = 'alive';
-    ghostState.ghost.intervalSeconds = intervalHours * 3600;
-    ghostState.ghost.gracePeriodSeconds = graceDays * 86400;
+    ghostState.ghost.intervalSeconds = intervalSeconds;
+    ghostState.ghost.gracePeriodSeconds = graceSeconds;
     ghostState.ghost.stakedGhost = stakeAmt;
     ghostState.ghost.lastHeartbeat = Date.now();
     ghostState.ghost.pingCount = 0;
@@ -3657,8 +3667,8 @@ async function initializeGhost() {
     const data = new Uint8Array(8 + 8 + 8 + 8);
     const dv = new DataView(data.buffer);
     data.set(discriminator, 0);
-    dv.setBigInt64(8,  BigInt(intervalHours * 3600), true);  // offset 8
-    dv.setBigInt64(16, BigInt(graceDays * 86400), true);     // offset 16
+    dv.setBigInt64(8,  BigInt(intervalSeconds), true);       // offset 8
+    dv.setBigInt64(16, BigInt(graceSeconds), true);          // offset 16
     dv.setBigUint64(24, stakeRaw, true);                     // offset 24
     const ghostPda = new PublicKey(ghostState.ghostPda);
     const vaultPda = new PublicKey(ghostState.vaultPda);
@@ -3778,8 +3788,8 @@ async function initializeGhost() {
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
     ghostState.ghost.status = 'alive';
-    ghostState.ghost.intervalSeconds = intervalHours * 3600;
-    ghostState.ghost.gracePeriodSeconds = graceDays * 86400;
+    ghostState.ghost.intervalSeconds = intervalSeconds;
+    ghostState.ghost.gracePeriodSeconds = graceSeconds;
     ghostState.ghost.stakedGhost = Number(stakeRaw) / 1_000_000;
     ghostState.ghost.lastHeartbeat = Date.now();
     ghostState.ghost.pingCount = 0;
@@ -3986,12 +3996,21 @@ function formatIntervalLabel(seconds) {
   return mo + (mo === 1 ? ' month' : ' months') + ' (' + d + ' days)';
 }
 
-// Format hours input into a preview string for the interval settings input
-function formatIntervalPreview(hours) {
-  const h = parseInt(hours) || 0;
+// Convert a value + unit string to seconds
+// unit: 'hours' | 'days'
+function toSeconds(value, unit) {
+  const v = parseFloat(value) || 0;
+  return unit === 'days' ? Math.round(v * 86400) : Math.round(v * 3600);
+}
+
+// Format a seconds value into a preview string (for both interval and grace)
+function formatIntervalPreview(hoursOrSeconds, alreadySeconds) {
+  const totalSeconds = alreadySeconds ? hoursOrSeconds : (parseInt(hoursOrSeconds) || 0) * 3600;
+  const h = Math.round(totalSeconds / 3600);
+  if (h === 0) return '0 hours (instant)';
   if (h < 24) return h + (h === 1 ? ' hour' : ' hours');
   const d = Math.round(h / 24);
-  if (d < 30) return d + ' days';
+  if (d < 30) return d + (d === 1 ? ' day' : ' days');
   const mo = Math.round(d / 30.44);
   return mo + ' months ≈ ' + d + ' days';
 }
@@ -7897,8 +7916,8 @@ function syncSettingsDisplay() {
   const gDays = Math.round(gSeconds / 86400);
   if (el('settingsIntervalVal')) el('settingsIntervalVal').textContent = formatIntervalLabel(iSeconds);
   if (el('settingsIntervalSub')) el('settingsIntervalSub').textContent = iHours + 'h · ' + formatIntervalPreview(iHours);
-  if (el('settingsGraceVal')) el('settingsGraceVal').textContent = gSeconds === 0 ? '0' : gDays;
-  if (el('settingsGraceSub')) el('settingsGraceSub').textContent = gSeconds === 0 ? 'instant execution (no grace window)' : 'days after silence detected';
+  if (el('settingsGraceVal')) el('settingsGraceVal').textContent = gSeconds === 0 ? '0' : formatIntervalLabel(gSeconds);
+  if (el('settingsGraceSub')) el('settingsGraceSub').textContent = gSeconds === 0 ? 'instant execution (no grace window)' : 'after silence detected';
   if (el('settingsStakedVal')) {
     const _ssAmt = g.stakedGhost || 10000;
     const _ssPrice = PRICE_CACHE[GHOST_MINT] || 0;
@@ -7908,15 +7927,17 @@ function syncSettingsDisplay() {
 }
 
 async function dbUpdateInterval() {
-  const hours = parseInt(document.getElementById('dbNewInterval').value);
-  if (!hours || hours < 1) { showNotif('⚠️ Minimum 1 hour required', 'error'); return; }
-  const seconds = hours * 3600;
+  const _iVal = parseFloat(document.getElementById('dbNewInterval').value);
+  const _iUnit = document.getElementById('dbIntervalUnit')?.value || 'hours';
+  const seconds = toSeconds(_iVal, _iUnit);
+  const hours = Math.round(seconds / 3600);
+  if (!_iVal || seconds < 3600) { showNotif('⚠️ Minimum 1 hour required', 'error'); return; }
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.intervalSeconds = seconds;
     document.getElementById('dbInterval').textContent = formatIntervalLabel(seconds);
     document.getElementById('dbNewInterval').value = '';
-    document.getElementById('dbIntervalPreview').textContent = formatIntervalPreview(hours);
+    document.getElementById('dbIntervalPreview').textContent = formatIntervalPreview(seconds, true);
     syncSettingsDisplay(); updateCountdown();
     showNotif('✅ Interval updated [demo]', 'green'); return;
   }
@@ -7950,17 +7971,18 @@ async function dbUpdateInterval() {
     ghostState.ghost.intervalSeconds = seconds;
     document.getElementById('dbInterval').textContent = formatIntervalLabel(seconds);
     document.getElementById('dbNewInterval').value = '';
-    document.getElementById('dbIntervalPreview').textContent = formatIntervalPreview(hours);
+    document.getElementById('dbIntervalPreview').textContent = formatIntervalPreview(seconds, true);
     syncSettingsDisplay(); updateCountdown();
     showNotif('✅ Interval updated on-chain: ' + formatIntervalLabel(seconds), 'green');
   } catch(err) { showNotif('Failed: ' + (err.message || err), 'error'); }
 }
 
 async function dbUpdateGrace() {
-  const days = parseInt(document.getElementById('dbNewGrace').value);
-  if (isNaN(days) || days < 0) { showNotif('⚠️ Grace period cannot be negative', 'error'); return; }
-  const seconds = days * 86400;
-  const label = days === 0 ? 'Instant execution (0 days)' : days + ' days';
+  const _gVal = parseFloat(document.getElementById('dbNewGrace').value);
+  const _gUnit = document.getElementById('dbGraceUnit')?.value || 'days';
+  if (isNaN(_gVal) || _gVal < 0) { showNotif('⚠️ Grace period cannot be negative', 'error'); return; }
+  const seconds = toSeconds(_gVal, _gUnit);
+  const label = seconds === 0 ? 'Instant execution (0)' : formatIntervalPreview(seconds, true);
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.gracePeriodSeconds = seconds;
