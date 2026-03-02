@@ -3021,17 +3021,17 @@ function parseGhostAccount(bytes) {
     // awakened: bool
     const awakened = bytes[offset] === 1;
     offset += 1;
-    // awakened_at: Option<i64> - Borsh None=1byte, Some=9bytes
+    // awakened_at: Option<i64> — FIXED 9 bytes in deployed program (tag + i64, zeros when None)
+    // Do NOT use variable Borsh (1 or 9 bytes) — deployed program stores always-9-byte layout
     const hasAwakenedAt = bytes[offset] === 1;
-    offset += 1;
-    const awakenedAt = hasAwakenedAt ? Number(view.getBigInt64(offset, true)) : null;
-    if (hasAwakenedAt) offset += 8;
+    const awakenedAt = hasAwakenedAt ? Number(view.getBigInt64(offset + 1, true)) : null;
+    offset += 9; // always 9 bytes (1 tag + 8 value, value=0 when "None")
     // executed: bool
     const executed = bytes[offset] === 1;
     offset += 1;
-    // executed_at: Option<i64> - Borsh None=1byte, Some=9bytes
-    const exTag = bytes[offset]; offset += 1;
-    if (exTag === 1) offset += 8;
+    // executed_at: Option<i64> — FIXED 9 bytes in deployed program
+    const exTag = bytes[offset];
+    offset += 9; // always 9 bytes
     // staked_ghost: u64
     const staked = Number(view.getBigUint64(offset, true));
     offset += 8;
@@ -3045,6 +3045,7 @@ function parseGhostAccount(bytes) {
     offset += 8;
     // beneficiary_count: u8
     const benefCount = bytes[offset];
+    console.log('[Ghost] benefCount offset:', offset, 'value:', benefCount); // diagnostic
     offset += 1;
 
     // ── Sanity guards: detect legacy/garbage layout ────────────────
@@ -3182,11 +3183,25 @@ function parseGhostAccount(bytes) {
         // display_name: 32 bytes, null-padded
         const nameBytes = bytes.slice(offset, offset + 32); offset += 32;
         const nameStr = dec.decode(nameBytes).replace(/\0+$/, '').trim();
-        ghostState.ghost.displayName = nameStr || null;
+        // Validate: must be printable ASCII only, no control chars or garbage bytes
+        const _nameValid = nameStr && /^[\x20-\x7E]+$/.test(nameStr);
+        ghostState.ghost.displayName = _nameValid ? nameStr : null;
         // image_uri: 128 bytes, null-padded
         const uriBytes = bytes.slice(offset, offset + 128); offset += 128;
         const uriStr = dec.decode(uriBytes).replace(/\0+$/, '').trim();
-        ghostState.ghost.imageUri = uriStr || null;
+        // Validate and normalize image URI
+        let _normalizedUri = null;
+        if (uriStr) {
+          if (uriStr.startsWith('https://') || uriStr.startsWith('http://')) {
+            _normalizedUri = uriStr;
+          } else if (uriStr.startsWith('ipfs://')) {
+            _normalizedUri = 'https://ipfs.io/ipfs/' + uriStr.slice(7);
+          } else if (/^Qm[a-zA-Z0-9]{44}/.test(uriStr) || /^baf[a-zA-Z0-9]+/.test(uriStr)) {
+            // Bare IPFS CID — wrap in gateway
+            _normalizedUri = 'https://ipfs.io/ipfs/' + uriStr.split('\0')[0].trim();
+          }
+        }
+        ghostState.ghost.imageUri = _normalizedUri;
       } else {
         ghostState.ghost.displayName = null;
         ghostState.ghost.imageUri = null;
