@@ -29,7 +29,7 @@ const RPC_URL         = process.env.RPC_URL     || 'https://api.mainnet-beta.sol
 const GPA_RPC_URL     = process.env.GPA_RPC_URL || 'https://rpc.ankr.com/solana';
 const PROGRAM_ID      = process.env.PROGRAM_ID  || '3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3';
 const BOT_KEYPAIR_B58 = process.env.BOT_KEYPAIR;
-const GHOST_MINT_ADDR = process.env.GHOST_MINT  || '3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3';
+const GHOST_MINT_ADDR = process.env.GHOST_MINT  || 'k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump';
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
