@@ -7944,9 +7944,11 @@ async function dbUpdateInterval() {
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.intervalSeconds = seconds;
+    ghostState.ghost.lastHeartbeat = Date.now(); // demo: no chain, reset locally
     document.getElementById('dbInterval').textContent = formatIntervalLabel(seconds);
     document.getElementById('dbNewInterval').value = '';
     document.getElementById('dbIntervalPreview').textContent = formatIntervalPreview(seconds, true);
+    addActivityRow('⏱️ Heartbeat interval set to ' + formatIntervalLabel(seconds), '');
     syncSettingsDisplay(); updateCountdown();
     showNotif('✅ Interval updated [demo]', 'green'); return;
   }
@@ -7964,10 +7966,21 @@ async function dbUpdateInterval() {
     data.set(disc, 0); data.set(new Uint8Array(buf), 8);
     const ix = new TransactionInstruction({ programId,
       keys: [{ pubkey: ghostPda, isSigner: false, isWritable: true }, { pubkey: walletPubkey, isSigner: true, isWritable: true }], data });
+    // Bundle a ping so deadline resets to now + new interval in the same tx
+    const pingIx = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPubkey, isSigner: true, isWritable: false },
+      ],
+      data: new Uint8Array([173, 0, 94, 236, 73, 133, 225, 153])
+    });
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
+    // Update interval first, then ping — so ping sees the new interval value
     tx.add(ix);
+    tx.add(pingIx);
     tx.instructions.forEach((ix, i) => 
       console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
     );
@@ -7977,12 +7990,14 @@ async function dbUpdateInterval() {
     const conf = await connection.confirmTransaction(sig, 'confirmed');
     console.log('[Ghost] TX confirmed:', conf);
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
-    ghostState.ghost.intervalSeconds = seconds;
-    document.getElementById('dbInterval').textContent = formatIntervalLabel(seconds);
     document.getElementById('dbNewInterval').value = '';
     document.getElementById('dbIntervalPreview').textContent = formatIntervalPreview(seconds, true);
+    addActivityRow('⏱️ Heartbeat interval set to ' + formatIntervalLabel(seconds), sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('💓 Heartbeat sent with interval update', sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif('✅ Interval updated + heartbeat sent: ' + formatIntervalLabel(seconds), 'green');
+    // Re-fetch from chain — lastHeartbeat now = this tx time, deadline = now + new interval
+    await fetchGhostAccount();
     syncSettingsDisplay(); updateCountdown();
-    showNotif('✅ Interval updated on-chain: ' + formatIntervalLabel(seconds), 'green');
   } catch(err) { showNotif('Failed: ' + (err.message || err), 'error'); }
 }
 
@@ -7998,6 +8013,7 @@ async function dbUpdateGrace() {
     document.getElementById('dbGrace').textContent = label;
     document.getElementById('dbNewGrace').value = '';
     document.getElementById('dbGracePreview').textContent = label;
+    addActivityRow('⏳ Grace period set to ' + label, '');
     syncSettingsDisplay();
     showNotif('✅ Grace period updated [demo]', 'green'); return;
   }
@@ -8015,11 +8031,22 @@ async function dbUpdateGrace() {
     data.set(disc, 0); data.set(new Uint8Array(buf), 8);
     const ix = new TransactionInstruction({ programId,
       keys: [{ pubkey: ghostPda, isSigner: false, isWritable: true }, { pubkey: walletPubkey, isSigner: true, isWritable: true }], data });
+    // Bundle a ping in the same tx so the deadline resets to now + new interval
+    // Ping discriminator: sha256("global:ping")[0:8]
+    const pingIx = new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: ghostPda, isSigner: false, isWritable: true },
+        { pubkey: walletPubkey, isSigner: true, isWritable: false },
+      ],
+      data: new Uint8Array([173, 0, 94, 236, 73, 133, 225, 153])
+    });
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPubkey });
+    // Update grace first, then ping to reset heartbeat clock
     tx.add(ix);
-    // Debug: log each instruction individually so console doesn't collapse
+    tx.add(pingIx);
     tx.instructions.forEach((ix, i) => 
       console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`)
     );
@@ -8029,12 +8056,14 @@ async function dbUpdateGrace() {
     const conf = await connection.confirmTransaction(sig, 'confirmed');
     console.log('[Ghost] TX confirmed:', conf);
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
-    ghostState.ghost.gracePeriodSeconds = seconds;
-    document.getElementById('dbGrace').textContent = label;
     document.getElementById('dbNewGrace').value = '';
     document.getElementById('dbGracePreview').textContent = label;
+    addActivityRow('⏳ Grace period set to ' + label, sig.slice(0,4)+'...'+sig.slice(-4));
+    addActivityRow('💓 Heartbeat sent with grace update', sig.slice(0,4)+'...'+sig.slice(-4));
+    showNotif('✅ Grace period updated + heartbeat sent: ' + label, 'green');
+    // Re-fetch from chain so gracePeriodSeconds is authoritative
+    await fetchGhostAccount();
     syncSettingsDisplay();
-    showNotif('✅ Grace period updated on-chain: ' + label, 'green');
   } catch(err) { showNotif('Failed: ' + (err.message || err), 'error'); }
 }
 
