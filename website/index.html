@@ -3437,6 +3437,21 @@ function updateDashboardUI() {
     }
   }
 
+  // Executed state: hide heartbeat orb + ping button, grey out heartbeat nav tab
+  const isExecuted = g.status === 'executed';
+  const orbWrap = document.querySelector('.hb-orb-wrap');
+  const orbLabel = document.querySelector('.hb-orb-label');
+  if (orbWrap) orbWrap.style.opacity = isExecuted ? '0.2' : '1';
+  if (orbWrap) orbWrap.style.pointerEvents = isExecuted ? 'none' : '';
+  if (orbLabel) orbLabel.style.opacity = isExecuted ? '0.2' : '1';
+  // Grey out heartbeat nav tab
+  const hbNavEl = document.getElementById('nav-heartbeat');
+  if (hbNavEl) {
+    hbNavEl.style.opacity = isExecuted ? '0.35' : '';
+    hbNavEl.style.pointerEvents = isExecuted ? 'none' : '';
+    hbNavEl.title = isExecuted ? 'Ghost has been executed — heartbeats no longer active' : '';
+  }
+
   // Update grace period countdown
   const graceCountdownEl = document.getElementById('dbGraceCountdown');
   if (graceCountdownEl && g.status === 'awakened' && g.awakenedAt && g.gracePeriodSeconds != null) {
@@ -4283,6 +4298,10 @@ setInterval(updateCountdown, 30000);
 
 // ─── Ping ──────────────────────────────────────────────────────
 async function sendPing() {
+  if (ghostState.ghost.status === 'executed') {
+    showNotif('⚠️ Ghost has been executed — heartbeats no longer active.', 'error');
+    return;
+  }
   const orb = document.getElementById('hbOrb');
   const ripple = document.getElementById('pingRipple');
 
