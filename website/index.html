@@ -7801,10 +7801,8 @@ async function dbDeposit() {
     // Owner source token account
     const ownerAta = isSOL
       ? await findATA(walletPk, WSOL_MINT_PK)  // wSOL ATA (created + funded in wrap step)
-      : rawMintOwner === TOKEN_PROGRAM_STR
-        ? await findATA(walletPk, depositMintPk)  // classic Token — use ATA derivation
-        : (await connection.getTokenAccountsByOwner(walletPk, { mint: depositMintPk })).value[0]?.pubkey
-          || await findATA(walletPk, depositMintPk); // Token-2022 — look up real account
+      : (await connection.getTokenAccountsByOwner(walletPk, { mint: depositMintPk }).catch(()=>({value:[]}))).value[0]?.pubkey
+          || await findATA(walletPk, depositMintPk); // look up real account first, fall back to ATA derivation
 
     // Vault destination token account
     const ghostMintStr = ghostState.ghost?.mint || GHOST_MINT;
