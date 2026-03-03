@@ -2232,17 +2232,25 @@ async function connectWallet(name) {
           ghostState.walletAddress = pk.slice(0,4)+'...'+pk.slice(-4);
           await deriveAndSetPDAs(pk);
           saveSession();
-          // Reload ghost account for new wallet
+          // Update wallet UI elements with new address
+          const btn = document.getElementById('walletBtn');
+          if (btn) { btn.textContent = '● ' + ghostState.walletAddress; }
+          const panelAddr = document.getElementById('panelWalletAddr');
+          if (panelAddr) panelAddr.textContent = ghostState.walletAddress;
+          const wsEl = document.getElementById('walletStatus');
+          if (wsEl) wsEl.textContent = ghostState.walletAddress + ' — Heartbeat Active';
+          // Reload ghost account for new wallet — await before updating UI
           try { await fetchGhostAccount(); } catch(e) {}
+          await loadWalletTokens().catch(()=>{});
           // Return to overview with fresh state
           dbShowPage('overview', document.getElementById('nav-overview'));
           updateDashboardUI();
-          loadWalletTokens();
           return;
         }
       }
       disconnectWallet();
     };
+    ghostState._onAccountChange = _onAccountChange; // store ref for visibility check
     try { provider.off?.('accountChanged', _onAccountChange); provider.on?.('accountChanged', _onAccountChange); } catch(e) {}
     await deriveAndSetPDAs(pubkey);
     const btn = document.getElementById('walletBtn');
@@ -4028,6 +4036,16 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     // Refresh prices immediately on tab return (don't wait for next interval)
     fetchAllPrices();
+    // Check if wallet account changed while tab was hidden
+    // Some wallets (Phantom) don't always fire accountChanged reliably
+    if (ghostState.connected && ghostState.provider) {
+      const currentPk = ghostState.provider.publicKey?.toBase58?.();
+      if (currentPk && currentPk !== ghostState.publicKey) {
+        // Account changed while away — trigger full reload
+        const _onAccountChange = ghostState._onAccountChange;
+        if (_onAccountChange) _onAccountChange(currentPk);
+      }
+    }
   }
 });
 
@@ -4070,7 +4088,8 @@ document.addEventListener('DOMContentLoaded', () => {
           ghostState.provider = provider;
           // Attach account change listener
           const _onAccountChange = () => { showNotif('👻 Wallet account changed — please reconnect.', ''); disconnectWallet(); };
-          try { provider.off?.('accountChanged', _onAccountChange); provider.on?.('accountChanged', _onAccountChange); } catch(e) {}
+          ghostState._onAccountChange = _onAccountChange; // store ref for visibility check
+    try { provider.off?.('accountChanged', _onAccountChange); provider.on?.('accountChanged', _onAccountChange); } catch(e) {}
         } catch(e) {
           // User hasn't approved yet or extension not available — they'll need to click connect
           ghostState.provider = null;
