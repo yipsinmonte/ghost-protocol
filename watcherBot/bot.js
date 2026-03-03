@@ -322,14 +322,14 @@ function buildExecuteLegacy(ghost) {
   });
 }
 
-async function buildExecuteTransfer(ghost, bIndex, bene) {
+async function buildExecuteTransfer(ghost, bIndex, bene, recipientTokenAcct) {
   const ownerPk      = new PublicKey(ghost.owner);
   const [vaultPk]    = deriveVaultPda(ownerPk);
   const mintPk       = new PublicKey(bene.tokenMint);
   const recipientPk  = new PublicKey(bene.recipient);
   const tokenProg    = await resolveTokenProgram(mintPk);
   const vaultAta     = deriveATA(vaultPk, mintPk, tokenProg);
-  const recipientAta = deriveATA(recipientPk, mintPk, tokenProg);
+  const recipientAcctKey = recipientTokenAcct || deriveATA(recipientPk, mintPk, tokenProg);
 
   const data = Buffer.alloc(9);
   DISC.execute_transfer.copy(data, 0);
@@ -343,7 +343,7 @@ async function buildExecuteTransfer(ghost, bIndex, bene) {
       { pubkey: mintPk,                      isSigner: false, isWritable: true  },
       { pubkey: vaultAta,                    isSigner: false, isWritable: true  },
       { pubkey: recipientPk,                 isSigner: false, isWritable: false },
-      { pubkey: recipientAta,                isSigner: false, isWritable: true  },
+      { pubkey: recipientAcctKey,                isSigner: false, isWritable: true  },
       { pubkey: tokenProg,                   isSigner: false, isWritable: false },
       { pubkey: botKp.publicKey,             isSigner: true,  isWritable: false },
     ],
@@ -620,7 +620,10 @@ async function runBeneficiaries(ghost, label, now) {
     if (!tokenProg) { console.warn(`    [${i}] could not resolve token program for mint ${b.tokenMint.slice(0,8)}...`); continue; }
 
     if (b.action === 0) {
-      const ix = await buildExecuteTransfer(ghost, i, b);
+      const recipientPk = new PublicKey(b.recipient);
+      const recipientAcct = await ensureRecipientTokenAccount(recipientPk, mintPk, tokenProg);
+      if (!recipientAcct) { console.warn(`    [${i}] could not create recipient token account — skipping`); continue; }
+      const ix = await buildExecuteTransfer(ghost, i, b, recipientAcct.pubkey);
       const sig = await sendTx([ix], `execute_transfer[${i}](${label})`);
       if (sig) await verifyBeneficiaryPaid(ghost.pubkey, i);
     } else if (b.action === 1) {
@@ -644,38 +647,42 @@ async function runBeneficiaries(ghost, label, now) {
       console.log(`    [whole_vault] vault has no token accounts with balance — nothing to do`);
     } else {
       console.log(`    [whole_vault] found ${vaultAccounts.length} token account(s) with balance`);
+      let transferred = 0, skipped = 0;
 
       for (const { pubkey: vaultAta, mint: mintPk, amount, tokenProg } of vaultAccounts) {
         const mintStr = mintPk.toBase58();
-        // wSOL (So111...) is a real SPL token account — transfer proceeds as normal.
-        // Recipient receives wSOL and can unwrap to native SOL themselves via closeAccount.
         console.log(`    [whole_vault] mint: ${mintStr.slice(0,8)}... amount: ${amount}`);
 
         if (ghost.wholeVaultAction === 0) {
-          // Ensure recipient has a token account — sent as separate confirmed tx before transfer
           const recipientPk = new PublicKey(ghost.wholeVaultRecipient);
           const recipientAcct = await ensureRecipientTokenAccount(recipientPk, mintPk, tokenProg);
-          if (!recipientAcct) { console.error(`    ❌ could not create recipient token account for ${mintStr.slice(0,8)}... — skipping`); continue; }
-          // Pass actual recipient token account pubkey to transfer builder
+          if (!recipientAcct) { console.error(`    ❌ could not create recipient token account for ${mintStr.slice(0,8)}... — skipping`); skipped++; continue; }
           const transferIx = await buildExecuteWholeVaultTransfer(ghost, mintPk, tokenProg, vaultAta, recipientAcct.pubkey);
           const sig = await sendTx([transferIx], `execute_whole_vault_transfer[${mintStr.slice(0,8)}...](${label})`);
-          if (sig) await verifyVaultDrained(vaultAta, mintStr);
+          if (sig) { await verifyVaultDrained(vaultAta, mintStr); transferred++; } else skipped++;
         } else if (ghost.wholeVaultAction === 1) {
-          // Burn — pass actual vault token account pubkey
           const ix  = await buildExecuteWholeVaultBurn(ghost, mintPk, tokenProg, vaultAta);
           const sig = await sendTx([ix], `execute_whole_vault_burn[${mintStr.slice(0,8)}...](${label})`);
-          if (sig) await verifyVaultDrained(vaultAta, mintStr);
+          if (sig) { await verifyVaultDrained(vaultAta, mintStr); transferred++; } else skipped++;
         } else {
           console.warn(`    [whole_vault] unknown action ${ghost.wholeVaultAction} for mint ${mintStr.slice(0,8)}...`);
+          skipped++;
         }
       }
-    }
 
-    // Log staked ghost reminder — owner must call abandon_ghost to reclaim 
-    if (ghost.stakedGhost > 0) {
-      const stakeFormatted = (ghost.stakedGhost / 1_000_000).toLocaleString();
-      console.log(`    [stake] ${stakeFormatted} $GHOST remains in stake_vault — owner must call abandon_ghost to reclaim (50% burn penalty applies)`);
-    }
+      const action = ghost.wholeVaultAction === 1 ? 'burned' : 'transferred';
+      if (skipped === 0) {
+        console.log(`  ✅ Whole vault ${action} successfully — ${transferred}/${vaultAccounts.length} token(s) ${action} to ${ghost.wholeVaultRecipient.slice(0,8)}...`);
+      } else {
+        console.log(`  ⚠️  Whole vault partial — ${transferred} ${action}, ${skipped} skipped`);
+      }
+    } // end else (vaultAccounts.length > 0)
+  } // end if (ghost.wholeVaultRecipient)
+
+  // Log staked ghost reminder — owner must call abandon_ghost to reclaim
+  if (ghost.stakedGhost > 0) {
+    const stakeFormatted = (ghost.stakedGhost / 1_000_000).toLocaleString();
+    console.log(`    [stake] ${stakeFormatted} $GHOST remains in stake_vault — owner must call abandon_ghost to reclaim (50% burn penalty applies)`);
   }
 }
 
