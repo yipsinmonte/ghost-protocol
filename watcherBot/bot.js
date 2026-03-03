@@ -437,26 +437,23 @@ async function ensureRecipientAta(ownerPk, mintPk, tokenProg) {
     // Simulate first to get full error detail
     const sim = await connection.simulateTransaction(tx);
     if (sim.value.err) {
-      console.error(`    [ata] ❌ simulate failed: ${JSON.stringify(sim.value.err)}`);
-      console.error(`    [ata] logs:
-${(sim.value.logs || []).join('
-')}`);
+      const simLogs = (sim.value.logs || []).join('\n');
+      console.error('    [ata] simulate failed: ' + JSON.stringify(sim.value.err));
+      console.error('    [ata] sim logs: ' + simLogs);
       return false;
     }
 
     const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-    console.log(`    [ata] ✅ created: ${sig}`);
+    console.log('    [ata] created: ' + sig);
     await sleep(2000);
     return true;
   } catch (err) {
-    const logs = err?.logs?.join('
-') || '';
-    console.error(`    [ata] ❌ create failed: ${err.message || JSON.stringify(err)}
-${logs}`);
+    const errLogs = (err && err.logs) ? err.logs.join('\n') : '';
+    console.error('    [ata] create failed: ' + (err.message || String(err)));
+    if (errLogs) console.error('    [ata] logs: ' + errLogs);
     return false;
-  }
-}
+  }}
 
 // ─── Ghost processing ─────────────────────────────────────────────────────────
 
