@@ -394,81 +394,38 @@ async function buildExecuteWholeVaultBurn(ghost, mintPk, tokenProg, vaultAtaPk) 
 
 // ─── Create ATA if missing ───────────────────────────────────────────────────
 
-// Returns instruction to create ATA, or null if already exists
 // Ensures recipient has a token account for mintPk.
-// Sends a SEPARATE tx to create it if missing — must be confirmed before transfer tx.
-// Returns true if ATA exists or was created, false on failure.
+// Sends a separate confirmed tx to create it if missing.
+// Returns true if ATA exists or was successfully created.
 async function ensureRecipientAta(ownerPk, mintPk, tokenProg) {
   const ata = deriveATA(ownerPk, mintPk, tokenProg);
-  console.log(`    [ata] checking ${ata.toBase58().slice(0,8)}... for owner ${ownerPk.toBase58().slice(0,8)}... mint ${mintPk.toBase58().slice(0,8)}...`);
+  console.log(`    [ata] checking ${ata.toBase58().slice(0,8)}... owner=${ownerPk.toBase58().slice(0,8)}... mint=${mintPk.toBase58().slice(0,8)}...`);
   try {
     const info = await connection.getAccountInfo(ata);
     if (info) { console.log(`    [ata] already exists`); return true; }
   } catch (_) {}
 
-  console.log(`    [ata] creating... ATA=${ata.toBase58()} owner=${ownerPk.toBase58()} mint=${mintPk.toBase58()} tokenProg=${tokenProg.toBase58().slice(0,8)}...`);
+  console.log(`    [ata] creating ATA=${ata.toBase58()} tokenProg=${tokenProg.toBase58().slice(0,8)}...`);
 
-  // Use @solana/spl-token if available, otherwise build manually
-  // ATA program: ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso
-  // createAssociatedTokenAccountIdempotent instruction format (v2 ATA program):
-  // discriminator = 1 (u8), keys below
   const SYSTEM_PROG = new PublicKey('11111111111111111111111111111111');
   const ix = new TransactionInstruction({
     programId: assocTokenPk,
     keys: [
-      { pubkey: botKp.publicKey, isSigner: true,  isWritable: true  }, // funding account
-      { pubkey: ata,             isSigner: false, isWritable: true  }, // associated token account
-      { pubkey: ownerPk,         isSigner: false, isWritable: false }, // wallet address
-      { pubkey: mintPk,          isSigner: false, isWritable: false }, // token mint
-      { pubkey: SYSTEM_PROG,     isSigner: false, isWritable: false }, // system program
-      { pubkey: tokenProg,       isSigner: false, isWritable: false }, // token program (SPL or Token-2022)
+      { pubkey: botKp.publicKey, isSigner: true,  isWritable: true  },
+      { pubkey: ata,             isSigner: false, isWritable: true  },
+      { pubkey: ownerPk,         isSigner: false, isWritable: false },
+      { pubkey: mintPk,          isSigner: false, isWritable: false },
+      { pubkey: SYSTEM_PROG,     isSigner: false, isWritable: false },
+      { pubkey: tokenProg,       isSigner: false, isWritable: false },
     ],
-    data: Buffer.alloc(0), // standard create (empty) — idempotent variant [1] fails on Helius
+    data: Buffer.alloc(0), // standard create — idempotent [1] rejected by Helius
   });
 
-  try {
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: botKp.publicKey });
-    tx.add(ix);
-    tx.sign(botKp);
-
-  try {
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: botKp.publicKey });
-    tx.add(ix);
-    tx.sign(botKp);
-
-    // skipPreflight=true — ATA program causes ProgramAccountNotFound in preflight/simulate
-    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
-    const result = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-    if (result.value.err) {
-      const txInfo = await connection.getTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-      const logs = txInfo && txInfo.meta && txInfo.meta.logMessages ? txInfo.meta.logMessages.join('\n') : '(no logs)';
-      console.error('    [ata] on-chain error: ' + JSON.stringify(result.value.err));
-      console.error('    [ata] logs: ' + logs);
-      return false;
-    }
-    console.log('    [ata] created: ' + sig);
-    await sleep(2000);
-    return true;
-  } catch (err) {
-    const errLogs = (err && err.logs) ? err.logs.join('\n') : '';
-    console.error('    [ata] create failed: ' + (err.message || String(err)));
-    if (errLogs) console.error('    [ata] logs: ' + errLogs);
-    return false;
-  }
-
-    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
-    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-    console.log('    [ata] created: ' + sig);
-    await sleep(2000);
-    return true;
-  } catch (err) {
-    const errLogs = (err && err.logs) ? err.logs.join('\n') : '';
-    console.error('    [ata] create failed: ' + (err.message || String(err)));
-    if (errLogs) console.error('    [ata] logs: ' + errLogs);
-    return false;
-  }}
+  const sig = await sendTx([ix], `createATA(${mintPk.toBase58().slice(0,8)}...)`);
+  if (!sig) return false;
+  await sleep(2000); // let RPC propagate before transfer tx
+  return true;
+}
 
 // ─── Ghost processing ─────────────────────────────────────────────────────────
 
