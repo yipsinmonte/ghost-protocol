@@ -2204,6 +2204,7 @@ async function connectWallet(name) {
     ghostState.ghostPda = null;
     ghostState.vaultPda = null;
     ghostState.ghostStakeVault = null;
+    _walletIdentityAddr = null; // force identity card refresh for new wallet
     // Now set new wallet identity
     ghostState.connected = true;
     ghostState.walletName = name;
@@ -2224,6 +2225,7 @@ async function connectWallet(name) {
       ghostState.ghostPda = null;
       ghostState.vaultPda = null;
       ghostState.ghostStakeVault = null;
+      _walletIdentityAddr = null; // force identity card refresh
       // If new pubkey provided, derive new PDAs and reload
       // Phantom sometimes fires accountChanged with null/undefined when switching back to a prev account
       // Fall back to reading provider.publicKey directly
@@ -2692,7 +2694,10 @@ async function fetchGhostAccount() {
     const data = await response.json();
     
     if (!data.result?.value) {
-      ghostState.ghost.status = 'none';
+      // No account found — fully reset ghost state so no stale profile data bleeds through
+      ghostState.ghost = { status:'none', lastHeartbeat:null, intervalSeconds:365*86400, gracePeriodSeconds:30*86400, awakenedAt:null, executed:false, stakedGhost:0, pingCount:0, vaultBalance:0, recoveryWallet:null, beneficiaries:[], wholeVaultAction:0, displayName:null, imageUri:null };
+      ghostState.recoveryWallets = [];
+      _walletIdentityAddr = null; // force identity card refresh
       updateDashboardUI();
       showNotif('No ghost found. Initialize one to get started.', '');
       return;
