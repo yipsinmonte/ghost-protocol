@@ -7222,8 +7222,7 @@ const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
 const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
 const tokenProgPk    = new PublicKey(normalizedTokenProg);
 let ownerAta;
-if (rawMintOwner === TOKEN_PROGRAM_STR) { ownerAta = await findATA(walletPk, mintPk); }
-else { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, mintPk); }
+{ const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, mintPk); }
 let vaultAta;
 try { const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: mintPk }); if (ex.value.length > 0) vaultAta = ex.value[0].pubkey; } catch(e) {}
 if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, mintPk, tokenProgPk);
@@ -7385,8 +7384,7 @@ let vaultAta;
 try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: withdrawMintPk }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
 if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, withdrawMintPk, new PublicKey(normalizedTokenProg));
 let ownerAta;
-if (rawMintOwner === TOKEN_PROGRAM_STR) { ownerAta = await findATA(walletPk, withdrawMintPk); }
-else { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: withdrawMintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, withdrawMintPk); }
+{ const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: withdrawMintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, withdrawMintPk); }
 const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
 return { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing: !ownerAtaInfo };
 }));
