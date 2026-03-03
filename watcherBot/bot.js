@@ -392,6 +392,46 @@ async function buildExecuteWholeVaultBurn(ghost, mintPk, tokenProg, vaultAtaPk) 
   });
 }
 
+// ─── Create ATA if missing ───────────────────────────────────────────────────
+
+// Returns instruction to create ATA, or null if already exists
+// Ensures recipient has a token account for mintPk.
+// Sends a SEPARATE tx to create it if missing — must be confirmed before transfer tx.
+// Returns true if ATA exists or was created, false on failure.
+async function ensureRecipientAta(ownerPk, mintPk, tokenProg) {
+  const ata = deriveATA(ownerPk, mintPk, tokenProg);
+  try {
+    const info = await connection.getAccountInfo(ata);
+    if (info) return true; // already exists
+  } catch (_) {}
+
+  console.log(`    [ata] creating token account for ${ownerPk.toBase58().slice(0,8)}... mint ${mintPk.toBase58().slice(0,8)}...`);
+
+  // createAssociatedTokenAccountIdempotent (data=[1]) — safe to call even if exists
+  // Keys: funder, ata, owner, mint, system_program, token_program
+  const SYSTEM_PROG = new PublicKey('11111111111111111111111111111111');
+  const SYSVAR_RENT = new PublicKey('SysvarRent111111111111111111111111111111111');
+  const ix = new TransactionInstruction({
+    programId: assocTokenPk,
+    keys: [
+      { pubkey: botKp.publicKey, isSigner: true,  isWritable: true  }, // funder
+      { pubkey: ata,             isSigner: false, isWritable: true  }, // ata
+      { pubkey: ownerPk,         isSigner: false, isWritable: false }, // wallet owner
+      { pubkey: mintPk,          isSigner: false, isWritable: false }, // mint
+      { pubkey: SYSTEM_PROG,     isSigner: false, isWritable: false }, // system program
+      { pubkey: tokenProg,       isSigner: false, isWritable: false }, // token program
+      { pubkey: SYSVAR_RENT,     isSigner: false, isWritable: false }, // rent sysvar
+    ],
+    data: Buffer.from([1]), // 1 = createIdempotent variant
+  });
+
+  const sig = await sendTx([ix], `createATA(${ownerPk.toBase58().slice(0,8)}... ${mintPk.toBase58().slice(0,8)}...)`);
+  if (!sig) return false;
+  // Wait for RPC to see the new account before proceeding
+  await sleep(2000);
+  return true;
+}
+
 // ─── Ghost processing ─────────────────────────────────────────────────────────
 
 async function processGhost(ghost) {
@@ -538,20 +578,20 @@ async function runBeneficiaries(ghost, label, now) {
     } else {
       console.log(`    [whole_vault] found ${vaultAccounts.length} token account(s) with balance`);
 
-      const NATIVE_SOL_MINT = 'So11111111111111111111111111111111111111112';
       for (const { pubkey: vaultAta, mint: mintPk, amount, tokenProg } of vaultAccounts) {
         const mintStr = mintPk.toBase58();
-        // Skip native SOL mint — cannot be transferred via execute_whole_vault_transfer (SPL only)
-        if (mintStr === NATIVE_SOL_MINT) {
-          console.log(`    [whole_vault] skipping native SOL mint (not an SPL token)`);
-          continue;
-        }
+        // wSOL (So111...) is a real SPL token account — transfer proceeds as normal.
+        // Recipient receives wSOL and can unwrap to native SOL themselves via closeAccount.
         console.log(`    [whole_vault] mint: ${mintStr.slice(0,8)}... amount: ${amount}`);
 
         if (ghost.wholeVaultAction === 0) {
-          // Transfer to recipient — pass actual vault token account pubkey, not re-derived ATA
-          const ix  = await buildExecuteWholeVaultTransfer(ghost, mintPk, tokenProg, vaultAta);
-          const sig = await sendTx([ix], `execute_whole_vault_transfer[${mintStr.slice(0,8)}...](${label})`);
+          // Ensure recipient has a token account — sent as separate confirmed tx before transfer
+          const recipientPk = new PublicKey(ghost.wholeVaultRecipient);
+          const ataOk = await ensureRecipientAta(recipientPk, mintPk, tokenProg);
+          if (!ataOk) { console.error(`    ❌ could not create recipient ATA for ${mintStr.slice(0,8)}... — skipping`); continue; }
+          // Transfer to recipient — pass actual vault token account pubkey
+          const transferIx = await buildExecuteWholeVaultTransfer(ghost, mintPk, tokenProg, vaultAta);
+          const sig = await sendTx([transferIx], `execute_whole_vault_transfer[${mintStr.slice(0,8)}...](${label})`);
           if (sig) await verifyVaultDrained(vaultAta, mintStr);
         } else if (ghost.wholeVaultAction === 1) {
           // Burn — pass actual vault token account pubkey
