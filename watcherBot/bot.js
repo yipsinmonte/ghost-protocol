@@ -208,10 +208,11 @@ async function sendTxSkipPreflight(instructions, label) {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: botKp.publicKey });
     tx.add(...instructions);
     tx.sign(botKp);
-    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+    const rawTx = tx.serialize();
+    const sig = await connection.sendRawTransaction(rawTx, { skipPreflight: true, maxRetries: 5 });
+    console.log(`    [ata] sent sig=${sig.slice(0,8)}... waiting confirm...`);
     const result = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
     if (result.value && result.value.err) {
-      // Fetch logs from confirmed tx
       const txInfo = await connection.getTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
       const logs = txInfo?.meta?.logMessages ? '\n' + txInfo.meta.logMessages.join('\n') : ' (no logs)';
       console.error(`    ❌ ${label} on-chain err: ${JSON.stringify(result.value.err)}${logs}`);
@@ -448,8 +449,17 @@ async function ensureRecipientAta(ownerPk, mintPk, tokenProg) {
     data: Buffer.alloc(0), // standard create — idempotent [1] rejected by Helius
   });
 
-  const sig = await sendTxSkipPreflight([ix], `createATA(${mintPk.toBase58().slice(0,8)}...)`);
-  if (!sig) return false;
+  // Retry up to 3 times — tx can be dropped if blockhash goes stale
+  let sig = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    sig = await sendTxSkipPreflight([ix], `createATA(${mintPk.toBase58().slice(0,8)}... attempt=${attempt})`);
+    if (sig) break;
+    if (attempt < 3) {
+      console.log(`    [ata] retrying in 3s...`);
+      await sleep(3000);
+    }
+  }
+  if (!sig) { console.error(`    [ata] all attempts failed`); return false; }
   await sleep(2000); // let RPC propagate before transfer tx
   return true;
 }
