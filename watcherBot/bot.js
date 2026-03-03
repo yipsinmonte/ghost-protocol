@@ -423,8 +423,8 @@ async function buildExecuteWholeVaultBurn(ghost, mintPk, tokenProg, vaultAtaPk) 
 // ─── Create ATA if missing ───────────────────────────────────────────────────
 
 // Ensures recipient has a token account for mintPk.
-// Sends a separate confirmed tx to create it if missing.
-// Returns true if ATA exists or was successfully created.
+// Tries ATA program with [1] (idempotent) first, then empty data.
+// Always checks if account exists after any failure — confirm errors can be false negatives.
 async function ensureRecipientAta(ownerPk, mintPk, tokenProg) {
   const ata = deriveATA(ownerPk, mintPk, tokenProg);
   console.log(`    [ata] checking ${ata.toBase58().slice(0,8)}... owner=${ownerPk.toBase58().slice(0,8)}... mint=${mintPk.toBase58().slice(0,8)}...`);
@@ -433,35 +433,40 @@ async function ensureRecipientAta(ownerPk, mintPk, tokenProg) {
     if (info) { console.log(`    [ata] already exists`); return true; }
   } catch (_) {}
 
-  console.log(`    [ata] creating ATA=${ata.toBase58()} tokenProg=${tokenProg.toBase58().slice(0,8)}...`);
-
   const SYSTEM_PROG = new PublicKey('11111111111111111111111111111111');
-  const ix = new TransactionInstruction({
-    programId: assocTokenPk,
-    keys: [
-      { pubkey: botKp.publicKey, isSigner: true,  isWritable: true  },
-      { pubkey: ata,             isSigner: false, isWritable: true  },
-      { pubkey: ownerPk,         isSigner: false, isWritable: false },
-      { pubkey: mintPk,          isSigner: false, isWritable: false },
-      { pubkey: SYSTEM_PROG,     isSigner: false, isWritable: false },
-      { pubkey: tokenProg,       isSigner: false, isWritable: false },
-    ],
-    data: Buffer.alloc(0), // standard create — idempotent [1] rejected by Helius
-  });
 
-  // Retry up to 3 times — tx can be dropped if blockhash goes stale
-  let sig = null;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    sig = await sendTxSkipPreflight([ix], `createATA(${mintPk.toBase58().slice(0,8)}... attempt=${attempt})`);
-    if (sig) break;
-    if (attempt < 3) {
-      console.log(`    [ata] retrying in 3s...`);
-      await sleep(3000);
-    }
+  for (const [variant, data] of [['idempotent [1]', Buffer.from([1])], ['standard []', Buffer.alloc(0)]]) {
+    console.log(`    [ata] trying ${variant} — ATA=${ata.toBase58().slice(0,8)}... mint=${mintPk.toBase58().slice(0,8)}... prog=${tokenProg.toBase58().slice(0,8)}...`);
+    const ix = new TransactionInstruction({
+      programId: assocTokenPk,
+      keys: [
+        { pubkey: botKp.publicKey, isSigner: true,  isWritable: true  },
+        { pubkey: ata,             isSigner: false, isWritable: true  },
+        { pubkey: ownerPk,         isSigner: false, isWritable: false },
+        { pubkey: mintPk,          isSigner: false, isWritable: false },
+        { pubkey: SYSTEM_PROG,     isSigner: false, isWritable: false },
+        { pubkey: tokenProg,       isSigner: false, isWritable: false },
+      ],
+      data,
+    });
+
+    const sig = await sendTxSkipPreflight([ix], `createATA-${variant}(${mintPk.toBase58().slice(0,8)}...)`);
+
+    // Check existence regardless of sig — confirm can return false negatives
+    await sleep(2000);
+    try {
+      const ataInfo = await connection.getAccountInfo(ata);
+      if (ataInfo) {
+        console.log(`    [ata] ATA confirmed on-chain${sig ? '' : ' (despite confirm error)'}`);
+        return true;
+      }
+    } catch (_) {}
+
+    if (sig) return true; // sig without account means something weird — trust the sig
   }
-  if (!sig) { console.error(`    [ata] all attempts failed`); return false; }
-  await sleep(2000); // let RPC propagate before transfer tx
-  return true;
+
+  console.error(`    [ata] all variants failed — ATA still does not exist`);
+  return false;
 }
 
 // ─── Ghost processing ─────────────────────────────────────────────────────────
