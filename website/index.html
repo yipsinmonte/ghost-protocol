@@ -388,6 +388,7 @@
   }
   .status-value.alive { color: #33ff99; }
   .status-value.awakened { color: #ffb830; }
+  .status-value.executed { color: #ff3366; }
 
   .status-meta { display: flex; gap: 24px; flex-wrap: wrap; }
   .status-meta-item label {
@@ -3340,6 +3341,14 @@ function updateDashboardUI() {
   if (statusEl) {
     statusEl.textContent = g.status === 'none' ? 'NOT INITIALIZED' : g.status.toUpperCase();
     statusEl.className = 'db-status-badge status-' + g.status;
+  }
+
+  // ── Big status hero text ──────────────────────────────────────
+  const statusValueEl = document.getElementById('dbStatusValue');
+  if (statusValueEl) {
+    const label = g.status === 'executed' ? 'EXECUTED' : g.status === 'awakened' ? 'AWAKENED' : g.status === 'none' ? 'NOT INITIALIZED' : 'ALIVE';
+    statusValueEl.textContent = label;
+    statusValueEl.className = 'status-value ' + (g.status === 'executed' ? 'executed' : g.status === 'awakened' ? 'awakened' : 'alive');
   }
 
   // ── If no ghost: show init or overview (migration) ──────────
