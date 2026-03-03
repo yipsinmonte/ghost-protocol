@@ -434,14 +434,31 @@ async function ensureRecipientAta(ownerPk, mintPk, tokenProg) {
     tx.add(ix);
     tx.sign(botKp);
 
-    // Simulate first to get full error detail
-    const sim = await connection.simulateTransaction(tx);
-    if (sim.value.err) {
-      const simLogs = (sim.value.logs || []).join('\n');
-      console.error('    [ata] simulate failed: ' + JSON.stringify(sim.value.err));
-      console.error('    [ata] sim logs: ' + simLogs);
+  try {
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: botKp.publicKey });
+    tx.add(ix);
+    tx.sign(botKp);
+
+    // skipPreflight=true — ATA program causes ProgramAccountNotFound in preflight/simulate
+    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+    const result = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+    if (result.value.err) {
+      const txInfo = await connection.getTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+      const logs = txInfo && txInfo.meta && txInfo.meta.logMessages ? txInfo.meta.logMessages.join('\n') : '(no logs)';
+      console.error('    [ata] on-chain error: ' + JSON.stringify(result.value.err));
+      console.error('    [ata] logs: ' + logs);
       return false;
     }
+    console.log('    [ata] created: ' + sig);
+    await sleep(2000);
+    return true;
+  } catch (err) {
+    const errLogs = (err && err.logs) ? err.logs.join('\n') : '';
+    console.error('    [ata] create failed: ' + (err.message || String(err)));
+    if (errLogs) console.error('    [ata] logs: ' + errLogs);
+    return false;
+  }
 
     const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
