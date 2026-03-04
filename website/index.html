@@ -8996,7 +8996,7 @@ async function dbAbandonOnChain() {
     try {
       const svInfo = await connection.getTokenAccountBalance(ghostStakeVault);
       const svRaw = BigInt(svInfo.value.amount || '0');
-      const stakedRaw = BigInt(ghostState.ghost.stakedGhost || 0);
+      const stakedRaw = BigInt(Math.round((ghostState.ghost.stakedGhost || 0) * 1_000_000));
       console.log('[Ghost] Stake vault balance:', svRaw.toString(), 'staked_ghost:', stakedRaw.toString());
       if (svRaw < stakedRaw) {
         // Contract will try to burn staked_ghost but vault only has svRaw — will fail
