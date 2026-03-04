@@ -850,7 +850,7 @@
             </div>
             <div style="font-size:44px;margin-bottom:12px;opacity:0.7">💀</div>
             <div style="font-family:'Syne',sans-serif;font-weight:900;font-size:20px;letter-spacing:0.14em;color:#e8e4f8;margin-bottom:4px">GHOST EXECUTED</div>
-            <div id="dbExecDetailTime" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5050708;letter-spacing:0.2em;color:#6060888"></div>
+            <div id="dbExecDetailTime" style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.2em;color:#606080"></div>
           </div>
 
           <!-- Distribution report — the main event -->
@@ -869,7 +869,7 @@
             <div style="font-size:18px;opacity:0.7">💎</div>
             <div style="flex:1;min-width:0">
               <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#b090ff"><strong id="dbExecutedStake">—</strong> $GHOST staked · locked on-chain</div>
-              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5050808;margin-top:2px;color:#4a4a6a">Reclaim via Abandon Ghost — 50% burn penalty applies</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#4a4a6a;margin-top:2px">Reclaim via Abandon Ghost — 50% burn penalty applies</div>
             </div>
             <button onclick="dbAbandonOnChain()" style="background:transparent;border:1px solid rgba(102,51,255,0.35);color:#a080ff;font-family:'Share Tech Mono',monospace;font-size:10px;padding:5px 12px;cursor:pointer;letter-spacing:0.1em;white-space:nowrap;flex-shrink:0">RECLAIM →</button>
           </div>
@@ -4706,19 +4706,29 @@ function renderExecutionDetail() {
     for (const tk of grp.tokens) {
       const amtRaw = tk.amount;
       const amtStr = amtRaw != null
-        ? (amtRaw >= 1000 ? Number(amtRaw).toLocaleString(undefined,{maximumFractionDigits:2}) : parseFloat(Number(amtRaw).toPrecision(5)).toString())
+        ? (amtRaw >= 1000
+            ? Number(amtRaw).toLocaleString(undefined,{maximumFractionDigits:2})
+            : parseFloat(Number(amtRaw).toPrecision(5)).toString())
         : '—';
       const price = tk.mint ? (PRICE_CACHE[tk.mint] || 0) : 0;
-      const usdTk = price > 0 && amtRaw ? ' <span style="font-family:\'Share Tech Mono\',monospace;font-size:10px;color:#4a4a6a">≈ $' + (price * amtRaw).toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>' : '';
+      const usdVal = (price > 0 && amtRaw) ? (' ≈ $' + (price * amtRaw).toLocaleString(undefined,{maximumFractionDigits:2})) : '';
+      const usdTk = usdVal ? ('<span style="font-size:10px;color:#4a4a6a">' + usdVal + '</span>') : '';
       const _tkSym = tk.token === 'All tokens' ? 'Whole Vault' : tk.token;
       const logoHtml = tokenLogoEl(_tkSym, 22, tk.logoUrl || null);
       const tokenCol = isBurn ? '#ff8866' : (typeof tokenColor === 'function' ? tokenColor(tk.token) : '#c0bce0');
-      html += `<div style="display:flex;align-items:center;gap:10px;padding:5px 0">
-        <div style="width:22px;height:22px;flex-shrink:0">${logoHtml}</div>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#e0dcf8"><span style="color:#f0f0f8;font-weight:600">${amtStr}</span> <span style="color:${tokenCol}">${tk.token}</span>${usdTk}</div>
-        ${tk.status === 'pending' ? `<span style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#5a5a7a;margin-left:auto">PENDING</span>` : ''}
-      </div>`;
-    html += `</div>`;
+      const pendingBadge = tk.status === 'pending'
+        ? '<span style="font-size:9px;color:#5a5a7a;margin-left:auto;font-family:monospace">PENDING</span>'
+        : '';
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:5px 0">'
+            + '<div style="width:22px;height:22px;flex-shrink:0">' + logoHtml + '</div>'
+            + '<div style="font-size:12px;color:#e0dcf8;font-family:monospace">'
+            +   '<span style="color:#f0f0f8;font-weight:600">' + amtStr + '</span> '
+            +   '<span style="color:' + tokenCol + '">' + tk.token + '</span>'
+            +   usdTk
+            + '</div>'
+            + pendingBadge
+            + '</div>';
+    }
   }
 
   body.innerHTML = html;
