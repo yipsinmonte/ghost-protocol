@@ -4857,18 +4857,17 @@ async function renderActivityLog() {
   // ── Helper: get token logo html for a mint (16px inline) ──
   function mintLogoInline(mint) {
     const _SOL_FULL = 'So11111111111111111111111111111111111111112';
-    // Normalise SOL — stored as 'native' in vaultTokens, matched by either key
     const isSOL = !mint || mint === 'native' || mint === _SOL_FULL;
-    if (isSOL) {
-      return '<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;vertical-align:middle;margin-right:5px;flex-shrink:0;border-radius:50%;overflow:hidden">'
-        + tokenLogoEl('SOL', 16, null)
-        + '</span>';
-    }
-    const known = [...(ghostState.vaultTokens||[]),...(ghostState.walletTokens||[])].find(t=>t.mint===mint);
-    const sym = known?.symbol || MINT_TO_SYMBOL[mint] || '';
-    const logo = known?.logoUrl || null;
+    // Resolve symbol and logoUrl — exactly like legacy distribution does
+    const sym = isSOL ? 'SOL'
+      : (MINT_TO_SYMBOL[mint]
+        || [...(ghostState.vaultTokens||[]),...(ghostState.walletTokens||[])].find(t=>t.mint===mint)?.symbol
+        || '');
+    const logoUrl = isSOL ? TOKEN_LOGO_URLS['SOL']
+      : ([...(ghostState.vaultTokens||[]),...(ghostState.walletTokens||[])].find(t=>t.mint===mint)?.logoUrl || null);
+    // Call tokenLogoEl exactly the same way legacy distribution does: tokenLogoEl(sym, size, logoUrl)
     return '<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;vertical-align:middle;margin-right:5px;flex-shrink:0;border-radius:50%;overflow:hidden">'
-      + tokenLogoEl(sym, 16, logo)
+      + tokenLogoEl(sym, 16, logoUrl)
       + '</span>';
   }
 
