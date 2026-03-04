@@ -9026,16 +9026,11 @@ async function dbAbandonOnChain() {
       return;
     }
 
-    // Detect ghost mint token program
+    // Detect ghost mint token program directly from account owner
     const ghostMintInfo = await connection.getAccountInfo(ghostMint);
-    const mintOwner = ghostMintInfo?.owner?.toBase58() || '';
     const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-    function b58dec(s) {
-      const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-      let n = BigInt(0); for (const c of s) n = n * BigInt(58) + BigInt(B58.indexOf(c));
-      const b = new Uint8Array(32); for (let i = 31; i >= 0; i--) { b[i] = Number(n & BigInt(0xff)); n >>= BigInt(8); } return b;
-    }
-    const ghostTokenProgramId = mintOwner ? new PublicKey(new Uint8Array(b58dec(mintOwner))) : TOKEN_PROGRAM_ID;
+    const ghostTokenProgramId = ghostMintInfo?.owner || TOKEN_PROGRAM_ID;
+    console.log('[Ghost] ghost token program:', ghostTokenProgramId.toBase58());
 
     // AbandonGhost accounts — exact struct order from lib.rs:
     // ghost, signer, ghost_mint (mut for burn), ghost_stake_vault, owner_token_account, token_program
