@@ -3070,7 +3070,27 @@ async function fetchOnChainHistory() {
           }
         }
       } catch(_) {}
-      builtActivity.push({msg:label, tx:s.signature, ts, icon:rowIcon});
+      // For whole-vault txs, stash per-token breakdown on the entry so renderExecutionDetail can use it
+      let _entryTokens = null;
+      if (matchHex === '345d3184612eda0d' || matchHex === '59da97947864b51c') {
+        const _wsolM = 'So11111111111111111111111111111111111111112';
+        const _tkList = [];
+        for (const _ix of inner) {
+          const _p = _ix.parsed;
+          if (_p && (_p.type === 'transfer' || _p.type === 'transferChecked')) {
+            const _info = _p.info || {};
+            const _amt = _info.tokenAmount?.uiAmountString || _info.amount;
+            const _mint = _info.mint || '';
+            if (_amt && _mint) {
+              const _sym = resolveMintSymbol(_mint) || (_mint === _wsolM ? 'wSOL' : _mint.slice(0,4)+'…'+_mint.slice(-4));
+              const _found = [...(ghostState.vaultTokens||[]),...(ghostState.walletTokens||[])].find(t=>t.mint===_mint);
+              _tkList.push({ symbol: _sym, mint: _mint, amount: parseFloat(_amt), logoUrl: _found?.logoUrl || null });
+            }
+          }
+        }
+        if (_tkList.length > 0) _entryTokens = _tkList;
+      }
+      builtActivity.push({msg:label, tx:s.signature, ts, icon:rowIcon, _tokens: _entryTokens});
       // Always record a ping entry if the tx contains a ping instruction,
       // whether it's a standalone ping or bundled with a settings update
       if (label === '\u{1F493} Heartbeat sent' || hasBundledPing) rawPings.push({ts, sig:s.signature});
@@ -3085,6 +3105,8 @@ async function fetchOnChainHistory() {
       const _localOnly = (ghostState.activityLog||[]).filter(e => e._local && e.tx && !_chainSigs.has(e.tx));
       ghostState.activityLog = [..._localOnly, ...builtActivity];
       renderActivityLog();
+      // Re-render execution detail now that _tokens are populated on log entries
+      if (ghostState.ghost?.status === 'executed') renderExecutionDetail();
     }
     if (builtPings.length>0){ghostState.pingHistory=[...builtPings].reverse();renderPingHistory();}
     console.log('[Ghost] History: '+builtActivity.length+' txs, '+builtPings.length+' pings');
@@ -4576,14 +4598,46 @@ function renderExecutionDetail() {
 
   if (wholeRecipient) {
     const shortR = wholeRecipient.slice(0,4)+'...'+wholeRecipient.slice(-4);
-    const vt = ghostState.vaultTokens || [];
+    const action = wholeAction === 1 ? 'burn' : 'transfer';
+
+    // Priority 1: tokens stored on activity log entries (from inner SPL transfers at tx time)
+    const wvEntries = log.filter(e => e._tokens && e._tokens.length > 0 &&
+      e.msg && (e.msg.includes('vault transfer') || e.msg.includes('vault burn') || e.msg.includes('Whole vault')));
+    // Dedupe by mint across all whole-vault tx entries
+    const wvMintSeen = new Set();
+    const wvTokens = [];
+    for (const entry of wvEntries) {
+      for (const t of entry._tokens) {
+        if (!wvMintSeen.has(t.mint)) { wvMintSeen.add(t.mint); wvTokens.push(t); }
+      }
+    }
+
+    // Priority 2: vaultTokens (populated before execution — may be empty if vault drained)
+    const vt = wvTokens.length > 0 ? wvTokens : (ghostState.vaultTokens || []).map(t => ({
+      symbol: t.symbol, mint: t.mint, amount: t.balance, logoUrl: t.logoUrl
+    }));
+
     if (vt.length > 0) {
       for (const t of vt) {
         const { sym, logoUrl } = resolveMintLogo(t.mint);
-        lines.push({ action: wholeAction === 1 ? 'burn' : 'transfer', token: t.symbol || sym, amount: t.balance, recipient: shortR, recipientFull: wholeRecipient, logoUrl: t.logoUrl || logoUrl, status: 'complete', mint: t.mint });
+        lines.push({ action, token: t.symbol || sym || t.token || '?', amount: t.amount, recipient: shortR, recipientFull: wholeRecipient, logoUrl: t.logoUrl || logoUrl, status: 'complete', mint: t.mint });
       }
     } else {
-      lines.push({ action: wholeAction === 1 ? 'burn' : 'transfer', token: 'All tokens', amount: null, recipient: shortR, recipientFull: wholeRecipient, status: 'complete' });
+      // Last resort: parse token info from activity log msg strings
+      // Format: "🪙 1,000 USDC → 7mYh..." or "🔥 500 $GHOST burned"
+      const parsedFromMsg = [];
+      for (const entry of log.filter(e => e.msg && (e.msg.includes('vault') || e.msg.includes('Whole')))) {
+        const parts = entry.msg.split(' · ');
+        for (const part of parts) {
+          const m = part.match(/[🪙🔥]\s+([\d,\.]+)\s+(\S+)\s+(?:→|burned)/);
+          if (m) parsedFromMsg.push({ token: m[2], amount: parseFloat(m[1].replace(/,/g,'')), mint: null, logoUrl: null });
+        }
+      }
+      if (parsedFromMsg.length > 0) {
+        for (const t of parsedFromMsg) lines.push({ action, token: t.token, amount: t.amount, recipient: shortR, recipientFull: wholeRecipient, logoUrl: null, status: 'complete', mint: null });
+      } else {
+        lines.push({ action, token: 'All tokens', amount: null, recipient: shortR, recipientFull: wholeRecipient, status: 'complete' });
+      }
     }
   }
 
