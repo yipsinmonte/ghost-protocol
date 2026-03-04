@@ -4852,7 +4852,14 @@ async function renderActivityLog() {
 
   // ── Helper: get token logo html for a mint (16px inline) ──
   function mintLogoInline(mint) {
-    if (!mint || mint === 'native') mint = _SOL_MINT;
+    const _SOL_FULL = 'So11111111111111111111111111111111111111112';
+    // Normalise SOL — stored as 'native' in vaultTokens, matched by either key
+    const isSOL = !mint || mint === 'native' || mint === _SOL_FULL;
+    if (isSOL) {
+      return '<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;vertical-align:middle;margin-right:5px;flex-shrink:0;border-radius:50%;overflow:hidden">'
+        + tokenLogoEl('SOL', 16, null)
+        + '</span>';
+    }
     const known = [...(ghostState.vaultTokens||[]),...(ghostState.walletTokens||[])].find(t=>t.mint===mint);
     const sym = known?.symbol || MINT_TO_SYMBOL[mint] || '';
     const logo = known?.logoUrl || null;
@@ -6490,9 +6497,9 @@ function tokenLogoEl(sym, size = 32, customUrl = null) {
   }
   const url = customUrl || TOKEN_LOGO_URLS[sym];
   if (url) {
-    return `<img src="${url}" alt="${sym}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block;" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><span style="display:none;width:${size}px;height:${size}px;border-radius:50%;background:rgba(102,51,255,0.2);align-items:center;justify-content:center;font-size:${Math.round(size*0.5)}px">${TOKEN_FALLBACK[sym]||'🪙'}</span>`;
+    return `<img src="${url}" alt="${sym}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block;" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><span style="display:none;width:${size}px;height:${size}px;border-radius:50%;background:rgba(102,51,255,0.2);align-items:center;justify-content:center;font-size:${Math.round(size*0.5)}px">${TOKEN_FALLBACK[sym]||''}</span>`;
   }
-  return `<span style="width:${size}px;height:${size}px;border-radius:50%;background:rgba(102,51,255,0.2);display:flex;align-items:center;justify-content:center;font-size:${Math.round(size*0.5)}px">${TOKEN_FALLBACK[sym]||'🪙'}</span>`;
+  return `<span style="width:${size}px;height:${size}px;border-radius:50%;background:rgba(102,51,255,0.2);display:flex;align-items:center;justify-content:center;font-size:${Math.round(size*0.5)}px">${TOKEN_FALLBACK[sym]||''}</span>`;
 }
 function tokenIcon(sym) { return TOKEN_FALLBACK[sym] || '🪙'; }
 
