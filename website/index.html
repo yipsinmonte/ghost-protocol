@@ -8304,7 +8304,7 @@ async function dbMigrateAccount() {
       console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`);
       ix.keys.forEach((k, j) => console.log(`  [Ghost]   k${j}: ${k.pubkey.toBase58()} signer=${k.isSigner} writable=${k.isWritable}`));
     });
-    console.log('[Ghost] single withdraw accounts — ghostPda:', ghostPda.toBase58(), 'vaultPda:', vaultPda.toBase58(), 'vaultAta:', vaultAta.toBase58(), 'ownerAta:', ownerAta.toBase58());
+    console.log('[Ghost] abandon_ghost accounts — ghostPda:', ghostPda.toBase58(), 'stakeVault:', ghostStakeVault.toBase58(), 'ownerTokenAccount:', ownerTokenAccount.toBase58());
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] Migrate TX sent:', sig);
@@ -10232,7 +10232,7 @@ async function dbAbandonOnChain() {
       console.log(`[Ghost] ix${i}: prog=${ix.programId.toBase58()} accounts=${ix.keys.length} data=${ix.data.length}b`);
       ix.keys.forEach((k, j) => console.log(`  [Ghost]   k${j}: ${k.pubkey.toBase58()} signer=${k.isSigner} writable=${k.isWritable}`));
     });
-    console.log('[Ghost] single withdraw accounts — ghostPda:', ghostPda.toBase58(), 'vaultPda:', vaultPda.toBase58(), 'vaultAta:', vaultAta.toBase58(), 'ownerAta:', ownerAta.toBase58());
+    console.log('[Ghost] abandon_ghost accounts — ghostPda:', ghostPda.toBase58(), 'stakeVault:', ghostStakeVault.toBase58(), 'ownerTokenAccount:', ownerTokenAccount.toBase58());
     const signed = await ghostState.provider.signTransaction(tx);
     const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
     console.log('[Ghost] Abandon TX sent:', sig);
