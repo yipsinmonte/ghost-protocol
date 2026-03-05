@@ -8782,8 +8782,30 @@ async function findATA(ownerPk, mintPk) {
 async function buildManualTokenAccountIxs(walletPk, mintPk, ownerPk, tokenProgPk, connection) {
   const { Keypair, SystemProgram, TransactionInstruction } = solanaWeb3;
   const kp = Keypair.generate();
-  // Token account space: 165 bytes (Token), 165 bytes (Token-2022 base without extensions)
-  const space = 165;
+  const TOKEN_2022_STR_LOCAL = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+  const isToken2022 = tokenProgPk.toBase58() === TOKEN_2022_STR_LOCAL;
+
+  // Token-2022 token accounts need extra space for mint extensions (e.g. TransferFee).
+  // The required size = 165 (base) + extension discriminator (2 bytes) + extension data
+  // from the mint itself. We read the mint account length, subtract the base mint size (82),
+  // and add that delta to the 165-byte token account base.
+  // Classic SPL always uses exactly 165 bytes.
+  let space = 165;
+  if (isToken2022) {
+    try {
+      const mintInfo = await connection.getAccountInfo(mintPk);
+      if (mintInfo && mintInfo.data.length > 82) {
+        // Token-2022 mint with extensions: token account space = 165 + (mintDataLen - 82) + 2
+        // The +2 accounts for the AccountType discriminator prepended to extension data
+        const extBytes = mintInfo.data.length - 82;
+        space = 165 + 2 + extBytes;
+      } else {
+        space = 165 + 2; // Token-2022 without extensions still needs AccountType byte (2)
+      }
+    } catch(e) {
+      space = 165 + 2; // safe fallback
+    }
+  }
   const lamports = await connection.getMinimumBalanceForRentExemption(space);
 
   const createIx = SystemProgram.createAccount({
@@ -9096,9 +9118,10 @@ async function dbDeposit() {
       tx.recentBlockhash = depBh;
     }
 
-    // Phase 3: Deposit
+    // Phase 3: Deposit — for SOL use safeAmount (fee-reserved), for SPL use original amount
     const disc = [18, 62, 110, 8, 26, 106, 248, 151];
-    const amountRaw = BigInt(Math.round(amount * Math.pow(10, isSOL ? 9 : t.decimals)));
+    const _depositAmount = (isSOL && typeof safeAmount !== 'undefined') ? safeAmount : amount;
+    const amountRaw = BigInt(Math.round(_depositAmount * Math.pow(10, isSOL ? 9 : t.decimals)));
     const buf = new ArrayBuffer(8);
     new DataView(buf).setBigUint64(0, amountRaw, true);
     const data = new Uint8Array(16);
