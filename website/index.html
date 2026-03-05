@@ -1300,7 +1300,7 @@
             </div>
             <div style="flex:1">
               <div id="profilePicStatus" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#9090b8;margin-bottom:8px">No image set · click + to upload</div>
-              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(102,51,255,0.45);margin-bottom:8px">PNG · JPEG · WEBP · uploaded to Pinata IPFS</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(102,51,255,0.45);margin-bottom:8px">PNG · JPEG · WEBP · uploads and saves on-chain automatically</div>
               <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#6868a0;margin-bottom:4px">Or paste a direct URL:</div>
               <div style="display:flex;gap:6px;align-items:center">
                 <input type="text" id="profilePicUrlInput" placeholder="https://sapphire-casual-python-864.mypinata.cloud/ipfs/..." maxlength="128"
@@ -4397,8 +4397,9 @@ async function handleProfilePicSelect(input) {
     // Also update URL input so user sees what was stored
     const urlInput = document.getElementById('profilePicUrlInput');
     if (urlInput) urlInput.value = _pendingImageUri;
-    if (statusEl) { statusEl.textContent = '✓ Uploaded to IPFS · click Save to commit on-chain'; statusEl.style.color = '#33ff99'; }
-    showNotif('Image uploaded to Pinata IPFS ✓', 'green');
+    if (statusEl) { statusEl.textContent = '⟳ Upload done · saving on-chain...'; statusEl.style.color = '#c0a0ff'; }
+    // Auto-save on-chain immediately — no separate click needed
+    await dbSaveProfile();
   } catch(err) {
     if (statusEl) { statusEl.textContent = '✗ ' + (err.message || err); statusEl.style.color = '#ff6666'; }
     showNotif('Upload failed: ' + (err.message || err), 'error');
@@ -4416,7 +4417,7 @@ function handleProfileUrlInput(val) {
   } else if (trimmed === '') {
     _pendingImageUri = '';
     if (previewEl) previewEl.innerHTML = '👻';
-    if (statusEl) { statusEl.textContent = 'No image set · click + to upload'; statusEl.style.color = '#9090b8'; }
+    if (statusEl) { statusEl.textContent = 'No image set — click + to upload'; statusEl.style.color = '#9090b8'; }
   } else {
     _pendingImageUri = '';
     if (statusEl) { statusEl.textContent = '⚠️ Must start with https://'; statusEl.style.color = '#ff6666'; }
