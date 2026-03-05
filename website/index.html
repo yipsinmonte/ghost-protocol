@@ -3529,20 +3529,41 @@ function _updateInitPageForAbandoned() {
     const _s = document.createElement('style');
     _s.id = 'tombstone-styles';
     _s.textContent = [
-      '.tombstone-wrap{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;position:relative;overflow:hidden}',
-      '.tombstone-wrap::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 60% 40% at 50% 30%,rgba(80,0,0,0.18) 0%,transparent 70%);pointer-events:none}',
-      '.tombstone-scanlines{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.08) 3px,rgba(0,0,0,0.08) 4px);pointer-events:none;opacity:0.5}',
-      '.tombstone-glyph{font-size:72px;line-height:1;margin-bottom:32px;animation:tbFloat 4s ease-in-out infinite;position:relative}',
-      '.tombstone-glyph::after{content:"";position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);width:60px;height:8px;background:radial-gradient(ellipse,rgba(180,0,0,0.25) 0%,transparent 70%);border-radius:50%}',
-      '@keyframes tbFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}',
-      '.tombstone-title{font-family:"Syne",sans-serif;font-weight:800;font-size:clamp(28px,5vw,42px);letter-spacing:0.04em;color:#c8c8d8;margin-bottom:6px;text-align:center}',
-      '.tombstone-title span{color:rgba(200,80,80,0.9)}',
-      '.tombstone-rule{width:120px;height:1px;background:linear-gradient(90deg,transparent,rgba(180,60,60,0.5),transparent);margin:20px auto}',
-      '.tombstone-epitaph{font-family:"Share Tech Mono",monospace;font-size:13px;color:rgba(160,150,180,0.7);text-align:center;line-height:2;letter-spacing:0.08em;max-width:380px;margin-bottom:40px}',
-      '.tombstone-wallet{font-family:"Share Tech Mono",monospace;font-size:11px;color:rgba(120,110,140,0.6);background:rgba(255,255,255,0.02);border:1px solid rgba(180,60,60,0.12);padding:10px 20px;letter-spacing:0.06em;margin-bottom:48px}',
-      '.tombstone-divider{width:100%;max-width:480px;height:1px;background:linear-gradient(90deg,transparent,rgba(102,51,255,0.15),transparent);margin-bottom:32px}',
-      '.tombstone-cta{font-family:"Share Tech Mono",monospace;font-size:12px;color:rgba(140,120,180,0.5);letter-spacing:0.1em;text-transform:uppercase;text-align:center}',
-      '.tombstone-heartbeat{display:flex;align-items:center;gap:8px;margin-top:36px;font-family:"Share Tech Mono",monospace;font-size:11px;color:rgba(100,180,100,0.5);letter-spacing:0.06em}'
+      '.tombstone-wrap{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px 80px;position:relative;overflow:hidden;background:#030305}',
+      '.tombstone-fog{position:absolute;inset:0;background:radial-gradient(ellipse 70% 55% at 50% 40%,rgba(120,0,0,0.28) 0%,rgba(60,0,30,0.12) 50%,transparent 80%);pointer-events:none;z-index:0}',
+      '.tombstone-vignette{position:absolute;inset:0;background:radial-gradient(ellipse 100% 100% at 50% 50%,transparent 40%,rgba(0,0,0,0.75) 100%);pointer-events:none;z-index:1}',
+      '.tombstone-scanlines{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.1) 3px,rgba(0,0,0,0.1) 4px);pointer-events:none;z-index:2;opacity:0.6}',
+      '.tombstone-web{position:absolute;width:190px;height:190px;pointer-events:none;z-index:3;opacity:0.5}',
+      '.tombstone-web-tl{top:0;left:0}',
+      '.tombstone-web-tr{top:0;right:0;transform:scaleX(-1)}',
+      '.tombstone-web-bl{bottom:0;left:0;transform:scaleY(-1)}',
+      '.tombstone-web-br{bottom:0;right:0;transform:scale(-1,-1)}',
+      '.tombstone-spider-wrap{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:10;display:flex;flex-direction:column;align-items:center;animation:spiderDrop 1.4s cubic-bezier(0.22,1,0.36,1) both,spiderSway 4s ease-in-out 1.4s infinite}',
+      '.tombstone-thread{width:1px;height:80px;background:linear-gradient(to bottom,rgba(160,140,180,0.35),rgba(160,140,180,0.15));flex-shrink:0}',
+      '.tombstone-spider{font-size:28px;line-height:1;filter:drop-shadow(0 0 6px rgba(255,30,30,0.9)) drop-shadow(0 0 14px rgba(255,0,0,0.5))}',
+      '@keyframes spiderDrop{from{transform:translateX(-50%) translateY(-130px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}',
+      '@keyframes spiderSway{0%,100%{transform:translateX(calc(-50% - 6px)) rotate(-5deg)}50%{transform:translateX(calc(-50% + 6px)) rotate(5deg)}}',
+      '.tombstone-ghost-wrap{position:relative;z-index:5;margin-bottom:20px;margin-top:24px}',
+      '.tombstone-ghost-svg{width:110px;height:130px;animation:tbFloat 4s ease-in-out infinite,ghostFlicker 6s ease-in-out infinite}',
+      '@keyframes tbFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}',
+      '@keyframes ghostFlicker{0%,100%{filter:drop-shadow(0 0 18px rgba(140,60,255,0.9)) drop-shadow(0 0 40px rgba(200,0,60,0.4))}40%{filter:drop-shadow(0 0 30px rgba(180,80,255,1)) drop-shadow(0 0 60px rgba(220,0,80,0.6))}42%{filter:drop-shadow(0 0 8px rgba(100,40,200,0.5)) drop-shadow(0 0 20px rgba(150,0,40,0.3))}44%{filter:drop-shadow(0 0 26px rgba(160,70,255,0.9)) drop-shadow(0 0 50px rgba(200,0,60,0.5))}}',
+      '.tombstone-title{font-family:"Syne",sans-serif;font-weight:800;font-size:clamp(32px,5.5vw,52px);letter-spacing:0.06em;color:transparent;-webkit-text-stroke:1.5px rgba(200,195,220,0.85);text-align:center;margin-bottom:6px;position:relative;z-index:5}',
+      '.tombstone-title .ts-closed{color:transparent;-webkit-text-stroke:1.5px rgba(220,40,60,0.95);text-shadow:0 0 20px rgba(255,40,60,0.5),0 0 40px rgba(200,0,40,0.35);filter:drop-shadow(0 0 10px rgba(255,30,50,0.7))}',
+      '.tombstone-rule{width:120px;height:1px;background:linear-gradient(90deg,transparent,rgba(200,40,60,0.6),transparent);margin:18px auto;position:relative;z-index:5}',
+      '.tombstone-epitaph{font-family:"Share Tech Mono",monospace;font-size:13px;color:rgba(160,150,180,0.65);text-align:center;line-height:2.1;letter-spacing:0.08em;max-width:380px;margin-bottom:32px;position:relative;z-index:5}',
+      '.tombstone-wallet-wrap{position:relative;z-index:5;margin-bottom:36px}',
+      '.tombstone-wallet{font-family:"Share Tech Mono",monospace;font-size:11px;color:rgba(140,128,164,0.7);background:rgba(255,255,255,0.02);border:1px solid rgba(180,60,60,0.2);padding:12px 28px;letter-spacing:0.08em;position:relative;display:inline-block}',
+      '.tombstone-bracket{position:absolute;width:10px;height:10px;border-color:rgba(200,60,60,0.55);border-style:solid}',
+      '.tombstone-bracket-tl{top:-3px;left:-3px;border-width:2px 0 0 2px}',
+      '.tombstone-bracket-tr{top:-3px;right:-3px;border-width:2px 2px 0 0}',
+      '.tombstone-bracket-bl{bottom:-3px;left:-3px;border-width:0 0 2px 2px}',
+      '.tombstone-bracket-br{bottom:-3px;right:-3px;border-width:0 2px 2px 0}',
+      '.tombstone-ekg{position:relative;z-index:5;width:100%;max-width:460px;margin-bottom:28px}',
+      '.tombstone-ekg-line{stroke-dasharray:500;stroke-dashoffset:500;animation:ekgDraw 2.2s ease 0.7s forwards}',
+      '@keyframes ekgDraw{to{stroke-dashoffset:0}}',
+      '.tombstone-divider{width:100%;max-width:480px;height:1px;background:linear-gradient(90deg,transparent,rgba(102,51,255,0.15),transparent);margin-bottom:24px;position:relative;z-index:5}',
+      '.tombstone-cta{font-family:"Share Tech Mono",monospace;font-size:12px;color:rgba(140,120,180,0.45);letter-spacing:0.1em;text-transform:uppercase;text-align:center;position:relative;z-index:5}',
+      '.tombstone-heartbeat{display:flex;align-items:center;gap:8px;margin-top:28px;font-family:"Share Tech Mono",monospace;font-size:11px;color:rgba(100,180,100,0.45);letter-spacing:0.06em;position:relative;z-index:5}'
     ].join('');
     document.head.appendChild(_s);
   }
@@ -3550,24 +3571,98 @@ function _updateInitPageForAbandoned() {
   var _wallet = ghostState.publicKey || '';
   var _ws = _wallet ? _wallet.slice(0,6) + '\u00B7\u00B7\u00B7' + _wallet.slice(-6) : '\u2014';
 
+  function _webSVG() {
+    return '<svg viewBox="0 0 190 190" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<line x1="0" y1="0" x2="190" y2="190" stroke="rgba(200,180,220,0.18)" stroke-width="0.6"/>' +
+      '<line x1="0" y1="0" x2="126" y2="190" stroke="rgba(200,180,220,0.15)" stroke-width="0.5"/>' +
+      '<line x1="0" y1="0" x2="63"  y2="190" stroke="rgba(200,180,220,0.13)" stroke-width="0.5"/>' +
+      '<line x1="0" y1="0" x2="0"   y2="190" stroke="rgba(200,180,220,0.12)" stroke-width="0.5"/>' +
+      '<line x1="0" y1="0" x2="190" y2="126" stroke="rgba(200,180,220,0.15)" stroke-width="0.5"/>' +
+      '<line x1="0" y1="0" x2="190" y2="63"  stroke="rgba(200,180,220,0.13)" stroke-width="0.5"/>' +
+      '<line x1="0" y1="0" x2="190" y2="0"   stroke="rgba(200,180,220,0.12)" stroke-width="0.5"/>' +
+      '<path d="M0,32 Q16,16 32,0"   stroke="rgba(190,170,215,0.2)"  stroke-width="0.7" fill="none"/>' +
+      '<path d="M0,64 Q32,32 64,0"   stroke="rgba(190,170,215,0.18)" stroke-width="0.6" fill="none"/>' +
+      '<path d="M0,96 Q48,48 96,0"   stroke="rgba(190,170,215,0.16)" stroke-width="0.6" fill="none"/>' +
+      '<path d="M0,128 Q64,64 128,0" stroke="rgba(190,170,215,0.14)" stroke-width="0.5" fill="none"/>' +
+      '<path d="M0,160 Q80,80 160,0" stroke="rgba(190,170,215,0.12)" stroke-width="0.5" fill="none"/>' +
+      '<path d="M0,190 Q95,95 190,0" stroke="rgba(190,170,215,0.1)"  stroke-width="0.5" fill="none"/>' +
+      '<circle cx="4" cy="4" r="3" fill="rgba(180,30,30,0.6)"/>' +
+    '</svg>';
+  }
+
+  var _ghostSVG =
+    '<svg class="tombstone-ghost-svg" viewBox="0 0 110 130" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<defs>' +
+        '<radialGradient id="tgb" cx="50%" cy="40%" r="55%">' +
+          '<stop offset="0%" stop-color="#c8a0ff" stop-opacity="0.95"/>' +
+          '<stop offset="60%" stop-color="#7030cc" stop-opacity="0.85"/>' +
+          '<stop offset="100%" stop-color="#3a006a" stop-opacity="0.7"/>' +
+        '</radialGradient>' +
+        '<radialGradient id="tgg" cx="50%" cy="50%" r="50%">' +
+          '<stop offset="0%" stop-color="#dd2060" stop-opacity="0.2"/>' +
+          '<stop offset="100%" stop-color="#dd2060" stop-opacity="0"/>' +
+        '</radialGradient>' +
+        '<filter id="tgf" x="-30%" y="-30%" width="160%" height="160%">' +
+          '<feGaussianBlur stdDeviation="4" result="b"/>' +
+          '<feComposite in="SourceGraphic" in2="b" operator="over"/>' +
+        '</filter>' +
+      '</defs>' +
+      '<ellipse cx="55" cy="62" rx="50" ry="58" fill="url(#tgg)"/>' +
+      '<path d="M10,55 Q10,10 55,10 Q100,10 100,55 L100,108 Q90,97 82,108 Q74,118 66,108 Q58,97 55,108 Q52,118 44,108 Q36,97 28,108 Q20,97 10,108 Z" fill="url(#tgb)" stroke="rgba(180,100,255,0.3)" stroke-width="1"/>' +
+      '<ellipse cx="37" cy="52" rx="8" ry="9" fill="rgba(255,20,50,0.95)"/>' +
+      '<ellipse cx="37" cy="52" rx="5" ry="6" fill="rgba(255,80,80,0.55)"/>' +
+      '<ellipse cx="35" cy="50" rx="2" ry="2" fill="rgba(255,210,210,0.9)"/>' +
+      '<ellipse cx="73" cy="52" rx="8" ry="9" fill="rgba(255,20,50,0.95)"/>' +
+      '<ellipse cx="73" cy="52" rx="5" ry="6" fill="rgba(255,80,80,0.55)"/>' +
+      '<ellipse cx="71" cy="50" rx="2" ry="2" fill="rgba(255,210,210,0.9)"/>' +
+      '<ellipse cx="37" cy="52" rx="11" ry="12" fill="rgba(255,30,30,0.18)" filter="url(#tgf)"/>' +
+      '<ellipse cx="73" cy="52" rx="11" ry="12" fill="rgba(255,30,30,0.18)" filter="url(#tgf)"/>' +
+      '<path d="M44,72 Q55,68 66,72" stroke="rgba(200,120,255,0.35)" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+    '</svg>';
+
+  var _ekgSVG =
+    '<svg class="tombstone-ekg" viewBox="0 0 460 36" preserveAspectRatio="none" height="28">' +
+      '<polyline class="tombstone-ekg-line"' +
+        ' points="0,18 55,18 72,18 80,3 90,33 98,18 118,18 126,9 134,27 142,18 190,18 198,12 206,24 214,18 260,18 264,18 268,3 274,33 280,18 296,18 302,10 310,26 318,18 370,18 460,18"' +
+        ' fill="none" stroke="rgba(60,200,80,0.5)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<line x1="370" y1="18" x2="460" y2="18" stroke="rgba(180,40,40,0.45)" stroke-width="1.2"/>' +
+    '</svg>';
+
   _page.innerHTML =
     '<div class="tombstone-wrap">' +
+      '<div class="tombstone-fog"></div>' +
+      '<div class="tombstone-vignette"></div>' +
       '<div class="tombstone-scanlines"></div>' +
-      '<div class="tombstone-glyph">\uD83D\uDC7B</div>' +
-      '<div class="tombstone-title">GHOST <span>CLOSED</span></div>' +
+      '<div class="tombstone-web tombstone-web-tl">' + _webSVG() + '</div>' +
+      '<div class="tombstone-web tombstone-web-tr">' + _webSVG() + '</div>' +
+      '<div class="tombstone-web tombstone-web-bl">' + _webSVG() + '</div>' +
+      '<div class="tombstone-web tombstone-web-br">' + _webSVG() + '</div>' +
+      '<div class="tombstone-spider-wrap">' +
+        '<div class="tombstone-thread"></div>' +
+        '<div class="tombstone-spider">\uD83D\uDD77</div>' +
+      '</div>' +
+      '<div class="tombstone-ghost-wrap">' + _ghostSVG + '</div>' +
+      '<div class="tombstone-title">GHOST <span class="ts-closed">CLOSED</span></div>' +
       '<div class="tombstone-rule"></div>' +
       '<div class="tombstone-epitaph">' +
         'THIS WALLET HAS PASSED<br>' +
         'THE PROTOCOL HAS BEEN FULFILLED<br>' +
         'NO NEW GHOST MAY BE SUMMONED HERE' +
       '</div>' +
-      '<div class="tombstone-wallet">' + _ws + '</div>' +
+      '<div class="tombstone-wallet-wrap">' +
+        '<div class="tombstone-wallet">' +
+          '<span class="tombstone-bracket tombstone-bracket-tl"></span>' +
+          '<span class="tombstone-bracket tombstone-bracket-tr"></span>' +
+          '<span class="tombstone-bracket tombstone-bracket-bl"></span>' +
+          '<span class="tombstone-bracket tombstone-bracket-br"></span>' +
+          _ws +
+        '</div>' +
+      '</div>' +
+      _ekgSVG +
       '<div class="tombstone-divider"></div>' +
       '<div class="tombstone-cta">use a different wallet to summon a new ghost</div>' +
       '<div class="tombstone-heartbeat">' +
-        '<svg width="40" height="16" viewBox="0 0 40 16">' +
-          '<polyline points="0,8 6,8 9,2 12,14 15,8 22,8 25,4 28,12 31,8 40,8" fill="none" stroke="rgba(100,200,100,0.6)" stroke-width="1.5" stroke-linejoin="round"/>' +
-        '</svg>' +
+        '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="3.5" fill="rgba(100,200,100,0.4)"/><circle cx="7" cy="7" r="6" fill="none" stroke="rgba(100,200,100,0.2)" stroke-width="1"/></svg>' +
         'heartbeat checker still available' +
       '</div>' +
     '</div>';
