@@ -8887,7 +8887,7 @@ for (const t of solTokens) {
     const rentReserve = existingWsol ? 0 : wsolRent / 1e9;
 
     // Reserve: rent (if needed) + 0.004 per tx × ~5 future txs (wrap/deposit/withdraw/bene ×2)
-    const SOL_RESERVE = rentReserve + 0.025;
+    const SOL_RESERVE = rentReserve + 0.005; // ~5 tx fees headroom
     const amount = Math.max(0, liveNativeSOL - SOL_RESERVE);
     if (amount <= 0) {
       showNotif('⚠️ Only ' + liveNativeSOL.toFixed(4) + ' SOL remaining after SPL fees — need >' + SOL_RESERVE.toFixed(3) + ' to deposit', 'error');
@@ -9382,7 +9382,7 @@ function fillMaxDeposit() {
   // Always read balance from the live walletTokens array (not the stale selection copy)
   const live = ghostState.walletTokens.find(w => w.mint === sel.mint) || sel;
   const isSOL = live.mint === 'native' || live.mint === 'So11111111111111111111111111111111111111112';
-  const SOL_RESERVE = 0.05; // wSOL rent + headroom for wrap/withdraw/beneficiary txs
+  const SOL_RESERVE = 0.005; // ~5 tx fees headroom
   const bal = Math.max(0, isSOL ? (live.balance || 0) - SOL_RESERVE : (live.balance || 0));
   document.getElementById('depositAmt').value = bal.toString();
   document.getElementById('depositAmtDisplay').value = bal.toLocaleString(undefined, {maximumFractionDigits: 9});
@@ -9742,7 +9742,7 @@ async function dbDeposit() {
       // Dynamic reserve: wSOL rent (if new account needed) + 0.04 for future txs
       const _wsolRentSingle = await connection.getMinimumBalanceForRentExemption(165);
       const _existingWsolSingle = await connection.getAccountInfo(await deriveATA(walletPk, new solanaWeb3.PublicKey('So11111111111111111111111111111111111111112'))).catch(()=>null);
-      const SOL_FEE_RESERVE_SINGLE = (_existingWsolSingle ? 0 : _wsolRentSingle / 1e9) + 0.04;
+      const SOL_FEE_RESERVE_SINGLE = (_existingWsolSingle ? 0 : _wsolRentSingle / 1e9) + 0.005; // ~5 tx fees headroom
       if (amount > t.balance - SOL_FEE_RESERVE_SINGLE) {
         const maxSol = Math.max(0, t.balance - SOL_FEE_RESERVE_SINGLE);
         if (maxSol <= 0) throw new Error('Not enough SOL after reserving ' + SOL_FEE_RESERVE_SINGLE.toFixed(3) + ' for fees');
