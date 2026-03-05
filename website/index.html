@@ -502,13 +502,16 @@
   .db-card-sub { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: #8888aa; margin-top: 4px; }
 
   /* Progress bar */
-  .db-progress { background: #0d0d1e; border: 1px solid rgba(102,51,255,0.15); padding: 18px; margin-bottom: 20px; }
-  .db-progress-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
-  .db-progress-label { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 0.15em; color: #b0b0c8; text-transform: uppercase; }
-  .db-progress-val { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: #d0d0e8; }
-  .db-progress-bar { height: 4px; background: rgba(102,51,255,0.12); border-radius: 2px; }
-  .db-progress-fill { height: 100%; background: linear-gradient(90deg, #4422cc, #9966ff); transition: width 0.5s; border-radius: 2px; }
-  .db-progress-fill.warn { background: linear-gradient(90deg, #ff3d5a, #ff3366); }
+  .db-progress { background: linear-gradient(135deg,rgba(10,8,28,0.9),rgba(15,10,35,0.9)); border: 1px solid rgba(102,51,255,0.2); padding: 20px 22px; margin-bottom: 20px; position:relative; overflow:hidden; }
+  .db-progress::before { content:''; position:absolute; inset:0; background:linear-gradient(90deg,rgba(102,51,255,0.03),transparent); pointer-events:none; }
+  .db-progress-header { display: flex; justify-content: space-between; align-items:center; margin-bottom: 14px; }
+  .db-progress-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 0.2em; color: #7766aa; text-transform: uppercase; }
+  .db-progress-val { font-family: 'Syne', sans-serif; font-weight:700; font-size: 13px; color: #c0bce0; }
+  .db-progress-bar { height: 8px; background: rgba(102,51,255,0.08); border-radius: 4px; position:relative; overflow:visible; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4); }
+  .db-progress-fill { height: 100%; background: linear-gradient(90deg, #3311aa, #7744ff, #aa66ff); transition: width 0.6s cubic-bezier(0.4,0,0.2,1); border-radius: 4px; position:relative; box-shadow: 0 0 12px rgba(119,68,255,0.5), 0 0 24px rgba(119,68,255,0.2); }
+  .db-progress-fill::after { content:''; position:absolute; right:-1px; top:50%; transform:translateY(-50%); width:12px; height:12px; border-radius:50%; background:#aa66ff; box-shadow:0 0 8px #aa66ff, 0 0 16px rgba(170,102,255,0.6); }
+  .db-progress-fill.warn { background: linear-gradient(90deg, #aa1133, #ff3366, #ff6688); box-shadow: 0 0 12px rgba(255,51,102,0.5), 0 0 24px rgba(255,51,102,0.2); }
+  .db-progress-fill.warn::after { background:#ff3366; box-shadow:0 0 8px #ff3366, 0 0 16px rgba(255,51,102,0.6); }
 
   /* Alert */
   .db-alert { padding: 16px 20px; border-left: 3px solid #ffb830; background: rgba(255,184,48,0.06); font-family: 'Share Tech Mono', monospace; font-size: 14px; color: #ffcc55; line-height: 1.7; margin-bottom: 20px; display: none; }
@@ -1215,11 +1218,28 @@
         <div class="db-page-title">Heartbeat</div>
         <div class="db-page-sub">Stay alive · Prove you're here</div>
         <div class="db-info">Ping before your interval expires. If you go silent, your grace period activates — giving your recovery wallet one last chance to cancel before execution.</div>
-        <div class="db-form" style="text-align:center;padding:40px">
-          <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:300;color:#c0bce0;margin-bottom:4px">Next deadline in</div>
-          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:60px;line-height:1;color:var(--white);margin-bottom:28px" id="dbBigCountdown">—</div>
-          <button class="db-btn db-btn-primary" style="padding:16px 52px;font-size:14px" onclick="sendPing()">💓 SEND HEARTBEAT</button>
-          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#c0bce0;margin-top:12px">~0.000005 SOL fee</div>
+        <div class="db-form" style="text-align:center;padding:48px 40px 40px;position:relative;overflow:hidden">
+          <!-- ambient glow -->
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);width:320px;height:320px;border-radius:50%;background:radial-gradient(circle,rgba(102,51,255,0.08) 0%,transparent 70%);pointer-events:none"></div>
+
+          <!-- countdown label -->
+          <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.25em;color:#5544aa;text-transform:uppercase;margin-bottom:8px">Next deadline in</div>
+
+          <!-- big countdown -->
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:64px;line-height:1;color:var(--white);margin-bottom:40px;letter-spacing:-0.02em;text-shadow:0 0 40px rgba(102,51,255,0.3)" id="dbBigCountdown">—</div>
+
+          <!-- heartbeat button -->
+          <button onclick="sendPing()" id="hbSendBtn" style="position:relative;display:inline-flex;align-items:center;justify-content:center;gap:14px;background:linear-gradient(135deg,rgba(180,0,60,0.15),rgba(120,0,40,0.25));border:1px solid rgba(220,30,80,0.4);color:#fff;padding:18px 48px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;letter-spacing:0.08em;text-transform:uppercase;transition:all 0.3s;overflow:hidden"
+            onmouseover="this.style.borderColor='rgba(255,60,100,0.7)';this.style.background='linear-gradient(135deg,rgba(220,0,70,0.25),rgba(160,0,50,0.35))';this.style.boxShadow='0 0 32px rgba(255,30,80,0.3),0 0 64px rgba(255,30,80,0.1)'"
+            onmouseout="this.style.borderColor='rgba(220,30,80,0.4)';this.style.background='linear-gradient(135deg,rgba(180,0,60,0.15),rgba(120,0,40,0.25))';this.style.boxShadow=''">
+            <!-- ECG icon -->
+            <svg width="32" height="22" viewBox="0 0 32 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polyline points="0,11 6,11 9,3 12,19 15,8 18,14 21,11 32,11" stroke="#ff3366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px rgba(255,51,102,0.8))"/>
+            </svg>
+            Send Heartbeat
+          </button>
+
+          <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#443366;margin-top:14px;letter-spacing:0.1em">~0.000005 SOL</div>
         </div>
         <div class="db-section-header"><div class="db-section-title">Ping History</div></div>
         <div class="db-form" style="padding:0">
