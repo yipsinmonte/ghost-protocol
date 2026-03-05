@@ -9736,8 +9736,11 @@ async function dbWithdrawAsset(mintKey) {
     console.log('[Ghost] single withdraw accounts — ghostPda:', ghostPda.toBase58(), 'vaultPda:', vaultPda.toBase58(), 'vaultAta:', vaultAta.toBase58(), 'ownerAta:', ownerAta.toBase58());
     const signed = await ghostState.provider.signTransaction(tx);
     let sig;
+    // skipPreflight when tx contains ATA creation — Helius simulation rejects
+    // creation of accounts that don't exist yet, giving misleading empty logs error
+    const _hasMissingAta = !ownerAtaInfo;
     try {
-      sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+      sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: _hasMissingAta, preflightCommitment: 'confirmed' });
     } catch(simErr) {
       let logs = []; try { logs = await simErr.getLogs(connection); } catch(_) {}
       if (!logs?.length) { try { const sim = await connection.simulateTransaction(tx); logs = sim.value.logs||[]; } catch(_) {} }
