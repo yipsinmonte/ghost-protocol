@@ -5241,6 +5241,23 @@ async function sendPing() {
   const ripple = document.getElementById('pingRipple');
 
   orb.classList.add('beat');
+
+  // Position ripple at whichever button triggered it — hbSendBtn (heartbeat page) or hbOrb (overview)
+  const _activePage = document.getElementById('db-page-heartbeat')?.style.display !== 'none'
+    ? document.getElementById('hbSendBtn')
+    : orb;
+  if (_activePage) {
+    const r = _activePage.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    ripple.style.justifyContent = 'unset';
+    ripple.style.alignItems = 'unset';
+    // Position the rings absolutely at button center
+    Array.from(ripple.children).forEach(ring => {
+      ring.style.left = (cx - 40) + 'px';
+      ring.style.top  = (cy - 40) + 'px';
+    });
+  }
   ripple.classList.add('active');
   setTimeout(() => { orb.classList.remove('beat'); ripple.classList.remove('active'); }, 1200);
 
