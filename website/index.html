@@ -2741,7 +2741,7 @@ async function fetchPumpFunData() {
 }
 async function fetchGhostAccount() {
   if (!ghostState.ghostPda) return;
-  
+  console.log('[Ghost] fetchGhostAccount — ghostPda:', ghostState.ghostPda, 'wallet:', ghostState.publicKey);
   try {
     const response = await fetch(RPC_URL, {
       method: 'POST',
@@ -4053,6 +4053,7 @@ async function checkWalletAbandoned(pubkey, ghostPdaStr) {
 
   // On-chain: check ghost PDA tx history for abandon_ghost discriminator
   try {
+    console.log('[Ghost] Checking abandon history for PDA:', ghostPdaStr);
     const sigsRes = await fetch(RPC_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 'abandonCheck', method: 'getSignaturesForAddress',
@@ -4060,6 +4061,7 @@ async function checkWalletAbandoned(pubkey, ghostPdaStr) {
     });
     const sigsData = await sigsRes.json();
     const sigs = (sigsData.result || []).filter(s => !s.err).map(s => s.signature);
+    console.log('[Ghost] Abandon check: found', sigs.length, 'sigs on ghost PDA');
     if (sigs.length === 0) return false;
 
     // Fetch transactions in batches of 10
@@ -4072,31 +4074,34 @@ async function checkWalletAbandoned(pubkey, ghostPdaStr) {
             params: [batch, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }] })
         });
         const txData = await txRes.json();
-        for (const tx of (txData.result || [])) {
+        const txs = txData.result || [];
+        console.log('[Ghost] Abandon check batch', i, ': fetched', txs.filter(Boolean).length, 'txs');
+        for (const tx of txs) {
           if (!tx) continue;
-          for (const ix of (tx.transaction?.message?.instructions || [])) {
+          const ixList = tx.transaction?.message?.instructions || [];
+          for (const ix of ixList) {
             const d = ix.data;
             if (!d) continue;
-            // Decode first 8 bytes of instruction data from base58 and compare to abandon disc
             try {
               const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
               let n = 0n;
-              for (const c of d) { const i = B58.indexOf(c); if (i < 0) break; n = n * 58n + BigInt(i); }
+              for (const c of d) { const idx = B58.indexOf(c); if (idx < 0) break; n = n * 58n + BigInt(idx); }
               const bytes = new Uint8Array(8);
               for (let j = 7; j >= 0; j--) { bytes[j] = Number(n & 0xffn); n >>= 8n; }
               const hex = Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
+              console.log('[Ghost] ix disc hex:', hex, 'vs', ABANDON_DISC_HEX);
               if (hex === ABANDON_DISC_HEX) {
-                // Cache result so future checks are instant
                 try { localStorage.setItem('ghostAbandoned_' + pubkey, '1'); } catch(e) {}
-                console.log('[Ghost] Abandon tx found on-chain for', pubkey);
+                console.log('[Ghost] ✅ Abandon tx found on-chain for', pubkey);
                 return true;
               }
-            } catch(_) {}
+            } catch(e) { console.warn('[Ghost] ix decode error:', e); }
           }
         }
       } catch(e) { console.warn('[Ghost] Abandon check batch error:', e); }
     }
   } catch(e) { console.warn('[Ghost] Abandon on-chain check failed:', e); }
+  console.log('[Ghost] No abandon tx found for', pubkey);
   return false;
 }
 
