@@ -5709,10 +5709,9 @@ function renderBeneficiaries() {
     const _resolvedSym = resolveBeneToken(ben.token);
     const _nick = getWalletNickname(ben.fullAddr||ben.recipient);
     const _tcol = tokenColor(ben.token);
-    const _vtLogoUrl = vt?.logoUrl || [...(ghostState.walletTokens||[])].find(w=>w.symbol===_resolvedSym||w.mint===ben.token)?.logoUrl || null;
-    const _tokenIconHtml = _vtLogoUrl
-      ? `<img src="${_vtLogoUrl}" style="width:18px;height:18px;border-radius:50%;object-fit:cover;flex-shrink:0;vertical-align:middle" onerror="this.style.display='none'">`
-      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,0.06);font-size:9px;flex-shrink:0">${_resolvedSym.slice(0,1)}</span>`;
+    const _allToks = [...(ghostState.vaultTokens||[]),...(ghostState.walletTokens||[])];
+    const _vtForLogo = vt || _allToks.find(w=>w.symbol===_resolvedSym) || _allToks.find(w=>w.mint&&w.mint.startsWith(ben.token));
+    const _tokenIconHtml = tokenLogoEl(_resolvedSym, 18, _vtForLogo?.logoUrl||null);
     rows += `<tr style="border-bottom:1px solid rgba(102,51,255,0.08);${over?'background:rgba(255,61,90,0.04)':''}">
       <td style="color:#443366;font-family:'Share Tech Mono',monospace;font-size:11px;width:28px">${i+1}</td>
       <td style="padding:14px 10px">
@@ -5757,10 +5756,9 @@ function renderBeneficiaries() {
       const realIdx = all.indexOf(ben);
       const _resolvedBurnSym = resolveBeneToken(ben.token);
       const _bcol = tokenColor(ben.token) || '#ff6688';
-      const _burnVt = ghostState.vaultTokens.find(v=>v.symbol===ben.token||v.mint===ben.token) || ghostState.walletTokens.find(w=>w.symbol===_resolvedBurnSym||w.mint===ben.token);
-      const _burnIconHtml = _burnVt?.logoUrl
-        ? `<img src="${_burnVt.logoUrl}" style="width:18px;height:18px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
-        : `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,80,80,0.1);font-size:9px;flex-shrink:0">${_resolvedBurnSym.slice(0,1)}</span>`;
+      const _allBurnToks = [...(ghostState.vaultTokens||[]),...(ghostState.walletTokens||[])];
+      const _burnVtForLogo = _allBurnToks.find(w=>w.symbol===_resolvedBurnSym) || _allBurnToks.find(w=>w.mint&&w.mint.startsWith(ben.token));
+      const _burnIconHtml = tokenLogoEl(_resolvedBurnSym, 18, _burnVtForLogo?.logoUrl||null);
       rows += `<tr style="background:rgba(255,40,40,0.03);border-bottom:1px solid rgba(255,61,90,0.07)">
         <td style="width:28px"><span style="font-size:14px;filter:drop-shadow(0 0 4px rgba(255,80,80,0.6))">🔥</span></td>
         <td style="padding:14px 10px">
