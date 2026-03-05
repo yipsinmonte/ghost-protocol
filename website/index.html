@@ -702,7 +702,7 @@
 
   /* Page title */
   /* Page title */
-  .db-page-title { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: #f0f0f8; margin-bottom: 4px; }
+  .db-page-title { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: #f0f0f8; margin-bottom: 4px; letter-spacing: -0.02em; }
   .db-page-sub { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: #9090b8; text-transform: uppercase; margin-bottom: 24px; }
 
     @media (max-width: 800px) {
@@ -3467,7 +3467,7 @@ async function fetchOnChainHistory() {
     });
     if (builtActivity.length>0){
       const _chainSigs = new Set(builtActivity.map(e=>e.tx).filter(Boolean));
-      const _localOnly = (ghostState.activityLog||[]).filter(e => e._local && e.tx && !_chainSigs.has(e.tx));
+      const _localOnly = (ghostState.activityLog||[]).filter(e => e._local && (e._isBurn || (e.tx && !_chainSigs.has(e.tx))));
       ghostState.activityLog = [..._localOnly, ...builtActivity];
       renderActivityLog();
       // Re-render execution detail now that _tokens are populated on log entries
@@ -6170,7 +6170,12 @@ async function dbAddBeneficiary(action) {
     renderVaultHoldings();
     document.getElementById(amountInput).value = '';
     if (!isBurn) document.getElementById('newRecipient').value = '';
-    addActivityRow(isBurn ? ('🔥 Assigned ' + amount.toLocaleString() + ' ' + t.symbol + ' to be burned') : ('🎯 Beneficiary added · ' + short), shortSig);
+    if (isBurn) {
+      ghostState.activityLog.unshift({ msg: '🔥 Assigned ' + amount.toLocaleString() + ' ' + t.symbol + ' to be burned', tx: shortSig, ts: Date.now(), _local: true, _isBurn: true, icon: 'withdraw' });
+      renderActivityLog();
+    } else {
+      addActivityRow('🎯 Beneficiary added · ' + short, shortSig);
+    }
     setTimeout(() => fetchOnChainHistory().catch(()=>{}), 3000); // re-label from chain
     const mergeNote2 = mergedFromWhole ? ' · whole-vault assignment replaced' : '';
     showNotif(isBurn ? '🔥 Burn instruction confirmed!' : ('✅ Beneficiary added on-chain!' + mergeNote2), 'green');
