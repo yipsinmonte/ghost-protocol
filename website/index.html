@@ -2860,8 +2860,11 @@ function parseMetaplexUri(bytes) {
 // Normalise any IPFS/Arweave URL to a reliable gateway
 function normaliseUrl(url) {
   if (!url) return url;
-  // Extract raw CID and use a working public gateway (cf-ipfs.com is dead)
   const IPFS_GW = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/';
+  // Bare CID (Qm... or baf...) — wrap in gateway
+  if (/^Qm[1-9A-HJ-NP-Za-km-z]{30,}/.test(url) || /^baf[a-zA-Z0-9]{30,}/.test(url)) {
+    return IPFS_GW + url;
+  }
   return url
     .replace(/^ipfs:\/\//, IPFS_GW)
     .replace(/^https:\/\/cf-ipfs\.com\/ipfs\//, IPFS_GW)
@@ -2984,7 +2987,8 @@ async function fetchPumpFunData() {
           console.log('[Ghost] Helius asset interface:', asset?.interface, 'json_uri:', asset?.content?.json_uri);
 
           // Direct image (NFTs)
-          const directImg = asset?.content?.links?.image || asset?.content?.files?.[0]?.cdn_uri;
+          const _rawImg = asset?.content?.links?.image || asset?.content?.files?.[0]?.cdn_uri;
+          const directImg = _rawImg ? normaliseUrl(_rawImg) : null;
           if (directImg) { updateAll(t => { t.logoUrl = normaliseUrl(directImg); }); }
 
           // Fungible tokens: fetch off-chain JSON at json_uri
@@ -3800,8 +3804,9 @@ function parseGhostAccount(bytes) {
           } else if (uriStr.startsWith('ipfs://')) {
             _normalizedUri = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/' + uriStr.slice(7);
           } else if (/^Qm[a-zA-Z0-9]{44}/.test(uriStr) || /^baf[a-zA-Z0-9]+/.test(uriStr)) {
-            // Bare IPFS CID — wrap in gateway
+            // Bare IPFS CID — wrap in dedicated gateway
             _normalizedUri = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/' + uriStr.split('\0')[0].trim();
+            console.log('[Ghost] bare CID detected, wrapped:', _normalizedUri);
           }
         }
         ghostState.ghost.imageUri = _normalizedUri;
@@ -8659,7 +8664,7 @@ function renderVaultHoldings() {
   fetchPumpFunData();
   // Keep WITHDRAW ALL button and deposit notice in sync with beneficiary state
   const wdAllBtn = document.querySelector('button[onclick="dbWithdrawAll()"]');
-  const _anyBene = ghostState.ghost.beneficiaries.length > 0;
+  const _anyBene = (ghostState.ghost?.beneficiaries?.length ?? 0) > 0;
   if (wdAllBtn) {
     wdAllBtn.disabled = _anyBene;
     wdAllBtn.style.opacity = _anyBene ? '0.3' : '1';
@@ -8668,6 +8673,9 @@ function renderVaultHoldings() {
   }
   const depNotice = document.getElementById('depositWholeVaultNotice');
   const depRecip = document.getElementById('depositWholeVaultRecip');
+  const wvBene = ghostState.ghost?.wholeVaultRecipient
+    ? ghostState.ghost.beneficiaries?.find(b => b.action === 'whole-vault-share') || null
+    : null;
   if (depNotice) depNotice.style.display = wvBene ? 'block' : 'none';
   if (depRecip && wvBene) depRecip.textContent = wvBene.recipient;
 }
