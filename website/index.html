@@ -5243,19 +5243,27 @@ async function sendPing() {
   orb.classList.add('beat');
 
   // Position ripple at whichever button triggered it — hbSendBtn (heartbeat page) or hbOrb (overview)
-  const _activePage = document.getElementById('db-page-heartbeat')?.style.display !== 'none'
-    ? document.getElementById('hbSendBtn')
-    : orb;
-  if (_activePage) {
-    const r = _activePage.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    ripple.style.justifyContent = 'unset';
-    ripple.style.alignItems = 'unset';
-    // Position the rings absolutely at button center
+  const _onHbPage = document.getElementById('db-page-heartbeat')?.style.display !== 'none';
+  if (_onHbPage) {
+    const _btn = document.getElementById('hbSendBtn');
+    if (_btn) {
+      const r = _btn.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      ripple.style.justifyContent = 'unset';
+      ripple.style.alignItems = 'unset';
+      Array.from(ripple.children).forEach(ring => {
+        ring.style.left = (cx - 40) + 'px';
+        ring.style.top  = (cy - 40) + 'px';
+      });
+    }
+  } else {
+    // Overview orb — reset to centered flex (original behaviour)
+    ripple.style.justifyContent = '';
+    ripple.style.alignItems = '';
     Array.from(ripple.children).forEach(ring => {
-      ring.style.left = (cx - 40) + 'px';
-      ring.style.top  = (cy - 40) + 'px';
+      ring.style.left = '';
+      ring.style.top  = '';
     });
   }
   ripple.classList.add('active');
