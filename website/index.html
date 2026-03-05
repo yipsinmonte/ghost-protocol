@@ -8347,25 +8347,28 @@ function renderVaultHoldings() {
 async function dbDepositAll() {
 const tokens = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
 if (tokens.length === 0) { showNotif('No assets with balance in wallet', 'error'); return; }
+
+// ── Demo mode ─────────────────────────────────────────────────────────────
 if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
-let count = 0;
-for (const t of tokens) {
-const amount = t.balance; if (!amount || amount <= 0) continue;
-t.balance = 0;
-const vaultMint = t.mint === 'native' ? 'native' : t.mint;
-const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
-if (existing) { existing.balance += amount; if (!existing.logoUrl && t.logoUrl) existing.logoUrl = t.logoUrl; }
-else ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, name: t.name||null });
-addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol + ' [demo]', randomTx(), 'deposit');
-count++;
+  let count = 0;
+  for (const t of tokens) {
+    const amount = t.balance; if (!amount || amount <= 0) continue;
+    t.balance = 0;
+    const vaultMint = t.mint === 'native' ? 'native' : t.mint;
+    const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
+    if (existing) { existing.balance += amount; if (!existing.logoUrl && t.logoUrl) existing.logoUrl = t.logoUrl; }
+    else ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, name: t.name||null });
+    addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol + ' [demo]', randomTx(), 'deposit');
+    count++;
+  }
+  if (count === 0) { showNotif('Nothing to deposit', 'error'); return; }
+  buildPickerDropdown('deposit', []); ghostState.selectedTokens.deposit = null;
+  renderVaultHoldings(); renderVaultOverview(); _refreshBenePickers();
+  showNotif('📥 Deposited all ' + count + ' asset(s) to vault! [demo]', 'green');
+  saveSession(); loadWalletTokens().catch(()=>{}); return;
 }
-if (count === 0) { showNotif('Nothing to deposit', 'error'); return; }
-buildPickerDropdown('deposit', []);
-ghostState.selectedTokens.deposit = null;
-renderVaultHoldings(); renderVaultOverview(); _refreshBenePickers();
-showNotif('📥 Deposited all ' + count + ' asset(s) to vault! [demo]', 'green');
-saveSession(); loadWalletTokens().catch(()=>{}); return;
-}
+
+// ── On-chain ──────────────────────────────────────────────────────────────
 const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = solanaWeb3;
 const walletPk  = new PublicKey(ghostState.publicKey);
 const ghostPda  = new PublicKey(ghostState.ghostPda);
@@ -8373,168 +8376,241 @@ const vaultPda  = new PublicKey(ghostState.vaultPda);
 const programId = new PublicKey(PROGRAM_ID);
 const WSOL_MINT_PK  = new PublicKey('So11111111111111111111111111111111111111112');
 const TOKEN_PROG_PK = new PublicKey(TOKEN_PROGRAM_STR);
+const TOKEN22_PK    = new PublicKey(TOKEN_2022_STR);
 const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 const depositDisc = [18, 62, 110, 8, 26, 106, 248, 151];
 const solTokens = tokens.filter(t => t.mint === 'native');
 const splTokens = tokens.filter(t => t.mint !== 'native' && t.mint !== GHOST_MINT);
 let successCount = 0;
+
 showNotif('Preparing deposit of ' + tokens.length + ' asset(s)...', '');
-// Collect all setup instructions to bundle into deposit txs — no separate signing rounds
+
+// Activate vault PDA if needed (rent-exempt minimum)
 const vaultPdaInfo = await connection.getAccountInfo(vaultPda);
-const _setupIxs = []; // prepend to first batch tx
-const _setupKps = []; // keypairs that need to partialSign
 if (!vaultPdaInfo || vaultPdaInfo.lamports === 0) {
-  showNotif('Preparing vault activation + deposit...', '');
+  showNotif('Activating vault...', '');
   const minRent = await connection.getMinimumBalanceForRentExemption(0);
-  _setupIxs.push(SystemProgram.transfer({ fromPubkey: walletPk, toPubkey: vaultPda, lamports: minRent }));
+  const { blockhash } = await connection.getLatestBlockhash();
+  const fundTx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+  fundTx.add(SystemProgram.transfer({ fromPubkey: walletPk, toPubkey: vaultPda, lamports: minRent }));
+  const fundSigned = await ghostState.provider.signTransaction(fundTx);
+  const fundSig = await connection.sendRawTransaction(fundSigned.serialize(), { skipPreflight: true });
+  await connection.confirmTransaction(fundSig, 'confirmed');
 }
+
+// ── Phase 1: Pre-fetch all SPL metadata (mint owner, ATAs, vault ATA existence) ──────────
 const splMeta = await Promise.all(splTokens.map(async t => {
-const mintPk = new PublicKey(effectiveMint(t.mint));
-let rawMintOwner = TOKEN_PROGRAM_STR;
-try { const ma = await connection.getAccountInfo(mintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
-const normalizedTokenProg = normalizeTokenProg(rawMintOwner);
-const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
-const tokenProgPk    = new PublicKey(normalizedTokenProg);
-let ownerAta;
-{ const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, mintPk); }
-let vaultAta;
-try { const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: mintPk }); if (ex.value.length > 0) vaultAta = ex.value[0].pubkey; } catch(e) {}
-if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, mintPk, tokenProgPk);
-const vaultAtaInfo = await connection.getAccountInfo(vaultAta);
-let createdVaultAta = vaultAta;
-const _ataIxs = [];
-const _ataKps = [];
-if (!vaultAtaInfo) {
-  const { createIx, initIx, kp } = await buildManualTokenAccountIxs(walletPk, mintPk, vaultPda, rawTokenProgPk, connection);
-  _ataIxs.push(createIx, initIx);
-  _ataKps.push(kp);
-  createdVaultAta = kp.publicKey;
-}
-return { t, mintPk, rawTokenProgPk, ownerAta, vaultAta: createdVaultAta, _ataIxs, _ataKps };
+  const mintPk = new PublicKey(effectiveMint(t.mint));
+
+  // Re-fetch on-chain balance so we never send more than available
+  let onChainBalance = t.balance;
+  try {
+    const ownerAccts = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk });
+    if (ownerAccts.value.length > 0) {
+      const parsed = ownerAccts.value[0].account?.data?.parsed?.info?.tokenAmount;
+      if (parsed) onChainBalance = Number(parsed.uiAmount || 0);
+    }
+  } catch(_) {}
+  if (onChainBalance <= 0) return null; // skip — nothing actually in wallet
+
+  let rawMintOwner = TOKEN_PROGRAM_STR;
+  try { const ma = await connection.getAccountInfo(mintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
+  const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
+
+  const ownerAta = (await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk }).catch(()=>({value:[]}))).value[0]?.pubkey
+    || await findATA(walletPk, mintPk);
+
+  // Check for existing vault token account first
+  let vaultAta;
+  try {
+    const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: mintPk });
+    if (ex.value.length > 0) vaultAta = ex.value[0].pubkey;
+  } catch(_) {}
+
+  // Create vault token account if needed — done in a separate tx before the batch deposit
+  let needsCreate = false;
+  if (!vaultAta) {
+    vaultAta = await findATAWithProg(vaultPda, mintPk, rawTokenProgPk);
+    const info = await connection.getAccountInfo(vaultAta);
+    if (!info) needsCreate = true;
+  }
+
+  return { t, mintPk, rawTokenProgPk, ownerAta, vaultAta, needsCreate, onChainBalance };
 }));
-const BATCH_SIZE = 1; // one token per tx — avoids mixed-program failures and bad KP scoping
-let _firstBatch = true;
-for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
-const batch = splMeta.slice(i, i + BATCH_SIZE);
-try {
-const { blockhash } = await connection.getLatestBlockhash();
-const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-// First batch: prepend vault activation instructions
-if (_firstBatch) { _setupIxs.forEach(ix => tx.add(ix)); _firstBatch = false; }
-// Collect keypairs scoped to THIS batch only
-const _batchKps = [..._setupKps]; _setupKps.length = 0; // consume global setup kps once
-// Each token in batch: prepend its ATA creation ixs if needed
-for (const { t, mintPk, rawTokenProgPk, ownerAta, vaultAta, _ataIxs, _ataKps } of batch) {
-  _ataIxs.forEach(ix => tx.add(ix));
-  if (_ataKps) _ataKps.forEach(kp => _batchKps.push(kp));
+
+// Filter out nulls (zero balance tokens)
+const validSpl = splMeta.filter(Boolean);
+
+// ── Phase 2: Create any missing vault token accounts (one per tx, separate signing) ───────
+for (const item of validSpl.filter(m => m.needsCreate)) {
+  try {
+    showNotif('Creating vault account for ' + item.t.symbol + '...', '');
+    const { createIx, initIx, kp } = await buildManualTokenAccountIxs(walletPk, item.mintPk, vaultPda, item.rawTokenProgPk, connection);
+    const { blockhash } = await connection.getLatestBlockhash();
+    const createTx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    createTx.add(createIx, initIx);
+    const walletSigned = await ghostState.provider.signTransaction(createTx);
+    walletSigned.partialSign(kp);
+    const createSig = await connection.sendRawTransaction(walletSigned.serialize(), { skipPreflight: true });
+    const conf = await connection.confirmTransaction(createSig, 'confirmed');
+    if (conf.value?.err) throw new Error('Create failed: ' + JSON.stringify(conf.value.err));
+    item.vaultAta = kp.publicKey; // use the new account
+    item.needsCreate = false;
+  } catch(err) {
+    console.error('[Ghost] Failed to create vault ATA for', item.t.symbol, err);
+    showNotif('⚠️ Could not create vault account for ' + item.t.symbol + ' — skipping', 'error');
+    item.skip = true;
+  }
 }
-for (const { t, mintPk, rawTokenProgPk, ownerAta, vaultAta } of batch) {
-const amountRaw = BigInt(Math.round(t.balance * Math.pow(10, t.decimals)));
-const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
-const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
-tx.add(new TransactionInstruction({ programId, keys: [
-{ pubkey: ghostPda,       isSigner: false, isWritable: false },
-{ pubkey: walletPk,       isSigner: true,  isWritable: true  },
-{ pubkey: mintPk,         isSigner: false, isWritable: false },
-{ pubkey: ownerAta,       isSigner: false, isWritable: true  },
-{ pubkey: vaultAta,       isSigner: false, isWritable: true  },
-{ pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
-], data }));
+
+// ── Phase 3: Batch deposit SPL tokens — group by token program, max 3 per tx ─────────────
+// Grouping by program avoids mixing classic SPL + Token-2022 in one deposit tx
+const splGroups = {};
+for (const item of validSpl.filter(m => !m.skip)) {
+  const prog = item.rawTokenProgPk.toBase58();
+  if (!splGroups[prog]) splGroups[prog] = [];
+  splGroups[prog].push(item);
 }
-showNotif('Sign to deposit: ' + batch.map(m => m.t.symbol).join(', ') + '...', '');
-const signed = await ghostState.provider.signTransaction(tx);
-// partialSign with keypairs scoped to this batch
-if (_batchKps.length) { for (const kp of _batchKps) signed.partialSign(kp); }
-let sig;
-try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
-catch(simErr) {
-let logs=[]; try { logs=await simErr.getLogs(connection); } catch(e){} if (!logs?.length) { try { const s=await connection.simulateTransaction(tx); logs=s.value.logs||[]; } catch(_){} }
-throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length?' | '+logs.slice(-5).join(' | '):''));
+
+const BATCH_SIZE = 3;
+for (const [progStr, items] of Object.entries(splGroups)) {
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const batch = items.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(items.length / BATCH_SIZE);
+    const batchLabel = totalBatches > 1 ? ' (batch ' + batchNum + '/' + totalBatches + ')' : '';
+    try {
+      const { blockhash } = await connection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+
+      for (const { t, mintPk, rawTokenProgPk, ownerAta, vaultAta, onChainBalance } of batch) {
+        const amountRaw = BigInt(Math.round(onChainBalance * Math.pow(10, t.decimals)));
+        const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+        const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
+        tx.add(new TransactionInstruction({ programId, keys: [
+          { pubkey: ghostPda,       isSigner: false, isWritable: false },
+          { pubkey: walletPk,       isSigner: true,  isWritable: true  },
+          { pubkey: mintPk,         isSigner: false, isWritable: false },
+          { pubkey: ownerAta,       isSigner: false, isWritable: true  },
+          { pubkey: vaultAta,       isSigner: false, isWritable: true  },
+          { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
+        ], data }));
+      }
+
+      showNotif('Sign to deposit: ' + batch.map(m => m.t.symbol).join(', ') + batchLabel + '...', '');
+      const signed = await ghostState.provider.signTransaction(tx);
+      let sig;
+      try {
+        sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+      } catch(simErr) {
+        let logs = []; try { logs = await simErr.getLogs(connection); } catch(_) {}
+        if (!logs?.length) { try { const s = await connection.simulateTransaction(tx); logs = s.value.logs || []; } catch(_) {} }
+        throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length ? ' | ' + logs.slice(-5).join(' | ') : ''));
+      }
+      const conf = await connection.confirmTransaction(sig, 'confirmed');
+      if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+      for (const { t, vaultAta: va, onChainBalance } of batch) {
+        const amount = onChainBalance;
+        const vaultMint = t.mint;
+        const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
+        if (existing) { existing.balance += amount; } else {
+          ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, _pendingDeposit: Date.now() });
+        }
+        t.balance = 0;
+        addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'deposit');
+        successCount++;
+      }
+    } catch(err) {
+      const syms = batch.map(m => m.t.symbol).join(', ');
+      console.error('Batch deposit error [' + syms + ']:', err);
+      showNotif('⚠️ Batch failed [' + syms + ']: ' + (err.message || err), 'error');
+    }
+  }
 }
-const conf = await connection.confirmTransaction(sig, 'confirmed');
-if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
-for (const { t } of batch) {
-const amount = t.balance;
-const vaultMint = t.mint;
-const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
-if (existing) { existing.balance += amount; } else { ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, _pendingDeposit: Date.now() }); }
-t.balance = 0;
-addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'deposit');
-successCount++;
-}
-} catch(err) {
-const syms = batch.map(m => m.t.symbol).join(', ');
-console.error('Batch deposit error [' + syms + ']:', err);
-showNotif('Batch failed [' + syms + ']: ' + (err.message || err), 'error');
-}
-}
+
+// ── Phase 4: SOL deposit ──────────────────────────────────────────────────────────────────
 for (const t of solTokens) {
-try {
-const SOL_FEE_RESERVE = 0.05; // leave 0.05 SOL: covers wSOL rent (~0.002) + fees for wrap/deposit/withdraw/beneficiary txs
-const rawBalance = t.balance;
-const amount = Math.max(0, rawBalance - SOL_FEE_RESERVE);
-if (amount <= 0) { showNotif('⚠️ Not enough SOL to deposit after reserving 0.01 for fees', 'error'); continue; }
-const lamports = Math.round(amount * 1e9);
-showNotif('Preparing SOL deposit...', '');
-// Pre-fetch vault wSOL ATA existence so we know what instructions to include
-let vaultWsolAta;
-try { const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK }); if (ex.value.length > 0) vaultWsolAta = ex.value[0].pubkey; } catch(e) {}
-if (!vaultWsolAta) vaultWsolAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
-const vaultWsolInfo = await connection.getAccountInfo(vaultWsolAta);
-// Build all instructions for one combined tx: wrap + (create vault ATA if needed) + deposit
-const { instructions: wrapIxs, wsolAta, kp: wsolKp } = await buildWrapSOLInstructions(walletPk, lamports, connection);
-const combinedTx = new Transaction({ feePayer: walletPk });
-const signers = [];
-if (wsolKp) signers.push(wsolKp);
-// 1. Wrap SOL instructions (createAccount+initAccount or transfer+syncNative)
-wrapIxs.forEach(ix => combinedTx.add(ix));
-// 2. Create vault wSOL ATA if it doesn't exist yet
-let resolvedVaultWsolAta = vaultWsolAta;
-if (!vaultWsolInfo) {
-  const { createIx, initIx, kp: vaultKp } = await buildManualTokenAccountIxs(walletPk, WSOL_MINT_PK, vaultPda, TOKEN_PROG_PK, connection);
-  combinedTx.add(createIx, initIx);
-  signers.push(vaultKp);
-  resolvedVaultWsolAta = vaultKp.publicKey;
+  try {
+    // Dynamically compute reserve: wSOL account rent + estimated fees for this + future txs
+    const wsolRent = await connection.getMinimumBalanceForRentExemption(165);
+    // Check if wSOL ATA already exists — if so, no rent needed
+    const existingWsol = await connection.getAccountInfo(await deriveATA(walletPk, WSOL_MINT_PK)).catch(()=>null);
+    const rentReserve = existingWsol ? 0 : wsolRent / 1e9;
+    // Check if Token-2022 tokens are in the vault (their ATA creation costs extra rent)
+    const hasT22 = validSpl.some(m => m.rawTokenProgPk.toBase58() === TOKEN_2022_STR);
+    // Reserve: dynamic rent + 0.01 per expected tx (wrap + deposit + withdraw + 2 beneficiary ops)
+    const SOL_RESERVE = rentReserve + (hasT22 ? 0.06 : 0.04);
+    const rawBalance = t.balance;
+    const amount = Math.max(0, rawBalance - SOL_RESERVE);
+    if (amount <= 0) {
+      showNotif('⚠️ Not enough SOL to deposit after reserving ' + SOL_RESERVE.toFixed(3) + ' SOL for fees', 'error');
+      continue;
+    }
+    const lamports = Math.round(amount * 1e9);
+    showNotif('Preparing SOL deposit (' + amount.toFixed(4) + ' SOL, reserving ' + SOL_RESERVE.toFixed(3) + ')...', '');
+
+    // Pre-fetch vault wSOL ATA
+    let vaultWsolAta;
+    try { const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK }); if (ex.value.length > 0) vaultWsolAta = ex.value[0].pubkey; } catch(e) {}
+    if (!vaultWsolAta) vaultWsolAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
+    const vaultWsolInfo = await connection.getAccountInfo(vaultWsolAta);
+
+    const { instructions: wrapIxs, wsolAta, kp: wsolKp } = await buildWrapSOLInstructions(walletPk, lamports, connection);
+    const combinedTx = new Transaction({ feePayer: walletPk });
+    const signers = [];
+    if (wsolKp) signers.push(wsolKp);
+    wrapIxs.forEach(ix => combinedTx.add(ix));
+
+    let resolvedVaultWsolAta = vaultWsolAta;
+    if (!vaultWsolInfo) {
+      const { createIx, initIx, kp: vaultKp } = await buildManualTokenAccountIxs(walletPk, WSOL_MINT_PK, vaultPda, TOKEN_PROG_PK, connection);
+      combinedTx.add(createIx, initIx);
+      signers.push(vaultKp);
+      resolvedVaultWsolAta = vaultKp.publicKey;
+    }
+
+    const amountRaw = BigInt(lamports);
+    const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+    const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
+    combinedTx.add(new TransactionInstruction({ programId, keys: [
+      { pubkey: ghostPda,             isSigner: false, isWritable: false },
+      { pubkey: walletPk,             isSigner: true,  isWritable: true  },
+      { pubkey: WSOL_MINT_PK,         isSigner: false, isWritable: false },
+      { pubkey: wsolAta,              isSigner: false, isWritable: true  },
+      { pubkey: resolvedVaultWsolAta, isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_PROG_PK,        isSigner: false, isWritable: false },
+    ], data }));
+
+    const { blockhash: depBh } = await connection.getLatestBlockhash();
+    combinedTx.recentBlockhash = depBh;
+    showNotif('Sign to deposit SOL to vault...', '');
+    const depSigned = await ghostState.provider.signTransaction(combinedTx);
+    for (const kp of signers) depSigned.partialSign(kp);
+    const depSig = await connection.sendRawTransaction(depSigned.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+    const conf = await connection.confirmTransaction(depSig, 'confirmed');
+    if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+    const existing = ghostState.vaultTokens.find(v => v.mint === 'native' || v.mint === 'So11111111111111111111111111111111111111112');
+    if (existing) { existing.balance += amount; existing.mint = 'native'; }
+    else { ghostState.vaultTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null, _pendingDeposit: Date.now() }); }
+    t.balance = 0;
+    addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' SOL', depSig.slice(0,4)+'...'+depSig.slice(-4), 'deposit');
+    successCount++;
+  } catch(err) { console.error('SOL deposit error:', err); showNotif('SOL deposit failed: ' + (err.message || err), 'error'); }
 }
-// 3. Deposit instruction
-const amountRaw = BigInt(lamports);
-const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
-const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
-combinedTx.add(new TransactionInstruction({ programId, keys: [
-{ pubkey: ghostPda,            isSigner: false, isWritable: false },
-{ pubkey: walletPk,            isSigner: true,  isWritable: true  },
-{ pubkey: WSOL_MINT_PK,        isSigner: false, isWritable: false },
-{ pubkey: wsolAta,             isSigner: false, isWritable: true  },
-{ pubkey: resolvedVaultWsolAta,isSigner: false, isWritable: true  },
-{ pubkey: TOKEN_PROG_PK,       isSigner: false, isWritable: false },
-], data }));
-const { blockhash: depBh } = await connection.getLatestBlockhash();
-combinedTx.recentBlockhash = depBh;
-showNotif('Sign to deposit SOL to vault...', '');
-const depSigned = await ghostState.provider.signTransaction(combinedTx);
-for (const kp of signers) depSigned.partialSign(kp);
-const depSig = await connection.sendRawTransaction(depSigned.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
-const conf = await connection.confirmTransaction(depSig, 'confirmed');
-if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
-const existing = ghostState.vaultTokens.find(v => v.mint === 'native' || v.mint === 'So11111111111111111111111111111111111111112');
-if (existing) { existing.balance += amount; existing.mint = 'native'; } else { ghostState.vaultTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null, _pendingDeposit: Date.now() }); }
-t.balance = 0;
-addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' SOL', depSig.slice(0,4)+'...'+depSig.slice(-4), 'deposit');
-successCount++;
-} catch(err) { console.error('SOL deposit error:', err); showNotif('SOL deposit failed: ' + (err.message || err), 'error'); }
-}
+
 if (successCount > 0) {
-ghostState.selectedTokens.deposit = null;
-renderVaultHoldings(); renderVaultOverview();
-showNotif('Deposited ' + successCount + '/' + tokens.length + ' asset(s) to vault!', 'green');
-// Reload wallet + vault tokens from chain so pickers and beneficiary tab reflect new state
-loadWalletTokens().then(() => {
-  const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
-  buildPickerDropdown('deposit', depositPool);
-  _refreshBenePickers();
-  renderVaultHoldings(); renderVaultOverview(); renderBeneficiaries();
-}).catch(() => {});
-saveSession(); loadWalletTokens().catch(()=>{});
+  ghostState.selectedTokens.deposit = null;
+  renderVaultHoldings(); renderVaultOverview();
+  showNotif('✅ Deposited ' + successCount + '/' + tokens.length + ' asset(s) to vault!', 'green');
+  loadWalletTokens().then(() => {
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
+    buildPickerDropdown('deposit', depositPool);
+    _refreshBenePickers();
+    renderVaultHoldings(); renderVaultOverview(); renderBeneficiaries();
+  }).catch(() => {});
+  saveSession(); loadWalletTokens().catch(()=>{});
 }
 }
 
@@ -9092,12 +9168,14 @@ async function dbDeposit() {
     // Phase 2: For SOL — wrap native SOL to wSOL in separate tx
     let effectiveOwnerAta = ownerAta;
     if (isSOL) {
-      // Reserve 0.05 SOL: wSOL account rent (~0.002) + fees for wrap, deposit, withdraw, beneficiary txs
-      const SOL_FEE_RESERVE_SINGLE = 0.05;
+      // Dynamic reserve: wSOL rent (if new account needed) + 0.04 for future txs
+      const _wsolRentSingle = await connection.getMinimumBalanceForRentExemption(165);
+      const _existingWsolSingle = await connection.getAccountInfo(await deriveATA(walletPk, new solanaWeb3.PublicKey('So11111111111111111111111111111111111111112'))).catch(()=>null);
+      const SOL_FEE_RESERVE_SINGLE = (_existingWsolSingle ? 0 : _wsolRentSingle / 1e9) + 0.04;
       if (amount > t.balance - SOL_FEE_RESERVE_SINGLE) {
         const maxSol = Math.max(0, t.balance - SOL_FEE_RESERVE_SINGLE);
-        if (maxSol <= 0) throw new Error('Not enough SOL after reserving 0.05 for fees');
-        showNotif('⚠️ Capped at ' + maxSol.toFixed(4) + ' SOL (reserving 0.05 for tx fees)', '');
+        if (maxSol <= 0) throw new Error('Not enough SOL after reserving ' + SOL_FEE_RESERVE_SINGLE.toFixed(3) + ' for fees');
+        showNotif('⚠️ Capped at ' + maxSol.toFixed(4) + ' SOL (reserving ' + SOL_FEE_RESERVE_SINGLE.toFixed(3) + ' for fees)', '');
       }
       const safeAmount = Math.min(amount, Math.max(0, t.balance - SOL_FEE_RESERVE_SINGLE));
       const lamports = Math.round(safeAmount * 1e9);
