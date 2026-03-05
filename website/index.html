@@ -2010,6 +2010,7 @@ const ghostState = {
   ghostPda: null,
   vaultPda: null,
   ghostStakeVault: null,
+  _withdrawnMints: new Set(), // mints withdrawn this session — suppress re-adding from chain until confirmed gone
   ghost: {
     status: 'none',
     lastHeartbeat: null,
@@ -7483,9 +7484,16 @@ async function loadWalletTokens() {
             // Normalise wSOL → display as SOL (same as native)
             const _isWSOL = mint === 'So11111111111111111111111111111111111111112';
             const _normMint = _isWSOL ? 'native' : mint;
+            // Skip mints that were just withdrawn this session — suppresses flicker
+            // until chain confirms the account is gone (cleared when balance hits 0)
             const meta = ghostState.walletTokens.find(t => t.mint === _normMint || t.mint === mint)
                       || ghostState.vaultTokens.find(t => t.mint === _normMint || t.mint === mint)
                       || {};
+            if (ghostState._withdrawnMints.has(_normMint) || ghostState._withdrawnMints.has(mint)) {
+              // Still on chain but we know we withdrew it — skip adding to freshVault
+              // This causes the prune filter to remove it from vaultTokens
+              continue;
+            }
             const _rawSym = _isWSOL ? 'SOL' : (meta.symbol || mint.slice(0,6));
             const _rawLogo = _isWSOL ? 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png' : (meta.logoUrl || null);
             const _rawName = _isWSOL ? 'Solana' : (meta.name || null);
@@ -7519,12 +7527,14 @@ async function loadWalletTokens() {
           // encoding issue) — preserve existing vaultTokens rather than wiping them.
           const _chainHasData = freshVault.length > 0;
           const _chainHasAccts = vaultAccts.length > 0;
-          // Also treat as empty if all accounts have zero raw balance (withdrawn but account not yet closed)
+          // Also treat as safe-to-prune if all accounts have zero balance, or if we have
+          // recently withdrawn mints suppressing freshVault entries
           const _allZero = _chainHasAccts && vaultAccts.every(a => {
             const raw = a.account?.data?.parsed?.info?.tokenAmount?.amount;
             return raw !== undefined && BigInt(raw) === 0n;
           });
-          if (_chainHasData || !_chainHasAccts || _allZero) { // safe to merge/prune
+          const _hasWithdrawn = ghostState._withdrawnMints.size > 0;
+          if (_chainHasData || !_chainHasAccts || _allZero || _hasWithdrawn) { // safe to merge/prune
             // Merge: preserve logos/names from existing entries, update balances from chain
             for (const fresh of freshVault) {
               const existing = ghostState.vaultTokens.find(v => v.mint === fresh.mint);
@@ -7549,6 +7559,10 @@ async function loadWalletTokens() {
             ghostState.vaultTokens.forEach(v => {
               if (v._pendingDeposit && freshVault.find(f => f.mint === v.mint)) delete v._pendingDeposit;
             });
+            // Clear _withdrawnMints for mints now confirmed absent from chain
+            for (const wm of ghostState._withdrawnMints) {
+              if (!freshVault.find(f => f.mint === wm)) ghostState._withdrawnMints.delete(wm);
+            }
             const vaultOnlyMints = freshVault
               .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint) && !v.name)
               .map(v => v.mint);
@@ -8967,6 +8981,7 @@ for (let i = 0; i < allTxs.length; i++) {
 
     if (type === 'spl') {
       for (const { vt: bvt } of batch) {
+        ghostState._withdrawnMints.add(bvt.mint); // suppress re-adding from chain fetch
         const wt = ghostState.walletTokens.find(w => w.mint === bvt.mint);
         if (wt) { wt.balance += bvt.balance; } else { ghostState.walletTokens.push({ symbol: bvt.symbol, mint: bvt.mint, balance: bvt.balance, decimals: bvt.decimals, logoUrl: bvt.logoUrl||null }); }
         const idx = ghostState.vaultTokens.indexOf(bvt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
@@ -8974,6 +8989,7 @@ for (let i = 0; i < allTxs.length; i++) {
         successCount++;
       }
     } else {
+      ghostState._withdrawnMints.add('native'); // suppress SOL re-adding
       const wt = ghostState.walletTokens.find(w => w.mint === 'native');
       if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
       const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
@@ -9493,7 +9509,10 @@ async function dbWithdrawAsset(vaultIdx) {
 
   const _applyWithdraw = () => {
     vt.balance -= amount;
-    if (vt.balance <= 0.000000001) ghostState.vaultTokens.splice(vaultIdx, 1);
+    if (vt.balance <= 0.000000001) {
+      ghostState._withdrawnMints.add(isSOL ? 'native' : vt.mint); // suppress chain re-add
+      ghostState.vaultTokens.splice(vaultIdx, 1);
+    }
     // Return to wallet — native SOL entry (mint:'native') for wSOL withdrawals
     const walletMint = isSOL ? 'native' : vt.mint;
     const wt = ghostState.walletTokens.find(w => w.mint === walletMint);
