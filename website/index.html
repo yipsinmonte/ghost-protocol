@@ -9709,14 +9709,24 @@ async function dbWithdrawAsset(mintKey) {
     // would make the blockhash stale by the time we send, causing simulation failures
     const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
 
+    // If owner ATA missing — create it in a separate tx first, then withdraw
+    // Bundling ATA creation + withdraw in one tx gets dropped by validator
+    if (!ownerAtaInfo) {
+      console.log('[Ghost] Owner ATA missing — creating in separate tx first');
+      showNotif('Creating token account...', '');
+      const { blockhash: bh0 } = await connection.getLatestBlockhash();
+      const ataTx = new Transaction({ recentBlockhash: bh0, feePayer: walletPk });
+      ataTx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
+      const ataSigned = await ghostState.provider.signTransaction(ataTx);
+      const ataSig = await connection.sendRawTransaction(ataSigned.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+      const ataConf = await connection.confirmTransaction(ataSig, 'confirmed');
+      if (ataConf.value?.err) throw new Error('ATA creation failed: ' + JSON.stringify(ataConf.value.err));
+      console.log('[Ghost] Owner ATA created:', ownerAta.toBase58());
+    }
+
     // Fetch blockhash last — minimises time between fetch and send
     const { blockhash } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-
-    if (!ownerAtaInfo) {
-      console.log('[Ghost] Owner ATA missing — prepending createATA ix for', withdrawMintPk.toBase58());
-      tx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
-    }
 
     tx.add(new TransactionInstruction({ programId,
       keys: [
@@ -9729,13 +9739,11 @@ async function dbWithdrawAsset(mintKey) {
         { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
       ], data }));
 
-    console.log('[Ghost] single withdraw — ownerAta:', ownerAta.toBase58(), 'vaultAta:', vaultAta.toBase58(), 'ataExists:', !!ownerAtaInfo);
+    console.log('[Ghost] single withdraw — ownerAta:', ownerAta.toBase58(), 'vaultAta:', vaultAta.toBase58());
     const signed = await ghostState.provider.signTransaction(tx);
     let sig;
     try {
-      // skipPreflight always — Helius simulation rejects ATA creation ix when account
-      // doesn't exist yet (same pattern as all other keypair/create txs in codebase)
-      sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true, preflightCommitment: 'confirmed' });
+      sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
     } catch(simErr) {
       let logs = []; try { logs = await simErr.getLogs(connection); } catch(_) {}
       if (!logs?.length) { try { const sim = await connection.simulateTransaction(tx); logs = sim.value.logs||[]; } catch(_) {} }
