@@ -8717,7 +8717,7 @@ const TOKEN22_PK    = new PublicKey(TOKEN_2022_STR);
 const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 const depositDisc = [18, 62, 110, 8, 26, 106, 248, 151];
 const solTokens = tokens.filter(t => t.mint === 'native');
-const splTokens = tokens.filter(t => t.mint !== 'native' && t.mint !== GHOST_MINT);
+const splTokens = tokens.filter(t => t.mint !== 'native' && t.mint !== GHOST_MINT && t.balance != null && !isNaN(t.balance) && t.balance > 0);
 let successCount = 0;
 
 showNotif('Preparing deposit of ' + tokens.length + ' asset(s)...', '');
@@ -8745,7 +8745,11 @@ const splMeta = await Promise.all(splTokens.map(async t => {
     const ownerAccts = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk });
     if (ownerAccts.value.length > 0) {
       const parsed = ownerAccts.value[0].account?.data?.parsed?.info?.tokenAmount;
-      if (parsed) onChainBalance = Number(parsed.uiAmount || 0);
+      if (parsed) {
+        const _ui = parsed.uiAmount ?? parsed.uiAmountString;
+        const _parsed = parseFloat(_ui);
+        if (!isNaN(_parsed)) onChainBalance = _parsed;
+      }
     }
   } catch(_) {}
   if (onChainBalance <= 0) return null; // skip — nothing actually in wallet
@@ -8800,73 +8804,9 @@ for (const item of validSpl.filter(m => m.needsCreate)) {
   }
 }
 
-// ── Phase 3: Batch deposit SPL tokens — group by token program, max 3 per tx ─────────────
-// Grouping by program avoids mixing classic SPL + Token-2022 in one deposit tx
-const splGroups = {};
-for (const item of validSpl.filter(m => !m.skip)) {
-  const prog = item.rawTokenProgPk.toBase58();
-  if (!splGroups[prog]) splGroups[prog] = [];
-  splGroups[prog].push(item);
-}
 
-const BATCH_SIZE = 3;
-for (const [progStr, items] of Object.entries(splGroups)) {
-  for (let i = 0; i < items.length; i += BATCH_SIZE) {
-    const batch = items.slice(i, i + BATCH_SIZE);
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    const totalBatches = Math.ceil(items.length / BATCH_SIZE);
-    const batchLabel = totalBatches > 1 ? ' (batch ' + batchNum + '/' + totalBatches + ')' : '';
-    try {
-      const { blockhash } = await connection.getLatestBlockhash();
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
-      for (const { t, mintPk, rawTokenProgPk, ownerAta, vaultAta, onChainBalance } of batch) {
-        const amountRaw = BigInt(Math.round(onChainBalance * Math.pow(10, t.decimals)));
-        const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
-        const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
-        tx.add(new TransactionInstruction({ programId, keys: [
-          { pubkey: ghostPda,       isSigner: false, isWritable: false },
-          { pubkey: walletPk,       isSigner: true,  isWritable: true  },
-          { pubkey: mintPk,         isSigner: false, isWritable: false },
-          { pubkey: ownerAta,       isSigner: false, isWritable: true  },
-          { pubkey: vaultAta,       isSigner: false, isWritable: true  },
-          { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
-        ], data }));
-      }
-
-      showNotif('Sign to deposit: ' + batch.map(m => m.t.symbol).join(', ') + batchLabel + '...', '');
-      const signed = await ghostState.provider.signTransaction(tx);
-      let sig;
-      try {
-        sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
-      } catch(simErr) {
-        let logs = []; try { logs = await simErr.getLogs(connection); } catch(_) {}
-        if (!logs?.length) { try { const s = await connection.simulateTransaction(tx); logs = s.value.logs || []; } catch(_) {} }
-        throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length ? ' | ' + logs.slice(-5).join(' | ') : ''));
-      }
-      const conf = await connection.confirmTransaction(sig, 'confirmed');
-      if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
-
-      for (const { t, vaultAta: va, onChainBalance } of batch) {
-        const amount = onChainBalance;
-        const vaultMint = t.mint;
-        const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
-        if (existing) { existing.balance += amount; } else {
-          ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, _pendingDeposit: Date.now() });
-        }
-        t.balance = 0;
-        addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'deposit');
-        successCount++;
-      }
-    } catch(err) {
-      const syms = batch.map(m => m.t.symbol).join(', ');
-      console.error('Batch deposit error [' + syms + ']:', err);
-      showNotif('⚠️ Batch failed [' + syms + ']: ' + (err.message || err), 'error');
-    }
-  }
-}
-
-// ── Phase 4: SOL deposit ──────────────────────────────────────────────────────────────────
+// ── Phase 3: SOL deposit FIRST — before SPL fees drain the wallet ──────────────────────────
 for (const t of solTokens) {
   try {
     // Re-fetch actual native SOL balance RIGHT NOW — SPL batch txs above consumed fees
@@ -8887,7 +8827,10 @@ for (const t of solTokens) {
     const rentReserve = existingWsol ? 0 : wsolRent / 1e9;
 
     // Reserve: rent (if needed) + 0.004 per tx × ~5 future txs (wrap/deposit/withdraw/bene ×2)
-    const SOL_RESERVE = rentReserve + 0.005; // ~5 tx fees headroom
+    // Reserve: wSOL rent (if new account) + tx fees + compute budget
+    // txFeesReserve covers compute budget ix + wrap tx + deposit tx fees
+    const txFeesReserve = 0.0003; // compute budget + ~3 tx fees
+    const SOL_RESERVE = rentReserve + txFeesReserve;
     const amount = Math.max(0, liveNativeSOL - SOL_RESERVE);
     if (amount <= 0) {
       showNotif('⚠️ Only ' + liveNativeSOL.toFixed(4) + ' SOL remaining after SPL fees — need >' + SOL_RESERVE.toFixed(3) + ' to deposit', 'error');
@@ -8986,6 +8929,75 @@ for (const t of solTokens) {
     addActivityRow('Vault Deposit ' + totalDepositedSOL.toLocaleString() + ' SOL', depSig.slice(0,4)+'...'+depSig.slice(-4), 'deposit');
     successCount++;
   } catch(err) { console.error('SOL deposit error:', err); showNotif('SOL deposit failed: ' + (err.message || err), 'error'); }
+}
+
+// ── Phase 4: Batch deposit SPL tokens — group by token program, max 3 per tx ─────────────
+// Grouping by program avoids mixing classic SPL + Token-2022 in one deposit tx
+const splGroups = {};
+for (const item of validSpl.filter(m => !m.skip)) {
+  const prog = item.rawTokenProgPk.toBase58();
+  if (!splGroups[prog]) splGroups[prog] = [];
+  splGroups[prog].push(item);
+}
+
+const BATCH_SIZE = 3;
+for (const [progStr, items] of Object.entries(splGroups)) {
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const batch = items.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(items.length / BATCH_SIZE);
+    const batchLabel = totalBatches > 1 ? ' (batch ' + batchNum + '/' + totalBatches + ')' : '';
+    try {
+      const { blockhash } = await connection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+
+      for (const { t, mintPk, rawTokenProgPk, ownerAta, vaultAta, onChainBalance } of batch) {
+        const _dec = (t.decimals != null && !isNaN(t.decimals)) ? t.decimals : 0;
+        const _rawAmt = onChainBalance * Math.pow(10, _dec);
+        if (isNaN(_rawAmt) || !isFinite(_rawAmt) || onChainBalance == null) { console.error('[Ghost] skipping NaN deposit for', t.symbol, 'balance:', onChainBalance, 'decimals:', t.decimals); continue; }
+        const amountRaw = BigInt(Math.round(_rawAmt));
+        const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+        const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
+        tx.add(new TransactionInstruction({ programId, keys: [
+          { pubkey: ghostPda,       isSigner: false, isWritable: false },
+          { pubkey: walletPk,       isSigner: true,  isWritable: true  },
+          { pubkey: mintPk,         isSigner: false, isWritable: false },
+          { pubkey: ownerAta,       isSigner: false, isWritable: true  },
+          { pubkey: vaultAta,       isSigner: false, isWritable: true  },
+          { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
+        ], data }));
+      }
+
+      showNotif('Sign to deposit: ' + batch.map(m => m.t.symbol).join(', ') + batchLabel + '...', '');
+      const signed = await ghostState.provider.signTransaction(tx);
+      let sig;
+      try {
+        sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
+      } catch(simErr) {
+        let logs = []; try { logs = await simErr.getLogs(connection); } catch(_) {}
+        if (!logs?.length) { try { const s = await connection.simulateTransaction(tx); logs = s.value.logs || []; } catch(_) {} }
+        throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length ? ' | ' + logs.slice(-5).join(' | ') : ''));
+      }
+      const conf = await connection.confirmTransaction(sig, 'confirmed');
+      if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
+
+      for (const { t, vaultAta: va, onChainBalance } of batch) {
+        const amount = onChainBalance;
+        const vaultMint = t.mint;
+        const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
+        if (existing) { existing.balance += amount; } else {
+          ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, _pendingDeposit: Date.now() });
+        }
+        t.balance = 0;
+        addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'deposit');
+        successCount++;
+      }
+    } catch(err) {
+      const syms = batch.map(m => m.t.symbol).join(', ');
+      console.error('Batch deposit error [' + syms + ']:', err);
+      showNotif('⚠️ Batch failed [' + syms + ']: ' + (err.message || err), 'error');
+    }
+  }
 }
 
 if (successCount > 0) {
