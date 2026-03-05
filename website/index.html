@@ -8340,10 +8340,10 @@ function renderVaultHoldings() {
       </div>
       <div class="vault-asset-actions">
         ${canWd
-          ? `<input class="vault-asset-input" type="text" inputmode="decimal" id="wdAmt${i}" placeholder="Amount" oninput="formatWithdrawInput(this,${wdMax})">
-             <button class="db-btn db-btn-outline" style="padding:7px 14px;font-size:11px" onclick="dbWithdrawAsset(${i})">Withdraw</button>
-             <button class="db-btn db-btn-outline" style="padding:7px 8px;font-size:11px" onclick="fillMaxWithdraw('wdAmt${i}',${wdMax})">MAX</button>`
-          : `<input class="vault-asset-input" type="text" inputmode="decimal" id="wdAmt${i}" placeholder="—" disabled style="opacity:0.3">
+          ? `<input class="vault-asset-input" type="text" inputmode="decimal" id="wdAmt_${t.mint}" placeholder="Amount" oninput="formatWithdrawInput(this,${wdMax})">
+             <button class="db-btn db-btn-outline" style="padding:7px 14px;font-size:11px" onclick="dbWithdrawAsset('${t.mint}')">Withdraw</button>
+             <button class="db-btn db-btn-outline" style="padding:7px 8px;font-size:11px" onclick="fillMaxWithdraw('wdAmt_${t.mint}',${wdMax})">MAX</button>`
+          : `<input class="vault-asset-input" type="text" inputmode="decimal" id="wdAmt_${t.mint}" placeholder="—" disabled style="opacity:0.3">
              <button class="db-btn db-btn-outline" style="padding:7px 14px;font-size:11px;opacity:0.3;cursor:not-allowed" disabled title="${isFullyAssigned ? 'Fully assigned to beneficiaries — remove the beneficiary first to withdraw' : 'No free balance'}">Withdraw</button>
              <button class="db-btn db-btn-outline" style="padding:7px 8px;font-size:11px;opacity:0.3;cursor:not-allowed" disabled>MAX</button>`
         }
@@ -9529,11 +9529,12 @@ async function dbDeposit() {
 }
 
 // ─── Withdraw ───────────────────────────────────────────────────────────────
-async function dbWithdrawAsset(vaultIdx) {
+async function dbWithdrawAsset(mintKey) {
   if (ghostState.ghost.status === 'awakened') { showNotif('⚠️ Withdrawals blocked while awakened', 'error'); return; }
+  const vaultIdx = ghostState.vaultTokens.findIndex(v => v.mint === mintKey);
   const vt = ghostState.vaultTokens[vaultIdx];
   if (!vt) return;
-  const wdEl  = document.getElementById('wdAmt' + vaultIdx);
+  const wdEl  = document.getElementById('wdAmt_' + mintKey);
   const amount = parseFloat(wdEl?.dataset.raw || wdEl?.value || '0');
   if (!amount || amount <= 0) { showNotif('Enter an amount to withdraw', 'error'); return; }
   if (amount > vt.balance)   { showNotif('⚠️ Exceeds vault balance', 'error'); return; }
