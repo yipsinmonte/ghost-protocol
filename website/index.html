@@ -2054,6 +2054,21 @@ function saveSession() {
   } catch(e) {}
 }
 
+// ── Persist _withdrawnMints across page refresh via sessionStorage ────────────
+function _saveWithdrawnMints() {
+  try {
+    const arr = [...ghostState._withdrawnMints];
+    if (arr.length > 0) sessionStorage.setItem('ghostWithdrawnMints', JSON.stringify(arr));
+    else sessionStorage.removeItem('ghostWithdrawnMints');
+  } catch(e) {}
+}
+function _loadWithdrawnMints() {
+  try {
+    const raw = sessionStorage.getItem('ghostWithdrawnMints');
+    if (raw) { const arr = JSON.parse(raw); arr.forEach(m => ghostState._withdrawnMints.add(m)); }
+  } catch(e) {}
+}
+
 function loadSession() {
   // Restore wallet identity + PDAs only; all chain state fetched fresh from RPC
   // Returns false (no auto-restore) if user was never connected
@@ -2073,6 +2088,7 @@ function loadSession() {
     if (s.ghostPda) ghostState.ghostPda = s.ghostPda;
     if (s.vaultPda) ghostState.vaultPda = s.vaultPda;
     if (s.ghostStakeVault) ghostState.ghostStakeVault = s.ghostStakeVault;
+    _loadWithdrawnMints(); // restore mints withdrawn before refresh
     if (s.wasInDashboard) ghostState._wasInDashboard = s.wasInDashboard;
     if (s.recoveryMeta) ghostState.recoveryMeta = s.recoveryMeta;
     if (s.schemaVersion) ghostState.ghost._schemaVersion = s.schemaVersion;
@@ -7560,9 +7576,11 @@ async function loadWalletTokens() {
               if (v._pendingDeposit && freshVault.find(f => f.mint === v.mint)) delete v._pendingDeposit;
             });
             // Clear _withdrawnMints for mints now confirmed absent from chain
+            let _withdrawnChanged = false;
             for (const wm of ghostState._withdrawnMints) {
-              if (!freshVault.find(f => f.mint === wm)) ghostState._withdrawnMints.delete(wm);
+              if (!freshVault.find(f => f.mint === wm)) { ghostState._withdrawnMints.delete(wm); _withdrawnChanged = true; }
             }
+            if (_withdrawnChanged) _saveWithdrawnMints();
             const vaultOnlyMints = freshVault
               .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint) && !v.name)
               .map(v => v.mint);
@@ -8682,15 +8700,24 @@ for (const t of solTokens) {
 
 if (successCount > 0) {
   ghostState.selectedTokens.deposit = null;
+  // Rebuild deposit dropdown immediately from current in-memory wallet balances
+  // (tokens that were deposited already had their balance zeroed in the loop above)
+  const depositPoolImmediate = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
+  buildPickerDropdown('deposit', depositPoolImmediate);
+  if (depositPoolImmediate.length > 0) selectToken('deposit', depositPoolImmediate[0].mint);
+  else { ghostState.selectedTokens.deposit = null; }
+  _refreshBenePickers();
   renderVaultHoldings(); renderVaultOverview();
   showNotif('✅ Deposited ' + successCount + '/' + tokens.length + ' asset(s) to vault!', 'green');
+  // Then reload from chain to get confirmed balances
   loadWalletTokens().then(() => {
     const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
     buildPickerDropdown('deposit', depositPool);
+    if (depositPool.length > 0 && !ghostState.selectedTokens.deposit) selectToken('deposit', depositPool[0].mint);
     _refreshBenePickers();
     renderVaultHoldings(); renderVaultOverview(); renderBeneficiaries();
   }).catch(() => {});
-  saveSession(); loadWalletTokens().catch(()=>{});
+  saveSession();
 }
 }
 
@@ -8981,7 +9008,7 @@ for (let i = 0; i < allTxs.length; i++) {
 
     if (type === 'spl') {
       for (const { vt: bvt } of batch) {
-        ghostState._withdrawnMints.add(bvt.mint); // suppress re-adding from chain fetch
+        ghostState._withdrawnMints.add(bvt.mint); _saveWithdrawnMints(); // persist across refresh
         const wt = ghostState.walletTokens.find(w => w.mint === bvt.mint);
         if (wt) { wt.balance += bvt.balance; } else { ghostState.walletTokens.push({ symbol: bvt.symbol, mint: bvt.mint, balance: bvt.balance, decimals: bvt.decimals, logoUrl: bvt.logoUrl||null }); }
         const idx = ghostState.vaultTokens.indexOf(bvt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
@@ -8989,7 +9016,7 @@ for (let i = 0; i < allTxs.length; i++) {
         successCount++;
       }
     } else {
-      ghostState._withdrawnMints.add('native'); // suppress SOL re-adding
+      ghostState._withdrawnMints.add('native'); _saveWithdrawnMints(); // persist across refresh
       const wt = ghostState.walletTokens.find(w => w.mint === 'native');
       if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
       const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
@@ -9510,7 +9537,7 @@ async function dbWithdrawAsset(vaultIdx) {
   const _applyWithdraw = () => {
     vt.balance -= amount;
     if (vt.balance <= 0.000000001) {
-      ghostState._withdrawnMints.add(isSOL ? 'native' : vt.mint); // suppress chain re-add
+      ghostState._withdrawnMints.add(isSOL ? 'native' : vt.mint); _saveWithdrawnMints(); // persist across refresh
       ghostState.vaultTokens.splice(vaultIdx, 1);
     }
     // Return to wallet — native SOL entry (mint:'native') for wSOL withdrawals
