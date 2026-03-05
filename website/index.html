@@ -29,6 +29,56 @@
   .nav-links a:hover { color: var(--glow); }
 
   /* Dashboard nav link — hidden until connected */
+  /* ── Ghost dead states — marketing page ───────────────────────────── */
+
+  /* EXECUTED — violent, hot red. Signal cut mid-beat. Glow lingers. */
+  .hb-line.executed .hb-svg polyline { stroke: #8b0020 !important; opacity: 0.4 !important; animation: none !important; }
+  .hb-line.executed::after { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent 0%, rgba(220,20,50,0.5) 15%, rgba(255,30,60,1) 50%, rgba(220,20,50,0.5) 85%, transparent 100%);
+    transform: translateY(-50%); box-shadow: 0 0 10px rgba(255,30,60,0.45), 0 0 24px rgba(255,0,40,0.2); }
+  .hb-label.executed #walletStatus { color: rgba(235,65,85,0.9) !important; }
+  .hb-label.executed .hb-pulse-dot { background: rgba(255,30,60,0.8) !important; animation: none !important; box-shadow: 0 0 8px rgba(255,30,60,0.6) !important; }
+  .hb-label.executed .hb-pulse-text { color: rgba(225,45,70,0.9) !important; letter-spacing: 0.28em; }
+  /* Executed button — redder, still has residual glow */
+  .btn-register.executed {
+    background: linear-gradient(135deg, #1c0006 0%, #0d0003 50%, #1c0006 100%) !important;
+    box-shadow: 0 0 18px rgba(180,0,30,0.18), 0 0 40px rgba(140,0,20,0.08) !important;
+    cursor: not-allowed !important; pointer-events: none !important; opacity: 0.52;
+    border-color: rgba(180,20,40,0.4) !important;
+  }
+  .btn-register.executed > * { opacity: 0; }
+  .btn-register.executed::after { content: '— SIGNAL LOST —'; position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 0.35em;
+    color: rgba(235,55,75,0.7); background: rgba(8,0,4,0.82);
+    text-shadow: 0 0 8px rgba(255,30,60,0.4); }
+  .nav-dashboard-link.executed { border-color: rgba(220,30,55,0.5) !important; color: rgba(235,65,85,0.85) !important; }
+  .nav-dashboard-link.executed .nav-dashboard-dot { background: rgba(235,30,60,0.85) !important; animation: none !important; box-shadow: 0 0 6px rgba(235,30,60,0.45) !important; }
+  .wallet-btn.executed { border-color: rgba(220,30,55,0.6) !important; color: rgba(235,65,85,0.85) !important; }
+
+  /* ABANDONED — cold and silent. Chose to disappear. No glow, just ash. */
+  .hb-line.abandoned .hb-svg polyline { stroke: #1e1018 !important; opacity: 0.7 !important; animation: none !important; }
+  .hb-line.abandoned::after { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(100,45,65,0.3) 30%, rgba(120,55,75,0.45) 50%, rgba(100,45,65,0.3) 70%, transparent 100%);
+    transform: translateY(-50%); }
+  .hb-label.abandoned #walletStatus { color: rgba(130,95,115,0.6) !important; }
+  .hb-label.abandoned .hb-pulse-dot { background: rgba(90,55,75,0.35) !important; animation: none !important; box-shadow: none !important; }
+  .hb-label.abandoned .hb-pulse-text { color: rgba(110,75,95,0.5) !important; letter-spacing: 0.15em; }
+  /* Abandoned button — near-black, totally inert, no residual light */
+  .btn-register.abandoned {
+    background: #080507 !important;
+    box-shadow: none !important; cursor: not-allowed !important; pointer-events: none !important;
+    opacity: 0.38; filter: grayscale(0.7) brightness(0.6);
+    border-color: rgba(90,50,70,0.2) !important;
+  }
+  .btn-register.abandoned > * { opacity: 0; }
+  .btn-register.abandoned::after { content: '— GHOST CLOSED —'; position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 0.28em;
+    color: rgba(120,80,100,0.45); background: rgba(5,3,6,0.88); }
+  .nav-dashboard-link.abandoned { border-color: rgba(100,55,75,0.22) !important; color: rgba(130,90,110,0.5) !important; }
+  .nav-dashboard-link.abandoned .nav-dashboard-dot { background: rgba(90,55,75,0.3) !important; animation: none !important; box-shadow: none !important; }
+  .wallet-btn.abandoned { border-color: rgba(100,55,75,0.25) !important; color: rgba(130,90,110,0.5) !important; }
   .nav-dashboard-link { display: none !important; }
   .nav-dashboard-link.visible { display: flex !important; align-items: center; gap: 6px; color: var(--green) !important; border: 1px solid rgba(51,255,153,0.25); padding: 6px 14px; transition: all 0.3s; }
   .nav-dashboard-link.visible:hover { background: rgba(51,255,153,0.08); border-color: var(--green); }
@@ -1554,13 +1604,13 @@
     </div>
   </div>
   <div class="heartbeat-bar">
-    <div class="hb-label">
-      <span id="walletStatus">Ghost_0x4f...3a9c — Heartbeat Active</span>
-      <span>● PULSE DETECTED</span>
+    <div class="hb-label" id="hbLabel">
+      <span id="walletStatus">— Waiting for pulse</span>
+      <span><span class="hb-pulse-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#00ff88;margin-right:6px;animation:pulse-dot 2s ease-in-out infinite;vertical-align:middle"></span><span class="hb-pulse-text" id="hbPulseText">PULSE DETECTED</span></span>
     </div>
-    <div class="hb-line">
+    <div class="hb-line" id="hbLine">
       <svg class="hb-svg" viewBox="0 0 1400 60" preserveAspectRatio="none">
-        <polyline points="
+        <polyline id="hbPolyline" points="
           0,30 120,30 140,30 155,8 165,52 175,15 185,45 195,30 350,30
           420,30 440,30 700,30
           700,30 820,30 840,30 855,8 865,52 875,15 885,45 895,30 1050,30
@@ -1845,6 +1895,98 @@ async function fetchGhostCount() {
 }
 fetchGhostCount();
 setInterval(fetchGhostCount, 60000);
+
+// ── Update marketing page hero to reflect connected wallet's ghost status ──────
+// Called after fetchGhostAccount, session restore, and wallet connect
+// Also does a lightweight on-chain check so cross-device state is accurate
+async function updateHeroGhostState() {
+  const status = ghostState.ghost?.status;
+  const isExecuted  = status === 'executed';
+  const isAbandoned = status === 'abandoned';
+  const isDead = isExecuted || isAbandoned;
+  const deadClass = isExecuted ? 'executed' : isAbandoned ? 'abandoned' : null;
+  const walletAddr = ghostState.walletAddress || '';
+
+  // Helper: swap dead class cleanly
+  function setDeadClass(el) {
+    if (!el) return;
+    el.classList.remove('executed', 'abandoned');
+    if (deadClass) el.classList.add(deadClass);
+  }
+
+  // ── Wallet address label ──
+  const wsEl = document.getElementById('walletStatus');
+  const hbLabel = document.getElementById('hbLabel');
+  const hbLine = document.getElementById('hbLine');
+  const hbPolyline = document.getElementById('hbPolyline');
+  const hbPulseText = document.getElementById('hbPulseText');
+
+  if (wsEl && walletAddr) {
+    if (isExecuted) {
+      wsEl.textContent = walletAddr + ' — Executed';
+    } else if (isAbandoned) {
+      wsEl.textContent = walletAddr + ' — Ghost Closed';
+    } else if (status === 'none' || !status) {
+      wsEl.textContent = walletAddr + ' — Not Registered';
+    } else {
+      wsEl.textContent = walletAddr + ' — Heartbeat Active';
+    }
+    wsEl.style.color = '';
+  } else if (wsEl && !walletAddr) {
+    wsEl.textContent = '— Waiting for pulse';
+    wsEl.style.color = '';
+  }
+
+  // ── EKG line + label ──
+  if (hbLine && hbPolyline) {
+    setDeadClass(hbLine);
+    setDeadClass(hbLabel);
+    if (isDead) {
+      hbPolyline.setAttribute('points', '0,30 1400,30');
+      hbPolyline.setAttribute('stroke', isExecuted ? '#7a0018' : '#2a1520');
+      hbPolyline.setAttribute('opacity', isExecuted ? '0.5' : '0.6');
+      if (hbPulseText) hbPulseText.textContent = isExecuted ? 'SIGNAL LOST' : 'GHOST CLOSED';
+    } else {
+      hbPolyline.setAttribute('points', '0,30 120,30 140,30 155,8 165,52 175,15 185,45 195,30 350,30 420,30 440,30 700,30 700,30 820,30 840,30 855,8 865,52 875,15 885,45 895,30 1050,30 1120,30 1140,30 1400,30');
+      hbPolyline.setAttribute('stroke', '#00ff88');
+      hbPolyline.setAttribute('opacity', '0.8');
+      if (hbPulseText) hbPulseText.textContent = 'PULSE DETECTED';
+    }
+  }
+
+  // ── Register Heartbeat buttons ──
+  document.querySelectorAll('.btn-register').forEach(btn => {
+    btn.classList.remove('executed', 'abandoned');
+    if (deadClass) { btn.classList.add(deadClass); btn.setAttribute('disabled', 'true'); }
+    else btn.removeAttribute('disabled');
+  });
+
+  // ── Nav dashboard link ──
+  const navLink = document.getElementById('navDashboardLink');
+  setDeadClass(navLink);
+
+  // ── Wallet button ──
+  const walletBtn = document.getElementById('walletBtn');
+  if (walletBtn && ghostState.connected) setDeadClass(walletBtn);
+}
+
+// Cross-device: on session restore check on-chain for abandoned/executed state
+// even if localStorage doesn't have it (e.g. different browser/device)
+async function checkHeroStateFromChain() {
+  if (!ghostState.publicKey || !ghostState.ghostPda) return;
+  try {
+    // If we already know the status, just update hero
+    const s = ghostState.ghost?.status;
+    if (s && s !== 'none') { updateHeroGhostState(); return; }
+    // Otherwise fetch from chain — checkWalletAbandoned covers abandoned wallets,
+    // fetchGhostAccount covers executed ones
+    const abandoned = await checkWalletAbandoned(ghostState.publicKey, ghostState.ghostPda);
+    if (abandoned) {
+      ghostState.ghost = { status: 'abandoned', stakedGhost: 0, pingCount: 0, beneficiaries: [], wholeVaultShares: [] };
+    }
+    updateHeroGhostState();
+  } catch(e) {}
+}
 
 const HELIUS_API = 'https://mainnet.helius-rpc.com/?api-key=5a9a7cb2-8ee9-4656-bd60-6b5b11a3e92d';
 const RPC_FALLBACKS = [];
@@ -2387,12 +2529,14 @@ async function connectWallet(name) {
           if (panelAddr) panelAddr.textContent = ghostState.walletAddress;
           const wsEl = document.getElementById('walletStatus');
           if (wsEl) wsEl.textContent = ghostState.walletAddress + ' — Heartbeat Active';
+          updateHeroGhostState();
           // Reload ghost account for new wallet — await before updating UI
           try { await fetchGhostAccount(); } catch(e) {}
           await loadWalletTokens().catch(()=>{});
           // Return to overview with fresh state
           dbShowPage('overview', document.getElementById('nav-overview'));
           updateDashboardUI();
+          updateHeroGhostState();
           return;
         }
       }
@@ -2415,6 +2559,7 @@ async function connectWallet(name) {
     saveSession();
     await fetchGhostAccount();
     updateDashboardUI();
+    updateHeroGhostState();
     await loadWalletTokens().catch(()=>{});
     setTimeout(() => {
       openDashboard();
@@ -3900,6 +4045,9 @@ function updateDashboardUI() {
     }
     if (isExecuted) renderExecutionDetail();
   }
+  // Sync marketing page hero state whenever dashboard UI updates
+  if (typeof updateHeroGhostState === 'function') updateHeroGhostState();
+
   // Hide normal overview sections when executed — status orb / vault / cards / progress clutter
   const _execHideIds = ['dbAwakeningAlert','dbExecutedAlert'];
   _execHideIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
@@ -4716,11 +4864,14 @@ document.addEventListener('DOMContentLoaded', () => {
       // so status-based guards (executed, none, abandoned) work correctly
       const _navEl = document.getElementById('nav-' + _savedPage) || document.getElementById('nav-overview');
       dbShowPage('overview', document.getElementById('nav-overview')); // show something immediately
+      updateHeroGhostState(); // show wallet addr immediately; status updated after chain fetch
+      checkHeroStateFromChain(); // cross-device: verify state from chain
       // After chain data: jump to actual saved page
       const _origFGA = fetchGhostAccount;
       const _restoreOnce = async () => {
         try { await _origFGA(); } catch(e) {}
         updateDashboardUI();
+        updateHeroGhostState();
         if (_savedPage !== 'overview') {
           dbShowPage(_savedPage, document.getElementById('nav-' + _savedPage));
         } else {
