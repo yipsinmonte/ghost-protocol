@@ -8878,8 +8878,22 @@ for (const t of solTokens) {
     const wsolRent = await connection.getMinimumBalanceForRentExemption(165);
     const rentReserve = existingWsol ? 0 : wsolRent / 1e9;
 
-    // Reserve: rent (if needed) + 0.004 per tx × ~5 future txs (wrap/deposit/withdraw/bene ×2)
-    const SOL_RESERVE = rentReserve + 0.025;
+    // Check if vault wSOL token account exists — if not, we'll need rent for that too
+    let vaultWsolRentReserve = 0;
+    try {
+      const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK });
+      if (!ex.value.length) {
+        const vaultWsolAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
+        const vaultWsolInfo = await connection.getAccountInfo(vaultWsolAta);
+        if (!vaultWsolInfo) vaultWsolRentReserve = wsolRent / 1e9;
+      }
+    } catch(_) { vaultWsolRentReserve = wsolRent / 1e9; /* assume worst case */ }
+
+    // Reserve: wallet wSOL rent (if needed) + vault wSOL rent (if needed) + tx fee headroom
+    // Phases 1-3 already consumed SOL for vault account creation + SPL batch fees,
+    // so liveNativeSOL already reflects those costs. We only need to reserve for
+    // what Phase 4 itself will spend beyond the deposit amount.
+    const SOL_RESERVE = rentReserve + vaultWsolRentReserve + 0.025;
     const amount = Math.max(0, liveNativeSOL - SOL_RESERVE);
     if (amount <= 0) {
       showNotif('⚠️ Only ' + liveNativeSOL.toFixed(4) + ' SOL remaining after SPL fees — need >' + SOL_RESERVE.toFixed(3) + ' to deposit', 'error');
@@ -9731,16 +9745,24 @@ async function dbDeposit() {
     // Phase 2: For SOL — wrap native SOL to wSOL in separate tx
     let effectiveOwnerAta = ownerAta;
     if (isSOL) {
+      // Re-fetch live SOL balance — Phase 1 (vault account creation) may have consumed rent + fees
+      let _liveBalSingle = t.balance;
+      try {
+        const _balResp = await fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({jsonrpc:'2.0',id:'solbal2',method:'getBalance',params:[ghostState.publicKey]}) });
+        const _balData = await _balResp.json();
+        _liveBalSingle = (_balData.result?.value || 0) / 1e9;
+      } catch(_) {}
       // Dynamic reserve: wSOL rent (if new account needed) + 0.04 for future txs
       const _wsolRentSingle = await connection.getMinimumBalanceForRentExemption(165);
       const _existingWsolSingle = await connection.getAccountInfo(await deriveATA(walletPk, new solanaWeb3.PublicKey('So11111111111111111111111111111111111111112'))).catch(()=>null);
       const SOL_FEE_RESERVE_SINGLE = (_existingWsolSingle ? 0 : _wsolRentSingle / 1e9) + 0.04;
-      if (amount > t.balance - SOL_FEE_RESERVE_SINGLE) {
-        const maxSol = Math.max(0, t.balance - SOL_FEE_RESERVE_SINGLE);
-        if (maxSol <= 0) throw new Error('Not enough SOL after reserving ' + SOL_FEE_RESERVE_SINGLE.toFixed(3) + ' for fees');
+      if (amount > _liveBalSingle - SOL_FEE_RESERVE_SINGLE) {
+        const maxSol = Math.max(0, _liveBalSingle - SOL_FEE_RESERVE_SINGLE);
+        if (maxSol <= 0) throw new Error('Not enough SOL after reserving ' + SOL_FEE_RESERVE_SINGLE.toFixed(3) + ' for fees (balance: ' + _liveBalSingle.toFixed(4) + ')');
         showNotif('⚠️ Capped at ' + maxSol.toFixed(4) + ' SOL (reserving ' + SOL_FEE_RESERVE_SINGLE.toFixed(3) + ' for fees)', '');
       }
-      const safeAmount = Math.min(amount, Math.max(0, t.balance - SOL_FEE_RESERVE_SINGLE));
+      const safeAmount = Math.min(amount, Math.max(0, _liveBalSingle - SOL_FEE_RESERVE_SINGLE));
       const lamports = Math.round(safeAmount * 1e9);
       const { instructions: wrapIxs, wsolAta, kp: wsolKp } = await buildWrapSOLInstructions(walletPk, lamports, connection);
       showNotif('Wrapping SOL...', '');
