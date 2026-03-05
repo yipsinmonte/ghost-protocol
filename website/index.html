@@ -2010,7 +2010,7 @@ const ghostState = {
   ghostPda: null,
   vaultPda: null,
   ghostStakeVault: null,
-  _withdrawnMints: new Set(), // mints withdrawn this session — suppress re-adding from chain until confirmed gone
+  _withdrawnMints: new Map(), // mint -> expiry ms; suppress re-adding from chain for 45s after withdraw
   ghost: {
     status: 'none',
     lastHeartbeat: null,
@@ -2055,18 +2055,44 @@ function saveSession() {
 }
 
 // ── Persist _withdrawnMints across page refresh via sessionStorage ────────────
+// _withdrawnMints stores {mint -> expiry timestamp (ms)}
+// Suppression auto-expires after 45s — no dependency on chain state confirmation
+const _WITHDRAWN_TTL = 45000;
 function _saveWithdrawnMints() {
   try {
-    const arr = [...ghostState._withdrawnMints];
-    if (arr.length > 0) sessionStorage.setItem('ghostWithdrawnMints', JSON.stringify(arr));
+    const now = Date.now();
+    const obj = {};
+    for (const [mint, expiry] of ghostState._withdrawnMints) {
+      if (expiry > now) obj[mint] = expiry; // only save non-expired entries
+    }
+    if (Object.keys(obj).length > 0) sessionStorage.setItem('ghostWithdrawnMints', JSON.stringify(obj));
     else sessionStorage.removeItem('ghostWithdrawnMints');
   } catch(e) {}
 }
 function _loadWithdrawnMints() {
   try {
     const raw = sessionStorage.getItem('ghostWithdrawnMints');
-    if (raw) { const arr = JSON.parse(raw); arr.forEach(m => ghostState._withdrawnMints.add(m)); }
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    const now = Date.now();
+    for (const [mint, expiry] of Object.entries(obj)) {
+      if (expiry > now) ghostState._withdrawnMints.set(mint, expiry); // restore non-expired
+    }
   } catch(e) {}
+}
+function _addWithdrawnMint(mint) {
+  ghostState._withdrawnMints.set(mint, Date.now() + _WITHDRAWN_TTL);
+  _saveWithdrawnMints();
+}
+function _clearWithdrawnMints() {
+  ghostState._withdrawnMints.clear();
+  sessionStorage.removeItem('ghostWithdrawnMints');
+}
+function _isWithdrawnMint(mint) {
+  const expiry = ghostState._withdrawnMints.get(mint);
+  if (!expiry) return false;
+  if (Date.now() > expiry) { ghostState._withdrawnMints.delete(mint); return false; }
+  return true;
 }
 
 function loadSession() {
@@ -7505,7 +7531,7 @@ async function loadWalletTokens() {
             const meta = ghostState.walletTokens.find(t => t.mint === _normMint || t.mint === mint)
                       || ghostState.vaultTokens.find(t => t.mint === _normMint || t.mint === mint)
                       || {};
-            if (ghostState._withdrawnMints.has(_normMint) || ghostState._withdrawnMints.has(mint)) {
+            if (_isWithdrawnMint(_normMint) || _isWithdrawnMint(mint)) {
               // Still on chain but we know we withdrew it — skip adding to freshVault
               // This causes the prune filter to remove it from vaultTokens
               continue;
@@ -7525,7 +7551,7 @@ async function loadWalletTokens() {
           }
           // Fetch native SOL (lamport) balance of each vault PDA and inject as 'native' entry
           // Skip if SOL was recently withdrawn — suppresses reappearing until chain closes wSOL account
-          if (!ghostState._withdrawnMints.has('native')) {
+          if (!_isWithdrawnMint('native')) {
             for (const pdaAddr of pdaAddrs) {
               try {
                 const _solR = await fetch(RPC_URL, {method:'POST',headers:{'Content-Type':'application/json'},
@@ -7552,7 +7578,7 @@ async function loadWalletTokens() {
             const raw = a.account?.data?.parsed?.info?.tokenAmount?.amount;
             return raw !== undefined && BigInt(raw) === 0n;
           });
-          const _hasWithdrawn = ghostState._withdrawnMints.size > 0;
+          const _hasWithdrawn = ghostState._withdrawnMints.size > 0 && [...ghostState._withdrawnMints.values()].some(exp => exp > Date.now());
           if (_chainHasData || !_chainHasAccts || _allZero || _hasWithdrawn) { // safe to merge/prune
             // Merge: preserve logos/names from existing entries, update balances from chain
             for (const fresh of freshVault) {
@@ -7578,12 +7604,7 @@ async function loadWalletTokens() {
             ghostState.vaultTokens.forEach(v => {
               if (v._pendingDeposit && freshVault.find(f => f.mint === v.mint)) delete v._pendingDeposit;
             });
-            // Clear _withdrawnMints for mints now confirmed absent from chain
-            let _withdrawnChanged = false;
-            for (const wm of ghostState._withdrawnMints) {
-              if (!freshVault.find(f => f.mint === wm)) { ghostState._withdrawnMints.delete(wm); _withdrawnChanged = true; }
-            }
-            if (_withdrawnChanged) _saveWithdrawnMints();
+            // _withdrawnMints entries expire by TTL (45s) — no manual clear needed
             const vaultOnlyMints = freshVault
               .filter(v => !ghostState.walletTokens.find(w => w.mint === v.mint) && !v.name)
               .map(v => v.mint);
@@ -8703,6 +8724,8 @@ for (const t of solTokens) {
 
 if (successCount > 0) {
   ghostState.selectedTokens.deposit = null;
+  // Clear withdrawn mint suppression — deposit means vault should now show these tokens
+  _clearWithdrawnMints();
   // Zero out any successfully deposited tokens in walletTokens that may still show balance
   // (belt-and-suspenders — the batch loops already do this but SOL phase may have been skipped)
   for (const t of tokens) {
@@ -9017,17 +9040,16 @@ for (let i = 0; i < allTxs.length; i++) {
 
     if (type === 'spl') {
       for (const { vt: bvt } of batch) {
-        ghostState._withdrawnMints.add(bvt.mint); _saveWithdrawnMints(); // persist across refresh
-        const wt = ghostState.walletTokens.find(w => w.mint === bvt.mint);
-        if (wt) { wt.balance += bvt.balance; } else { ghostState.walletTokens.push({ symbol: bvt.symbol, mint: bvt.mint, balance: bvt.balance, decimals: bvt.decimals, logoUrl: bvt.logoUrl||null }); }
+        _addWithdrawnMint(bvt.mint);
+        // Don't optimistically add to walletTokens — loadWalletTokens will fetch correct
+        // chain balance. Optimistic add causes doubling when chain fetch runs right after.
         const idx = ghostState.vaultTokens.indexOf(bvt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
         addActivityRow('Vault Withdrawal ' + bvt.balance.toLocaleString() + ' ' + bvt.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
         successCount++;
       }
     } else {
-      ghostState._withdrawnMints.add('native'); _saveWithdrawnMints(); // persist across refresh
-      const wt = ghostState.walletTokens.find(w => w.mint === 'native');
-      if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
+      _addWithdrawnMint('native');
+      // Don't optimistically add to walletTokens — let loadWalletTokens fetch from chain
       const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
       addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
       successCount++;
@@ -9040,13 +9062,17 @@ for (let i = 0; i < allTxs.length; i++) {
 }
 
 if (successCount > 0) {
-const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
-buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
-ghostState.selectedTokens.deposit = null;
-if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
-renderVaultHoldings(); renderVaultOverview();
-showNotif('Withdrew ' + successCount + '/' + total + ' asset(s) from vault!', 'green');
-saveSession();
+  renderVaultHoldings(); renderVaultOverview();
+  showNotif('Withdrew ' + successCount + '/' + total + ' asset(s) from vault!', 'green');
+  saveSession();
+  // Load fresh chain balances for wallet dropdown (avoids doubling from optimistic adds)
+  loadWalletTokens().then(() => {
+    const depositPool = ghostState.walletTokens.filter(tok => tok.balance > 0 && !isProtocolMint(tok.mint));
+    buildPickerDropdown('deposit', depositPool); buildPickerDropdown('bene', [WHOLE_VAULT_TOKEN, ...vaultAssignableTokens()]); buildPickerDropdown('burn', [WHOLE_VAULT_BURN_TOKEN, ...vaultAssignableTokens()]);
+    ghostState.selectedTokens.deposit = null;
+    if (depositPool.length > 0) selectToken('deposit', depositPool[0].mint);
+    renderVaultHoldings(); renderVaultOverview(); renderBeneficiaries();
+  }).catch(() => {});
 }
 }
 
@@ -9546,7 +9572,7 @@ async function dbWithdrawAsset(vaultIdx) {
   const _applyWithdraw = () => {
     vt.balance -= amount;
     if (vt.balance <= 0.000000001) {
-      ghostState._withdrawnMints.add(isSOL ? 'native' : vt.mint); _saveWithdrawnMints(); // persist across refresh
+      _addWithdrawnMint(isSOL ? 'native' : vt.mint);
       ghostState.vaultTokens.splice(vaultIdx, 1);
     }
     // Return to wallet — native SOL entry (mint:'native') for wSOL withdrawals
