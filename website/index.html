@@ -8837,76 +8837,139 @@ const WSOL_MINT_PK  = new PublicKey('So11111111111111111111111111111111111111112
 const TOKEN_PROG_PK = new PublicKey(TOKEN_PROGRAM_STR);
 const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 
-// Split SOL and SPL — handle SOL separately using same path as single withdraw
-// so wallet has full fee balance and Phantom doesn't flag it
 const splTokens = tokens.filter(t => t.mint !== 'native' && t.mint !== 'So11111111111111111111111111111111111111112');
 const solTokens = tokens.filter(t => t.mint === 'native' || t.mint === 'So11111111111111111111111111111111111111112');
 let successCount = 0;
 const total = tokens.length;
+const disc = [180, 34, 37, 46, 156, 0, 211, 238];
 
 showNotif('Preparing withdrawal of ' + total + ' asset(s)...', '');
 
-// ── Phase 1: SPL batch withdrawals ──────────────────────────────────────────
-if (splTokens.length > 0) {
-  const { success: splSuccess } = await drainVaultOnChain(splTokens, { connection, walletPk, ghostPda, vaultPda, programId });
-  successCount += splSuccess;
-}
+// ── Build ALL transactions up-front, then sign them all at once ──────────────
+// Phantom flags multiple sequential signTransaction calls as a drainer pattern.
+// signAllTransactions presents ONE approval UI for all txs — no repeated warnings.
+const allTxs = [];       // { tx, keypairs[], type, meta }
+const { blockhash: bh0 } = await connection.getLatestBlockhash();
 
-// ── Phase 2: SOL withdrawal — same keypair pattern as single withdraw ────────
-// Done after SPL so Phantom sees a fresh tx with full fee balance context
-for (const vt of solTokens) {
-  try {
-    const amount = vt.balance;
-    const disc = [180, 34, 37, 46, 156, 0, 211, 238];
-    const amountRaw = BigInt(Math.round(amount * 1e9));
+// SPL txs — batch of up to 3 per tx, grouped by token program
+const splMeta = await Promise.all(splTokens.map(async vt => {
+  const mintPk = new PublicKey(effectiveMint(vt.mint));
+  let rawMintOwner = TOKEN_PROGRAM_STR;
+  try { const ma = await connection.getAccountInfo(mintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
+  const rawTokenProgPk = new PublicKey(rawMintOwner);
+  let vaultAta;
+  try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: mintPk }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
+  if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, mintPk, rawTokenProgPk);
+  let ownerAta;
+  { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, mintPk); }
+  const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
+  return { vt, mintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing: !ownerAtaInfo };
+}));
+
+const BATCH_SIZE = 3;
+for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
+  const batch = splMeta.slice(i, i + BATCH_SIZE);
+  const { blockhash } = await connection.getLatestBlockhash();
+  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+  for (const { vt, mintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing } of batch) {
+    const amountRaw = BigInt(Math.round(vt.balance * Math.pow(10, vt.decimals)));
     const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
     const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
-
-    // Find vault wSOL account
-    let vaultAta;
-    try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
-    if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
-
-    const wsolKp = Keypair.generate();
-    const wsolAcct = wsolKp.publicKey;
-    const space = 165;
-    const rent = await connection.getMinimumBalanceForRentExemption(space);
-    const { blockhash } = await connection.getLatestBlockhash();
-    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-    tx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space, programId: TOKEN_PROG_PK }));
-    const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
-    tx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK,
-      keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }],
-      data: initData }));
+    if (ownerAtaMissing) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, rawTokenProgPk));
     tx.add(new TransactionInstruction({ programId, keys: [
-      { pubkey: ghostPda,     isSigner: false, isWritable: false },
-      { pubkey: vaultPda,     isSigner: false, isWritable: false },
-      { pubkey: walletPk,     isSigner: true,  isWritable: true  },
-      { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
-      { pubkey: wsolAcct,     isSigner: false, isWritable: true  },
-      { pubkey: vaultAta,     isSigner: false, isWritable: true  },
-      { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
+      { pubkey: ghostPda,       isSigner: false, isWritable: false },
+      { pubkey: vaultPda,       isSigner: false, isWritable: false },
+      { pubkey: walletPk,       isSigner: true,  isWritable: true  },
+      { pubkey: mintPk,         isSigner: false, isWritable: false },
+      { pubkey: ownerAta,       isSigner: false, isWritable: true  },
+      { pubkey: vaultAta,       isSigner: false, isWritable: true  },
+      { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
     ], data }));
-    tx.add(buildUnwrapIx(walletPk, wsolAcct));
-    showNotif('Sign to withdraw SOL...', '');
-    const signed = await ghostState.provider.signTransaction(tx);
-    signed.partialSign(wsolKp);
+  }
+  allTxs.push({ tx, keypairs: [], type: 'spl', batch });
+}
+
+// SOL tx — keypair wSOL account
+for (const vt of solTokens) {
+  const amount = vt.balance;
+  let vaultAta;
+  try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
+  if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
+  const wsolKp = Keypair.generate();
+  const wsolAcct = wsolKp.publicKey;
+  const rent = await connection.getMinimumBalanceForRentExemption(165);
+  const { blockhash } = await connection.getLatestBlockhash();
+  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+  tx.add(SystemProgram.createAccount({ fromPubkey: walletPk, newAccountPubkey: wsolAcct, lamports: rent, space: 165, programId: TOKEN_PROG_PK }));
+  const initData = new Uint8Array(33); initData[0] = 18; initData.set(walletPk.toBytes(), 1);
+  tx.add(new TransactionInstruction({ programId: TOKEN_PROG_PK,
+    keys: [{ pubkey: wsolAcct, isSigner: false, isWritable: true }, { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false }],
+    data: initData }));
+  const amountRaw = BigInt(Math.round(amount * 1e9));
+  const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+  const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+  tx.add(new TransactionInstruction({ programId, keys: [
+    { pubkey: ghostPda,     isSigner: false, isWritable: false },
+    { pubkey: vaultPda,     isSigner: false, isWritable: false },
+    { pubkey: walletPk,     isSigner: true,  isWritable: true  },
+    { pubkey: WSOL_MINT_PK, isSigner: false, isWritable: false },
+    { pubkey: wsolAcct,     isSigner: false, isWritable: true  },
+    { pubkey: vaultAta,     isSigner: false, isWritable: true  },
+    { pubkey: TOKEN_PROG_PK,isSigner: false, isWritable: false },
+  ], data }));
+  tx.add(buildUnwrapIx(walletPk, wsolAcct));
+  allTxs.push({ tx, keypairs: [wsolKp], type: 'sol', vt, amount });
+}
+
+if (allTxs.length === 0) { showNotif('Nothing to withdraw', 'error'); return; }
+
+// ── One signAllTransactions call — single Phantom approval for all txs ───────
+showNotif('Sign to withdraw all ' + total + ' asset(s)...', '');
+let signedTxs;
+try {
+  signedTxs = await ghostState.provider.signAllTransactions(allTxs.map(t => t.tx));
+} catch(err) {
+  showNotif('Signing cancelled: ' + (err.message||err), 'error'); return;
+}
+// partialSign keypairs after wallet signs
+for (let i = 0; i < allTxs.length; i++) {
+  for (const kp of allTxs[i].keypairs) signedTxs[i].partialSign(kp);
+}
+
+// ── Send all txs sequentially and confirm ────────────────────────────────────
+for (let i = 0; i < allTxs.length; i++) {
+  const { type, batch, vt, amount } = allTxs[i];
+  try {
     let sig;
-    try { sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
+    try { sig = await connection.sendRawTransaction(signedTxs[i].serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); }
     catch(simErr) {
       let logs = []; try { logs = await simErr.getLogs(connection); } catch(_) {}
-      if (!logs?.length) { try { const s = await connection.simulateTransaction(tx); logs = s.value.logs||[]; } catch(_) {} }
+      if (!logs?.length) { try { const s = await connection.simulateTransaction(allTxs[i].tx); logs = s.value.logs||[]; } catch(_) {} }
       throw new Error('TX failed: ' + simErr.message + (logs.slice(-5).length ? ' | ' + logs.slice(-5).join(' | ') : ''));
     }
     const conf = await connection.confirmTransaction(sig, 'confirmed');
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
-    const wt = ghostState.walletTokens.find(w => w.mint === 'native');
-    if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
-    const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
-    addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
-    successCount++;
-  } catch(err) { console.error('SOL withdraw-all error:', err); showNotif('SOL withdraw failed: ' + (err.message||err), 'error'); }
+    if (type === 'spl') {
+      for (const { vt: bvt } of batch) {
+        const wt = ghostState.walletTokens.find(w => w.mint === bvt.mint);
+        if (wt) { wt.balance += bvt.balance; } else { ghostState.walletTokens.push({ symbol: bvt.symbol, mint: bvt.mint, balance: bvt.balance, decimals: bvt.decimals, logoUrl: bvt.logoUrl||null }); }
+        const idx = ghostState.vaultTokens.indexOf(bvt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
+        addActivityRow('Vault Withdrawal ' + bvt.balance.toLocaleString() + ' ' + bvt.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
+        successCount++;
+      }
+    } else {
+      const wt = ghostState.walletTokens.find(w => w.mint === 'native');
+      if (wt) { wt.balance += amount; } else { ghostState.walletTokens.push({ symbol: 'SOL', mint: 'native', balance: amount, decimals: 9, logoUrl: null }); }
+      const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
+      addActivityRow('Vault Withdrawal ' + amount.toLocaleString() + ' SOL', sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
+      successCount++;
+    }
+  } catch(err) {
+    const label = type === 'spl' ? batch.map(b => b.vt.symbol).join(', ') : 'SOL';
+    console.error('Withdraw-all tx failed [' + label + ']:', err);
+    showNotif('⚠️ Failed [' + label + ']: ' + (err.message||err), 'error');
+  }
 }
 
 if (successCount > 0) {
