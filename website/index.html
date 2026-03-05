@@ -2137,6 +2137,34 @@ const SYMBOL_TO_MINT = {
 const MINT_TO_SYMBOL = {};
 for (const [sym, mint] of Object.entries(SYMBOL_TO_MINT)) { if (mint && !MINT_TO_SYMBOL[mint]) MINT_TO_SYMBOL[mint] = sym; }
 MINT_TO_SYMBOL['k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump'] = '$GHOST';
+
+// ── Wallet nicknames — persisted in localStorage ──────────────────────────────
+const WALLET_NICKNAMES_KEY = 'ghost_wallet_nicknames';
+function loadWalletNicknames() {
+  try { return JSON.parse(localStorage.getItem(WALLET_NICKNAMES_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveWalletNickname(addr, name) {
+  const nicks = loadWalletNicknames();
+  if (name) nicks[addr] = name; else delete nicks[addr];
+  localStorage.setItem(WALLET_NICKNAMES_KEY, JSON.stringify(nicks));
+}
+function getWalletNickname(addr) {
+  if (!addr) return null;
+  return loadWalletNicknames()[addr] || null;
+}
+function walletDisplayName(addr, shortAddr) {
+  const nick = getWalletNickname(addr);
+  if (!nick) return shortAddr || addr;
+  const s = shortAddr || (addr.length > 8 ? addr.slice(0,4)+'...'+addr.slice(-4) : addr);
+  return nick + ' <span style="color:#7755cc;font-size:10px">(' + s + ')</span>';
+}
+function promptRenameWallet(addr, shortAddr) {
+  const current = getWalletNickname(addr) || '';
+  const name = window.prompt('Nickname for ' + (shortAddr || addr) + ' (leave blank to clear):', current);
+  if (name === null) return; // cancelled
+  saveWalletNickname(addr, name.trim());
+  renderBeneficiaries();
+}
 function resolveMintSymbol(mint) {
   if (!mint) return '';
   if (MINT_TO_SYMBOL[mint]) return MINT_TO_SYMBOL[mint];
@@ -2983,6 +3011,7 @@ async function fetchPumpFunData() {
   populateAllPickers();
   renderVaultHoldings();
   renderVaultOverview();
+  renderBeneficiaries(); // re-render so token names resolve after MINT_TO_SYMBOL is populated
 }
 async function fetchGhostAccount() {
   if (!ghostState.ghostPda) return;
@@ -5660,7 +5689,7 @@ function renderBeneficiaries() {
     const over = vt && ben.amount > vt.balance;
     rows += `<tr${over ? ' style="background:rgba(255,61,90,0.05)"' : ''}>
       <td style="color:#c0bce0">${i+1}</td>
-      <td><span class="addr-short" style="cursor:pointer" onclick="copyAddr('${ben.recipient}')" title="Click to copy">${ben.recipient} ⧉</span></td>
+      <td><span class="addr-short" style="cursor:pointer" onclick="copyAddr('${ben.fullAddr||ben.recipient}')" title="Click to copy full address">${walletDisplayName(ben.fullAddr||ben.recipient, ben.recipient)} ⧉</span> <button onclick="promptRenameWallet('${ben.fullAddr||ben.recipient}','${ben.recipient}')" title="Rename wallet" style="background:none;border:none;color:#50406a;font-size:10px;cursor:pointer;padding:1px 3px;font-family:'Share Tech Mono',monospace" onmouseover="this.style.color='#a080ff'" onmouseout="this.style.color='#50406a'">✎</button></td>
       <td>${ben.amount.toLocaleString()}</td>
       <td style="color:${tokenColor(ben.token)};font-size:12px">${(typeof MINT_TO_SYMBOL!=='undefined'&&MINT_TO_SYMBOL[ben.token])||ben.token}${over ? ' <span style="color:#ff3d5a">⚠️</span>' : ''}</td>
       <td><span class="tag tag-transfer">TRANSFER</span></td>
