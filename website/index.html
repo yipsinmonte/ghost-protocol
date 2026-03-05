@@ -8821,9 +8821,6 @@ async function buildManualTokenAccountIxs(walletPk, mintPk, ownerPk, tokenProgPk
   initData[0] = 18;
   initData.set(ownerPk.toBytes(), 1);
 
-  const TOKEN_2022_STR_LOCAL = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
-  const isToken2022 = tokenProgPk.toBase58() === TOKEN_2022_STR_LOCAL;
-
   // Token-2022 InitializeAccount3 requires mint as writable; classic SPL does not
   const initIx = new TransactionInstruction({
     programId: tokenProgPk,
