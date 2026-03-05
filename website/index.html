@@ -4830,11 +4830,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Show dashboard immediately on refresh — don't wait for provider re-attach
   const _wasInDashboardEarly = ghostState._wasInDashboard === true;
   if (_wasInDashboardEarly) {
+    // Show dashboard shell immediately — don't call dbShowPage yet as ghost status
+    // is still 'none' at this point and would redirect to init page incorrectly.
+    // _restoreOnce() inside the setTimeout will navigate to the correct page once
+    // chain state is loaded.
     const dash = document.getElementById('dashboard');
     const landing = document.getElementById('landing');
     if (dash) dash.style.display = 'flex';
     if (landing) landing.style.display = 'none';
-    dbShowPage('overview', document.getElementById('nav-overview'));
   }
 
   setTimeout(async () => {
@@ -7511,7 +7514,12 @@ async function loadWalletTokens() {
               }
             } catch(_) {}
           }
-          if (freshVault.length > 0 || vaultAccts.length >= 0) {
+          // Only merge+prune if we actually got parseable on-chain data.
+          // If freshVault is empty but vaultAccts has entries, parsing failed (e.g. Token-2022
+          // encoding issue) — preserve existing vaultTokens rather than wiping them.
+          const _chainHasData = freshVault.length > 0;
+          const _chainHasAccts = vaultAccts.length > 0;
+          if (_chainHasData || !_chainHasAccts) { // safe to merge/prune only when we have data, or vault is confirmed empty
             // Merge: preserve logos/names from existing entries, update balances from chain
             for (const fresh of freshVault) {
               const existing = ghostState.vaultTokens.find(v => v.mint === fresh.mint);
