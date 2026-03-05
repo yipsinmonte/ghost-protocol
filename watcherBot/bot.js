@@ -322,13 +322,13 @@ function buildExecuteLegacy(ghost) {
   });
 }
 
-async function buildExecuteTransfer(ghost, bIndex, bene, recipientTokenAcct) {
+async function buildExecuteTransfer(ghost, bIndex, bene, recipientTokenAcct, realVaultAta) {
   const ownerPk      = new PublicKey(ghost.owner);
   const [vaultPk]    = deriveVaultPda(ownerPk);
   const mintPk       = new PublicKey(bene.tokenMint);
   const recipientPk  = new PublicKey(bene.recipient);
   const tokenProg    = await resolveTokenProgram(mintPk);
-  const vaultAta     = deriveATA(vaultPk, mintPk, tokenProg);
+  const vaultAta     = realVaultAta || deriveATA(vaultPk, mintPk, tokenProg);
   const recipientAcctKey = recipientTokenAcct || deriveATA(recipientPk, mintPk, tokenProg);
 
   const data = Buffer.alloc(9);
@@ -351,12 +351,12 @@ async function buildExecuteTransfer(ghost, bIndex, bene, recipientTokenAcct) {
   });
 }
 
-async function buildExecuteBurn(ghost, bIndex, bene) {
+async function buildExecuteBurn(ghost, bIndex, bene, realVaultAta) {
   const ownerPk   = new PublicKey(ghost.owner);
   const [vaultPk] = deriveVaultPda(ownerPk);
   const mintPk    = new PublicKey(bene.tokenMint);
   const tokenProg = await resolveTokenProgram(mintPk);
-  const vaultAta  = deriveATA(vaultPk, mintPk, tokenProg);
+  const vaultAta  = realVaultAta || deriveATA(vaultPk, mintPk, tokenProg);
 
   const data = Buffer.alloc(9);
   DISC.execute_burn.copy(data, 0);
@@ -619,15 +619,27 @@ async function runBeneficiaries(ghost, label, now) {
     const tokenProg = await resolveTokenProgram(mintPk).catch(() => null);
     if (!tokenProg) { console.warn(`    [${i}] could not resolve token program for mint ${b.tokenMint.slice(0,8)}...`); continue; }
 
+    // Look up the REAL vault token account on-chain (may be manual keypair, not ATA)
+    const ownerPk_i   = new PublicKey(ghost.owner);
+    const [vaultPk_i] = deriveVaultPda(ownerPk_i);
+    const vaultAccts_i = await getVaultTokenAccounts(vaultPk_i);
+    const vaultAcct_i  = vaultAccts_i.find(a => a.mint.toBase58() === b.tokenMint);
+    if (!vaultAcct_i) {
+      console.warn(`    [${i}] no vault token account found for mint ${b.tokenMint.slice(0,8)}... — skipping`);
+      continue;
+    }
+    const realVaultAta_i = vaultAcct_i.pubkey;
+    console.log(`    [${i}] resolved vault token account: ${realVaultAta_i.toBase58().slice(0,8)}...`);
+
     if (b.action === 0) {
       const recipientPk = new PublicKey(b.recipient);
       const recipientAcct = await ensureRecipientTokenAccount(recipientPk, mintPk, tokenProg);
       if (!recipientAcct) { console.warn(`    [${i}] could not create recipient token account — skipping`); continue; }
-      const ix = await buildExecuteTransfer(ghost, i, b, recipientAcct.pubkey);
+      const ix = await buildExecuteTransfer(ghost, i, b, recipientAcct.pubkey, realVaultAta_i);
       const sig = await sendTx([ix], `execute_transfer[${i}](${label})`);
       if (sig) await verifyBeneficiaryPaid(ghost.pubkey, i);
     } else if (b.action === 1) {
-      const ix = await buildExecuteBurn(ghost, i, b);
+      const ix = await buildExecuteBurn(ghost, i, b, realVaultAta_i);
       const sig = await sendTx([ix], `execute_burn[${i}](${label})`);
       if (sig) await verifyBeneficiaryPaid(ghost.pubkey, i);
     } else {
