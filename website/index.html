@@ -1201,7 +1201,10 @@
           </div>
           <div class="db-form-group" style="margin-bottom:14px">
             <label>Amount to Burn</label>
-            <input type="number" id="burnAmount" placeholder="0">
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="number" id="burnAmount" placeholder="0" style="flex:1">
+              <button class="db-btn db-btn-outline" style="padding:7px 10px;font-size:11px;flex-shrink:0" onclick="(function(){const t=ghostState.selectedTokens.burn;if(t&&t.mint!=='whole-vault-burn'){const vt=ghostState.vaultTokens.find(v=>v.mint===t.mint||v.symbol===t.symbol);if(vt)document.getElementById('burnAmount').value=vt.balance;}})()" type="button">MAX</button>
+            </div>
           </div>
           <button class="db-btn db-btn-danger" id="addBurnBtn" onclick="dbAddBeneficiary('burn')">🔥 Add Burn Instruction</button>
         </div>
@@ -3631,7 +3634,7 @@ function parseGhostAccount(bytes) {
         mintSym = 'SOL'; mintDec = 9;
       } else if (mintPk) {
         const _kt = (ghostState.vaultTokens||[]).find(t=>t.mint===mintPk) || (ghostState.walletTokens||[]).find(t=>t.mint===mintPk);
-        mintSym = _kt?.symbol || mintPk.slice(0,6);
+        mintSym = _kt?.symbol || (typeof MINT_TO_SYMBOL !== 'undefined' && MINT_TO_SYMBOL[mintPk]) || mintPk.slice(0,6);
         mintDec = _kt?.decimals ?? 6;
       } else {
         mintSym = '?'; mintDec = 6;
@@ -5659,7 +5662,7 @@ function renderBeneficiaries() {
       <td style="color:#c0bce0">${i+1}</td>
       <td><span class="addr-short" style="cursor:pointer" onclick="copyAddr('${ben.recipient}')" title="Click to copy">${ben.recipient} ⧉</span></td>
       <td>${ben.amount.toLocaleString()}</td>
-      <td style="color:${tokenColor(ben.token)};font-size:12px">${ben.token}${over ? ' <span style="color:#ff3d5a">⚠️</span>' : ''}</td>
+      <td style="color:${tokenColor(ben.token)};font-size:12px">${(typeof MINT_TO_SYMBOL!=='undefined'&&MINT_TO_SYMBOL[ben.token])||ben.token}${over ? ' <span style="color:#ff3d5a">⚠️</span>' : ''}</td>
       <td><span class="tag tag-transfer">TRANSFER</span></td>
       <td><span class="tag ${ben.executed?'tag-done':'tag-ready'}">${ben.executed?'PAID':'READY'}</span></td>
       <td><button class="icon-btn" onclick="dbRemoveBeneficiary(${realIdx})" title="Remove">✕</button></td>
@@ -5673,7 +5676,7 @@ function renderBeneficiaries() {
         <td style="color:rgba(255,61,90,0.4)">—</td>
         <td style="color:#c0bce0">BURN (no recipient)</td>
         <td>${ben.amount.toLocaleString()}</td>
-        <td style="color:#ff6688;font-size:12px">${ben.token}</td>
+        <td style="color:#ff6688;font-size:12px">${(typeof MINT_TO_SYMBOL!=='undefined'&&MINT_TO_SYMBOL[ben.token])||ben.token}</td>
         <td><span class="tag tag-burn">BURN</span></td>
         <td><span class="tag ${ben.executed?'tag-done':'tag-ready'}">${ben.executed?'DONE':'READY'}</span></td>
         <td><button class="icon-btn" onclick="dbRemoveBeneficiary(${realIdx})" title="Remove">✕</button></td>
@@ -8284,7 +8287,15 @@ function copyAddr(addr) {
 // Helper: how much of a vault token is assigned to specific beneficiaries
 function vaultAssignedAmount(symbol, mint) {
   return ghostState.ghost.beneficiaries
-    .filter(b => b.action !== 'whole-vault-share' && (b.token === symbol || b.token === mint))
+    .filter(b => {
+      if (b.action === 'whole-vault-share') return false;
+      if (b.token === symbol || b.token === mint) return true;
+      // b.token may be a truncated mint (first 6 chars) from chain parse before metadata loaded
+      if (mint && b.token && mint.startsWith(b.token) && b.token.length >= 6) return true;
+      // or resolved via MINT_TO_SYMBOL
+      if (mint && typeof MINT_TO_SYMBOL !== 'undefined' && MINT_TO_SYMBOL[mint] === b.token) return true;
+      return false;
+    })
     .reduce((s, b) => s + (b.amount || 0), 0);
 }
 
@@ -8933,27 +8944,37 @@ const splMeta = await Promise.all(splTokens.map(async vt => {
   return { vt, mintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing: !ownerAtaInfo };
 }));
 
+// Group by token program — SPL and Token-2022 cannot share a tx (different programs)
+const splGroups = {};
+for (const item of splMeta) {
+  const prog = item.rawTokenProgPk.toBase58();
+  if (!splGroups[prog]) splGroups[prog] = [];
+  splGroups[prog].push(item);
+}
+
 const BATCH_SIZE = 3;
-for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
-  const batch = splMeta.slice(i, i + BATCH_SIZE);
-  const { blockhash } = await connection.getLatestBlockhash();
-  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
-  for (const { vt, mintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing } of batch) {
-    const amountRaw = BigInt(Math.round(vt.balance * Math.pow(10, vt.decimals)));
-    const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
-    const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
-    if (ownerAtaMissing) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, rawTokenProgPk));
-    tx.add(new TransactionInstruction({ programId, keys: [
-      { pubkey: ghostPda,       isSigner: false, isWritable: false },
-      { pubkey: vaultPda,       isSigner: false, isWritable: false },
-      { pubkey: walletPk,       isSigner: true,  isWritable: true  },
-      { pubkey: mintPk,         isSigner: false, isWritable: false },
-      { pubkey: ownerAta,       isSigner: false, isWritable: true  },
-      { pubkey: vaultAta,       isSigner: false, isWritable: true  },
-      { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
-    ], data }));
+for (const [, groupItems] of Object.entries(splGroups)) {
+  for (let i = 0; i < groupItems.length; i += BATCH_SIZE) {
+    const batch = groupItems.slice(i, i + BATCH_SIZE);
+    const { blockhash } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
+    for (const { vt, mintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing } of batch) {
+      const amountRaw = BigInt(Math.round(vt.balance * Math.pow(10, vt.decimals)));
+      const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
+      const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
+      if (ownerAtaMissing) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, rawTokenProgPk));
+      tx.add(new TransactionInstruction({ programId, keys: [
+        { pubkey: ghostPda,       isSigner: false, isWritable: false },
+        { pubkey: vaultPda,       isSigner: false, isWritable: false },
+        { pubkey: walletPk,       isSigner: true,  isWritable: true  },
+        { pubkey: mintPk,         isSigner: false, isWritable: false },
+        { pubkey: ownerAta,       isSigner: false, isWritable: true  },
+        { pubkey: vaultAta,       isSigner: false, isWritable: true  },
+        { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
+      ], data }));
+    }
+    allTxs.push({ tx, keypairs: [], type: 'spl', batch });
   }
-  allTxs.push({ tx, keypairs: [], type: 'spl', batch });
 }
 
 // SOL tx — keypair wSOL account
@@ -10328,7 +10349,7 @@ async function dbAbandon(skipConfirm, onChain, wasExecuted) {
   updateTrails();
 })();
 
-// ── GHOST COUNT GLOW on update ─────────────────────────────── 
+// ── GHOST COUNT GLOW on update ───────────────────────────────
 const _origFetchGhostCount = fetchGhostCount;
 </script>
 </body>
