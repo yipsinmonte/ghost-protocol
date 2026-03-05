@@ -8500,12 +8500,12 @@ function renderVaultHoldings() {
   fetchPumpFunData();
   // Keep WITHDRAW ALL button and deposit notice in sync with beneficiary state
   const wdAllBtn = document.querySelector('button[onclick="dbWithdrawAll()"]');
-  const wvBene = ghostState.ghost.beneficiaries.find(b => b.action === 'whole-vault-share');
+  const _anyBene = ghostState.ghost.beneficiaries.length > 0;
   if (wdAllBtn) {
-    wdAllBtn.disabled = !!wvBene;
-    wdAllBtn.style.opacity = wvBene ? '0.3' : '1';
-    wdAllBtn.style.cursor = wvBene ? 'not-allowed' : 'pointer';
-    wdAllBtn.title = wvBene ? 'Vault is assigned to a beneficiary — remove assignment first' : 'Withdraw all vault assets';
+    wdAllBtn.disabled = _anyBene;
+    wdAllBtn.style.opacity = _anyBene ? '0.3' : '1';
+    wdAllBtn.style.cursor = _anyBene ? 'not-allowed' : 'pointer';
+    wdAllBtn.title = _anyBene ? 'Remove all beneficiaries before withdrawing' : 'Withdraw all vault assets';
   }
   const depNotice = document.getElementById('depositWholeVaultNotice');
   const depRecip = document.getElementById('depositWholeVaultRecip');
