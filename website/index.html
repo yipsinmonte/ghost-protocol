@@ -52,9 +52,9 @@
     font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 0.35em;
     color: rgba(235,55,75,0.7); background: rgba(8,0,4,0.82);
     text-shadow: 0 0 8px rgba(255,30,60,0.4); }
-  .nav-dashboard-link.executed { border-color: rgba(220,30,55,0.5) !important; color: rgba(235,65,85,0.85) !important; }
-  .nav-dashboard-link.executed .nav-dashboard-dot { background: rgba(235,30,60,0.85) !important; animation: none !important; box-shadow: 0 0 6px rgba(235,30,60,0.45) !important; }
-  .wallet-btn.executed { border-color: rgba(220,30,55,0.6) !important; color: rgba(235,65,85,0.85) !important; }
+  .nav-dashboard-link.executed { border-color: rgba(255,40,70,0.7) !important; color: #ff3355 !important; }
+  .nav-dashboard-link.executed .nav-dashboard-dot { background: #ff3355 !important; animation: none !important; box-shadow: 0 0 8px rgba(255,40,70,0.6) !important; }
+  .wallet-btn.executed { border-color: rgba(255,40,70,0.7) !important; color: #ff3355 !important; }
 
   /* ABANDONED — cold and silent. Chose to disappear. No glow, just ash. */
   .hb-line.abandoned .hb-svg polyline { stroke: #1e1018 !important; opacity: 0.7 !important; animation: none !important; }
@@ -76,9 +76,9 @@
     display: grid; place-items: center;
     font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 0.28em;
     color: rgba(120,80,100,0.45); background: rgba(5,3,6,0.88); }
-  .nav-dashboard-link.abandoned { border-color: rgba(100,55,75,0.22) !important; color: rgba(130,90,110,0.5) !important; }
-  .nav-dashboard-link.abandoned .nav-dashboard-dot { background: rgba(90,55,75,0.3) !important; animation: none !important; box-shadow: none !important; }
-  .wallet-btn.abandoned { border-color: rgba(100,55,75,0.25) !important; color: rgba(130,90,110,0.5) !important; }
+  .nav-dashboard-link.abandoned { border-color: rgba(255,40,70,0.7) !important; color: #ff3355 !important; }
+  .nav-dashboard-link.abandoned .nav-dashboard-dot { background: #ff3355 !important; animation: none !important; box-shadow: 0 0 8px rgba(255,40,70,0.6) !important; }
+  .wallet-btn.abandoned { border-color: rgba(255,40,70,0.7) !important; color: #ff3355 !important; }
   .nav-dashboard-link { display: none !important; }
   .nav-dashboard-link.visible { display: flex !important; align-items: center; gap: 6px; color: var(--green) !important; border: 1px solid rgba(51,255,153,0.25); padding: 6px 14px; transition: all 0.3s; }
   .nav-dashboard-link.visible:hover { background: rgba(51,255,153,0.08); border-color: var(--green); }
@@ -332,40 +332,12 @@
     font-family: 'Share Tech Mono', monospace;
     font-size: 13px; letter-spacing: 0.08em; color: #33ff99;
     display: flex; align-items: center; gap: 8px;
-    transition: color 0.4s;
   }
   .panel-wallet-dot {
     width: 6px; height: 6px; border-radius: 50%;
     background: #33ff99;
     animation: pulse-dot 2s ease-in-out infinite;
-    transition: background 0.4s, box-shadow 0.4s;
   }
-  /* Executed dashboard header — hot red, full brightness */
-  .panel-topbar.executed {
-    background: rgba(18,2,6,0.99) !important;
-    border-bottom-color: rgba(220,30,55,0.4) !important;
-    box-shadow: 0 1px 16px rgba(200,20,45,0.18);
-  }
-  .panel-topbar.executed .panel-wallet { color: #ff3355 !important; }
-  .panel-topbar.executed .panel-wallet-dot {
-    background: #ff3355 !important; animation: none !important;
-    box-shadow: 0 0 8px rgba(255,40,70,0.7) !important;
-  }
-  .panel-topbar.executed .panel-logo { color: #f0e0e4 !important; }
-  .panel-topbar.executed .panel-logo span { color: #cc1133 !important; }
-  /* Abandoned dashboard header — same bright red as executed, still usable for heartbeat check */
-  .panel-topbar.abandoned {
-    background: rgba(18,2,6,0.99) !important;
-    border-bottom-color: rgba(220,30,55,0.4) !important;
-    box-shadow: 0 1px 16px rgba(200,20,45,0.18);
-  }
-  .panel-topbar.abandoned .panel-wallet { color: #ff3355 !important; }
-  .panel-topbar.abandoned .panel-wallet-dot {
-    background: #ff3355 !important; animation: none !important;
-    box-shadow: 0 0 8px rgba(255,40,70,0.7) !important;
-  }
-  .panel-topbar.abandoned .panel-logo { color: #f0e0e4 !important; }
-  .panel-topbar.abandoned .panel-logo span { color: #cc1133 !important; }
 
   /* Panel body = sidebar + main */
   .panel-body {
@@ -841,7 +813,7 @@
 
   <div class="panel-topbar">
     <button class="panel-back" onclick="closeDashboard()">← Back to site</button>
-    <div class="panel-logo">GH<span>O</span>ST <span style="font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.15em;color:#c0bce0">— VAULT</span></div>
+    <div class="panel-logo">GH<span>O</span>ST</div>
     <div class="panel-wallet" style="display:flex;align-items:center;gap:10px">
       <span class="panel-wallet-dot"></span>
       <span id="panelWalletAddr">4xKm...9nZq</span>
@@ -1941,8 +1913,6 @@ async function updateHeroGhostState() {
     el.classList.remove('executed', 'abandoned');
     if (deadClass) el.classList.add(deadClass);
   }
-  // Dashboard topbar
-  setDeadClass(document.getElementById('dashboardPanel')?.querySelector('.panel-topbar'));
 
   // ── Wallet address label ──
   const wsEl = document.getElementById('walletStatus');
@@ -4781,10 +4751,8 @@ async function disconnectWallet() {
   if (btn) { btn.textContent = 'Connect Wallet'; btn.classList.remove('connected', 'executed', 'abandoned'); btn.onclick = openModal; }
   document.getElementById('navDashboardLink')?.classList.remove('visible', 'executed', 'abandoned');
   document.getElementById('navDisconnectBtn').style.display = 'none';
-  // Reset hero + topbar to fresh state
+  // Reset hero to fresh state
   document.querySelectorAll('.btn-register').forEach(b => { b.classList.remove('executed','abandoned'); b.removeAttribute('disabled'); });
-  const _topbar = document.getElementById('dashboardPanel')?.querySelector('.panel-topbar');
-  if (_topbar) _topbar.classList.remove('executed', 'abandoned');
   const _wsEl = document.getElementById('walletStatus');
   if (_wsEl) { _wsEl.textContent = '— Waiting for pulse'; _wsEl.style.color = ''; }
   const _hbLine = document.getElementById('hbLine');
