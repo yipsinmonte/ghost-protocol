@@ -2632,8 +2632,14 @@ async function deriveAndSetPDAs(walletAddress) {
 
 function retryTokenData() {
   pumpFunFetched.clear();
-  showNotif('Refreshing token data...', '');
+  showNotif('Refreshing vault & token data...', '');
   fetchAllPrices();
+  // Also reload wallet + vault balances from chain
+  loadWalletTokens().then(() => {
+    renderVaultHoldings();
+    renderVaultOverview();
+    _refreshBenePickers();
+  }).catch(() => {});
 }
 
 // ─── Unknown SPL token: price + logo ────────────────────────────
@@ -7513,7 +7519,12 @@ async function loadWalletTokens() {
           // encoding issue) — preserve existing vaultTokens rather than wiping them.
           const _chainHasData = freshVault.length > 0;
           const _chainHasAccts = vaultAccts.length > 0;
-          if (_chainHasData || !_chainHasAccts) { // safe to merge/prune only when we have data, or vault is confirmed empty
+          // Also treat as empty if all accounts have zero raw balance (withdrawn but account not yet closed)
+          const _allZero = _chainHasAccts && vaultAccts.every(a => {
+            const raw = a.account?.data?.parsed?.info?.tokenAmount?.amount;
+            return raw !== undefined && BigInt(raw) === 0n;
+          });
+          if (_chainHasData || !_chainHasAccts || _allZero) { // safe to merge/prune
             // Merge: preserve logos/names from existing entries, update balances from chain
             for (const fresh of freshVault) {
               const existing = ghostState.vaultTokens.find(v => v.mint === fresh.mint);
@@ -7525,9 +7536,11 @@ async function loadWalletTokens() {
               }
             }
             // Remove vault tokens that no longer have on-chain balance
-            // Exception: keep tokens marked _pendingDeposit for 8s — RPC may lag behind confirmed tx
+            // Exception: keep tokens marked _pendingDeposit for 30s (RPC lag after deposit)
+            // Always remove tokens marked _pendingWithdraw — they were just withdrawn
             const _now = Date.now();
             ghostState.vaultTokens = ghostState.vaultTokens.filter(v => {
+              if (v._pendingWithdraw) return false; // just withdrawn — always remove regardless of parse
               if (freshVault.find(f => f.mint === v.mint)) return true; // found on chain — keep
               if (v._pendingDeposit && (_now - v._pendingDeposit) < 30000) return true; // recent deposit — protect 30s
               return false; // genuinely gone — remove
@@ -8733,6 +8746,8 @@ if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.e
 for (const { vt } of batch) {
 const wt = ghostState.walletTokens.find(w => w.mint === vt.mint);
 if (wt) { wt.balance += vt.balance; } else { ghostState.walletTokens.push({ symbol: vt.symbol, mint: vt.mint, balance: vt.balance, decimals: vt.decimals, logoUrl: vt.logoUrl||null }); }
+const existing = ghostState.vaultTokens.find(v => v === vt);
+if (existing) existing._pendingWithdraw = true; // mark for prune on next chain fetch
 const idx = ghostState.vaultTokens.indexOf(vt); if (idx !== -1) ghostState.vaultTokens.splice(idx, 1);
 addActivityRow('Vault Withdrawal ' + vt.balance.toLocaleString() + ' ' + vt.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'withdraw');
 successCount++;
