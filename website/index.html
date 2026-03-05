@@ -1302,9 +1302,14 @@
               <div id="profilePicStatus" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#9090b8;margin-bottom:8px">No image set · click + to upload</div>
               <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(102,51,255,0.45);margin-bottom:8px">PNG · JPEG · WEBP · uploaded to Pinata IPFS</div>
               <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#6868a0;margin-bottom:4px">Or paste a direct URL:</div>
-              <input type="text" id="profilePicUrlInput" placeholder="https://i.imgur.com/yourimage.jpg" maxlength="128"
-                style="width:100%;background:rgba(10,8,20,0.7);border:1px solid rgba(102,51,255,0.2);color:#e0dcf8;font-family:'Share Tech Mono',monospace;font-size:11px;padding:7px 10px;outline:none;box-sizing:border-box"
-                oninput="handleProfileUrlInput(this.value)">
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="text" id="profilePicUrlInput" placeholder="https://sapphire-casual-python-864.mypinata.cloud/ipfs/..." maxlength="128"
+                  style="flex:1;background:rgba(10,8,20,0.7);border:1px solid rgba(102,51,255,0.2);color:#e0dcf8;font-family:'Share Tech Mono',monospace;font-size:11px;padding:7px 10px;outline:none;box-sizing:border-box"
+                  oninput="handleProfileUrlInput(this.value)">
+                <button onclick="fetchLatestPinataUpload()" title="Fetch your latest upload from Pinata"
+                  style="background:rgba(102,51,255,0.15);border:1px solid rgba(102,51,255,0.3);color:#c0a0ff;font-family:'Share Tech Mono',monospace;font-size:10px;padding:7px 10px;cursor:pointer;white-space:nowrap;letter-spacing:0.05em;transition:all 0.2s"
+                  onmouseover="this.style.background='rgba(102,51,255,0.3)'" onmouseout="this.style.background='rgba(102,51,255,0.15)'">⟳ latest pin</button>
+              </div>
             </div>
           </div>
           <div class="db-form-group" style="margin-bottom:16px">
@@ -2848,7 +2853,7 @@ function parseMetaplexUri(bytes) {
 function normaliseUrl(url) {
   if (!url) return url;
   // Extract raw CID and use a working public gateway (cf-ipfs.com is dead)
-  const IPFS_GW = 'https://gateway.pinata.cloud/ipfs/';
+  const IPFS_GW = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/';
   return url
     .replace(/^ipfs:\/\//, IPFS_GW)
     .replace(/^https:\/\/cf-ipfs\.com\/ipfs\//, IPFS_GW)
@@ -3785,10 +3790,10 @@ function parseGhostAccount(bytes) {
           if (uriStr.startsWith('https://') || uriStr.startsWith('http://')) {
             _normalizedUri = uriStr;
           } else if (uriStr.startsWith('ipfs://')) {
-            _normalizedUri = 'https://ipfs.io/ipfs/' + uriStr.slice(7);
+            _normalizedUri = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/' + uriStr.slice(7);
           } else if (/^Qm[a-zA-Z0-9]{44}/.test(uriStr) || /^baf[a-zA-Z0-9]+/.test(uriStr)) {
             // Bare IPFS CID — wrap in gateway
-            _normalizedUri = 'https://ipfs.io/ipfs/' + uriStr.split('\0')[0].trim();
+            _normalizedUri = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/' + uriStr.split('\0')[0].trim();
           }
         }
         ghostState.ghost.imageUri = _normalizedUri;
@@ -4388,7 +4393,7 @@ async function handleProfilePicSelect(input) {
     if (!res.ok) throw new Error('Pinata upload failed: ' + res.status);
     const data = await res.json();
     const cid = data.IpfsHash;
-    _pendingImageUri = 'https://gateway.pinata.cloud/ipfs/' + cid;
+    _pendingImageUri = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/' + cid;
     // Also update URL input so user sees what was stored
     const urlInput = document.getElementById('profilePicUrlInput');
     if (urlInput) urlInput.value = _pendingImageUri;
@@ -4417,6 +4422,35 @@ function handleProfileUrlInput(val) {
     if (statusEl) { statusEl.textContent = '⚠️ Must start with https://'; statusEl.style.color = '#ff6666'; }
   }
 }
+async function fetchLatestPinataUpload() {
+  const statusEl = document.getElementById('profilePicStatus');
+  const urlInput = document.getElementById('profilePicUrlInput');
+  if (statusEl) { statusEl.textContent = '⟳ Fetching latest pin from Pinata...'; statusEl.style.color = '#c0a0ff'; }
+  try {
+    const jwt = getPinataJwt();
+    const res = await fetch('https://api.pinata.cloud/data/pinList?status=pinned&pageLimit=10&sortBy=date_pinned&sortOrder=DESC', {
+      headers: { 'Authorization': 'Bearer ' + jwt }
+    });
+    if (!res.ok) throw new Error('Pinata API error: ' + res.status);
+    const data = await res.json();
+    const pins = (data.rows || []).filter(p => p.mime_type?.startsWith('image/') || p.metadata?.name?.includes('ghost-profile'));
+    if (pins.length === 0) {
+      // fallback: just grab the latest pin of any type
+      const any = data.rows?.[0];
+      if (!any) throw new Error('No pins found on Pinata');
+      const url = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/' + any.ipfs_pin_hash;
+      if (urlInput) { urlInput.value = url; handleProfileUrlInput(url); }
+      if (statusEl) { statusEl.textContent = '✓ Latest pin loaded · click Save to commit on-chain'; statusEl.style.color = '#33ff99'; }
+    } else {
+      const url = 'https://sapphire-casual-python-864.mypinata.cloud/ipfs/' + pins[0].ipfs_pin_hash;
+      if (urlInput) { urlInput.value = url; handleProfileUrlInput(url); }
+      if (statusEl) { statusEl.textContent = '✓ Latest image pin loaded · click Save to commit on-chain'; statusEl.style.color = '#33ff99'; }
+    }
+  } catch(err) {
+    if (statusEl) { statusEl.textContent = '✗ ' + (err.message || err); statusEl.style.color = '#ff6666'; }
+  }
+}
+
 // ─── Save profile on-chain ────────────────────────────────────
 async function dbSaveProfile() {
   if (!ghostState.ghost?.status || ghostState.ghost.status === 'none') {
