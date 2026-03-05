@@ -2756,6 +2756,20 @@ async function fetchGhostAccount() {
     const data = await response.json();
     
     if (!data.result?.value) {
+      // Set status to a temporary checking state, show init page immediately
+      // with button disabled — prevents form flash before RPC check completes
+      ghostState.ghost = { status:'none', lastHeartbeat:null, intervalSeconds:365*86400, gracePeriodSeconds:30*86400, awakenedAt:null, executed:false, stakedGhost:0, pingCount:0, vaultBalance:0, recoveryWallet:null, beneficiaries:[], wholeVaultAction:0, displayName:null, imageUri:null };
+      ghostState.recoveryWallets = [];
+      _walletIdentityAddr = null;
+      updateDashboardUI(); // route to init page first
+      // Disable summon button and blank title while RPC check runs
+      const _summonBtn = document.getElementById('summonGhostBtn');
+      const _initTitle = document.getElementById('initTitle');
+      const _initSub = document.getElementById('initSub');
+      if (_summonBtn) { _summonBtn.disabled = true; _summonBtn.style.opacity = '0.3'; _summonBtn.textContent = '⟳ Checking wallet...'; }
+      if (_initTitle) _initTitle.textContent = 'Checking wallet...';
+      if (_initSub) _initSub.textContent = '';
+
       // No account found — check if this wallet previously abandoned before showing init page
       const _wasAbandoned = await checkWalletAbandoned(ghostState.publicKey, ghostState.ghostPda);
       if (_wasAbandoned) {
@@ -2765,8 +2779,15 @@ async function fetchGhostAccount() {
       }
       ghostState.recoveryWallets = [];
       _walletIdentityAddr = null;
-      updateDashboardUI();
-      if (!_wasAbandoned) showNotif('No ghost found. Initialize one to get started.', '');
+      if (_wasAbandoned) {
+        updateDashboardUI(); // re-render with abandoned status
+      } else {
+        // Re-enable button and restore title for clean wallets
+        if (_summonBtn) { _summonBtn.disabled = false; _summonBtn.style.opacity = '1'; _summonBtn.textContent = '👻 Summon Ghost'; }
+        if (_initTitle) _initTitle.textContent = 'Summon Your Ghost';
+        if (_initSub) _initSub.textContent = 'No ghost found for this wallet · Initialize to activate the protocol';
+        showNotif('No ghost found. Initialize one to get started.', '');
+      }
       return;
     }
     
@@ -4475,6 +4496,15 @@ document.addEventListener('visibilitychange', () => {
 document.addEventListener('DOMContentLoaded', () => {
   const lastPage = loadSession();
   if (!lastPage) return;
+  // Sync check: if localStorage cache says abandoned, set status immediately
+  // so the first render shows tombstone without waiting for RPC
+  if (ghostState.publicKey) {
+    try {
+      if (localStorage.getItem('ghostAbandoned_' + ghostState.publicKey)) {
+        ghostState.ghost = { status:'abandoned', stakedGhost:0, pingCount:0, beneficiaries:[], wholeVaultShares:[] };
+      }
+    } catch(e) {}
+  }
   const isDemo = ghostState.walletName?.includes('demo');
   const btn = document.getElementById('walletBtn');
   document.getElementById('navDashboardLink')?.classList.add('visible');
