@@ -5709,6 +5709,10 @@ function renderBeneficiaries() {
     const _resolvedSym = resolveBeneToken(ben.token);
     const _nick = getWalletNickname(ben.fullAddr||ben.recipient);
     const _tcol = tokenColor(ben.token);
+    const _vtLogoUrl = vt?.logoUrl || [...(ghostState.walletTokens||[])].find(w=>w.symbol===_resolvedSym||w.mint===ben.token)?.logoUrl || null;
+    const _tokenIconHtml = _vtLogoUrl
+      ? `<img src="${_vtLogoUrl}" style="width:18px;height:18px;border-radius:50%;object-fit:cover;flex-shrink:0;vertical-align:middle" onerror="this.style.display='none'">`
+      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,0.06);font-size:9px;flex-shrink:0">${_resolvedSym.slice(0,1)}</span>`;
     rows += `<tr style="border-bottom:1px solid rgba(102,51,255,0.08);${over?'background:rgba(255,61,90,0.04)':''}">
       <td style="color:#443366;font-family:'Share Tech Mono',monospace;font-size:11px;width:28px">${i+1}</td>
       <td style="padding:14px 10px">
@@ -5730,8 +5734,11 @@ function renderBeneficiaries() {
       </td>
       <td style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:#f0f0f8">${ben.amount.toLocaleString()}</td>
       <td>
-        <span style="font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:700;color:${_tcol};letter-spacing:0.05em;text-shadow:0 0 8px ${_tcol}66">${_resolvedSym}</span>
-        ${over ? '<span style="color:#ff3d5a;font-size:11px;margin-left:4px">⚠ over</span>' : ''}
+        <div style="display:flex;align-items:center;gap:6px">
+          ${_tokenIconHtml}
+          <span style="font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:700;color:${_tcol};letter-spacing:0.05em;text-shadow:0 0 8px ${_tcol}66">${_resolvedSym}</span>
+          ${over ? '<span style="color:#ff3d5a;font-size:11px">⚠</span>' : ''}
+        </div>
       </td>
       <td><span class="tag tag-transfer">TRANSFER</span></td>
       <td><span class="tag ${ben.executed?'tag-done':'tag-ready'}">${ben.executed?'PAID':'READY'}</span></td>
@@ -5750,6 +5757,10 @@ function renderBeneficiaries() {
       const realIdx = all.indexOf(ben);
       const _resolvedBurnSym = resolveBeneToken(ben.token);
       const _bcol = tokenColor(ben.token) || '#ff6688';
+      const _burnVt = ghostState.vaultTokens.find(v=>v.symbol===ben.token||v.mint===ben.token) || ghostState.walletTokens.find(w=>w.symbol===_resolvedBurnSym||w.mint===ben.token);
+      const _burnIconHtml = _burnVt?.logoUrl
+        ? `<img src="${_burnVt.logoUrl}" style="width:18px;height:18px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
+        : `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(255,80,80,0.1);font-size:9px;flex-shrink:0">${_resolvedBurnSym.slice(0,1)}</span>`;
       rows += `<tr style="background:rgba(255,40,40,0.03);border-bottom:1px solid rgba(255,61,90,0.07)">
         <td style="width:28px"><span style="font-size:14px;filter:drop-shadow(0 0 4px rgba(255,80,80,0.6))">🔥</span></td>
         <td style="padding:14px 10px">
@@ -5760,7 +5771,10 @@ function renderBeneficiaries() {
         </td>
         <td style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:#ff6688">${ben.amount.toLocaleString()}</td>
         <td>
-          <span style="font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:700;color:#ff6688;letter-spacing:0.05em;text-shadow:0 0 8px rgba(255,80,80,0.5)">${_resolvedBurnSym}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            ${_burnIconHtml}
+            <span style="font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:700;color:#ff6688;letter-spacing:0.05em;text-shadow:0 0 8px rgba(255,80,80,0.5)">${_resolvedBurnSym}</span>
+          </div>
         </td>
         <td><span class="tag tag-burn">BURN</span></td>
         <td><span class="tag ${ben.executed?'tag-done':'tag-ready'}">${ben.executed?'DONE':'READY'}</span></td>
