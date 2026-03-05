@@ -8470,7 +8470,7 @@ showNotif('Batch failed [' + syms + ']: ' + (err.message || err), 'error');
 }
 for (const t of solTokens) {
 try {
-const SOL_FEE_RESERVE = 0.01; // always leave 0.01 SOL for tx fees
+const SOL_FEE_RESERVE = 0.05; // leave 0.05 SOL: covers wSOL rent (~0.002) + fees for wrap/deposit/withdraw/beneficiary txs
 const rawBalance = t.balance;
 const amount = Math.max(0, rawBalance - SOL_FEE_RESERVE);
 if (amount <= 0) { showNotif('⚠️ Not enough SOL to deposit after reserving 0.01 for fees', 'error'); continue; }
@@ -8734,7 +8734,9 @@ function fillMaxDeposit() {
   if (!sel) return;
   // Always read balance from the live walletTokens array (not the stale selection copy)
   const live = ghostState.walletTokens.find(w => w.mint === sel.mint) || sel;
-  const bal = live.balance || 0;
+  const isSOL = live.mint === 'native' || live.mint === 'So11111111111111111111111111111111111111112';
+  const SOL_RESERVE = 0.05; // wSOL rent + headroom for wrap/withdraw/beneficiary txs
+  const bal = Math.max(0, isSOL ? (live.balance || 0) - SOL_RESERVE : (live.balance || 0));
   document.getElementById('depositAmt').value = bal.toString();
   document.getElementById('depositAmtDisplay').value = bal.toLocaleString(undefined, {maximumFractionDigits: 9});
 }
@@ -9090,11 +9092,12 @@ async function dbDeposit() {
     // Phase 2: For SOL — wrap native SOL to wSOL in separate tx
     let effectiveOwnerAta = ownerAta;
     if (isSOL) {
-      const SOL_FEE_RESERVE_SINGLE = 0.01;
+      // Reserve 0.05 SOL: wSOL account rent (~0.002) + fees for wrap, deposit, withdraw, beneficiary txs
+      const SOL_FEE_RESERVE_SINGLE = 0.05;
       if (amount > t.balance - SOL_FEE_RESERVE_SINGLE) {
         const maxSol = Math.max(0, t.balance - SOL_FEE_RESERVE_SINGLE);
-        if (maxSol <= 0) throw new Error('Not enough SOL after reserving 0.01 for fees');
-        showNotif('⚠️ Reduced deposit to ' + maxSol.toFixed(4) + ' SOL (reserving 0.01 for fees)', '');
+        if (maxSol <= 0) throw new Error('Not enough SOL after reserving 0.05 for fees');
+        showNotif('⚠️ Capped at ' + maxSol.toFixed(4) + ' SOL (reserving 0.05 for tx fees)', '');
       }
       const safeAmount = Math.min(amount, Math.max(0, t.balance - SOL_FEE_RESERVE_SINGLE));
       const lamports = Math.round(safeAmount * 1e9);
