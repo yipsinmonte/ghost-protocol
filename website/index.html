@@ -3175,6 +3175,7 @@ async function fetchOnChainHistory() {
       // (matchHex/inner are scoped inside labelFromTx, not available here)
       let _entryTokens = null;
       let _entryMint = null;
+      let _entryAmount = null;
       try {
         const _WV_DISCS = new Set(['345d3184612eda0d','59da97947864b51c']);
         const _wsolM = 'So11111111111111111111111111111111111111112';
@@ -3201,12 +3202,17 @@ async function fetchOnChainHistory() {
           }
           if (_tkList.length > 0) _entryTokens = _tkList;
         } else {
-          // Single-token tx — grab mint from first inner SPL transfer
+          // Single-token tx — grab mint AND amount from first inner SPL transfer
           for (const _ix2 of _innerIx2) {
             const _p2 = _ix2.parsed;
             if (_p2 && (_p2.type === 'transfer' || _p2.type === 'transferChecked')) {
               const _m2 = _p2.info?.mint || '';
-              if (_m2) { _entryMint = _m2; break; }
+              if (_m2) {
+                _entryMint = _m2;
+                const _a2 = _p2.info?.tokenAmount?.uiAmountString || _p2.info?.amount;
+                if (_a2) _entryAmount = parseFloat(_a2);
+                break;
+              }
             }
           }
         }
@@ -3228,7 +3234,7 @@ async function fetchOnChainHistory() {
           if (!_entryMint && _solFallback) _entryMint = 'native';
         } catch(_e2) {}
       }
-            builtActivity.push({msg:label, tx:s.signature, ts, icon:rowIcon, _tokens: _entryTokens, _mint: _entryMint});
+            builtActivity.push({msg:label, tx:s.signature, ts, icon:rowIcon, _tokens: _entryTokens, _mint: _entryMint, _amount: _entryAmount});
       // Always record a ping entry if the tx contains a ping instruction,
       // whether it's a standalone ping or bundled with a settings update
       if (label === '\u{1F493} Heartbeat sent' || hasBundledPing) rawPings.push({ts, sig:s.signature});
@@ -5006,18 +5012,33 @@ async function renderExecutionDetail() {
         mintMap[t.mint] = { symbol: t.symbol, amount: t.balance, logoUrl: t.logoUrl || null };
       }
     }
-    // Fallback 2: walletTokens — for v1.7 executed accounts where vault was drained
-    // and vaultTokens is empty but we can at least show what was in the vault at execution
+    // Fallback 2: scan all log entries for _mint + _amount (v1.7 single-token entries)
+    // Accumulate amounts across entries so the total sent is shown correctly
     if (Object.keys(mintMap).length === 0) {
-      // Try to reconstruct from any log entries that have token info, even without _tokens array
       for (const entry of log) {
         if (entry._mint && entry._mint !== 'native') {
           if (!mintMap[entry._mint]) {
             mintMap[entry._mint] = {
-              symbol: entry._symbol || (MINT_TO_SYMBOL[entry._mint]) || entry._mint.slice(0,4)+'…'+entry._mint.slice(-4),
-              amount: entry._amount || null,
-              logoUrl: entry._logoUrl || null
+              symbol: MINT_TO_SYMBOL[entry._mint] || entry._mint.slice(0,4)+'…'+entry._mint.slice(-4),
+              amount: entry._amount != null ? entry._amount : null,
+              logoUrl: null
             };
+          } else if (entry._amount != null && mintMap[entry._mint].amount != null) {
+            // Accumulate — multiple log entries can reference the same mint
+            mintMap[entry._mint].amount = (mintMap[entry._mint].amount || 0) + entry._amount;
+          } else if (entry._amount != null) {
+            mintMap[entry._mint].amount = entry._amount;
+          }
+        }
+        // Also pick up multi-token entries (_tokens array) missed by primary scan
+        if (entry._tokens) {
+          for (const t of entry._tokens) {
+            if (!t.mint || t.mint === 'native') continue;
+            if (!mintMap[t.mint]) {
+              mintMap[t.mint] = { symbol: t.symbol, amount: t.amount, logoUrl: t.logoUrl || null };
+            } else if (t.amount != null && mintMap[t.mint].amount == null) {
+              mintMap[t.mint].amount = t.amount;
+            }
           }
         }
       }
