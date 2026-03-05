@@ -353,16 +353,19 @@
   }
   .panel-topbar.executed .panel-logo { color: #f0e0e4 !important; }
   .panel-topbar.executed .panel-logo span { color: #cc1133 !important; }
-  /* Abandoned dashboard header — cold ash, full saturation but muted hue */
+  /* Abandoned dashboard header — same bright red as executed, still usable for heartbeat check */
   .panel-topbar.abandoned {
-    background: rgba(10,5,8,0.99) !important;
-    border-bottom-color: rgba(120,55,75,0.3) !important;
+    background: rgba(18,2,6,0.99) !important;
+    border-bottom-color: rgba(220,30,55,0.4) !important;
+    box-shadow: 0 1px 16px rgba(200,20,45,0.18);
   }
-  .panel-topbar.abandoned .panel-wallet { color: #a06070 !important; }
+  .panel-topbar.abandoned .panel-wallet { color: #ff3355 !important; }
   .panel-topbar.abandoned .panel-wallet-dot {
-    background: #804055 !important; animation: none !important; box-shadow: none !important;
+    background: #ff3355 !important; animation: none !important;
+    box-shadow: 0 0 8px rgba(255,40,70,0.7) !important;
   }
-  .panel-topbar.abandoned .panel-logo span { color: #60304a !important; }
+  .panel-topbar.abandoned .panel-logo { color: #f0e0e4 !important; }
+  .panel-topbar.abandoned .panel-logo span { color: #cc1133 !important; }
 
   /* Panel body = sidebar + main */
   .panel-body {
@@ -4838,6 +4841,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch(e) {}
   }
+  // Sync hero state immediately from whatever we know before RPC call
+  // (will be called again after fetchGhostAccount with definitive state)
+  if (typeof updateHeroGhostState === 'function') updateHeroGhostState();
   const isDemo = ghostState.walletName?.includes('demo');
   const btn = document.getElementById('walletBtn');
   document.getElementById('navDashboardLink')?.classList.add('visible');
@@ -4881,6 +4887,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try { await fetchGhostAccount(); } catch(e) {}
         // Re-run UI update after chain state is known — locks/unlocks nav correctly
         updateDashboardUI();
+        updateHeroGhostState(); // always sync marketing page hero regardless of dashboard state
       }
     }
 
