@@ -481,27 +481,12 @@
     100%{transform:translate(-50%,-50%) scale(1)}
   }
   .hb-heart-svg {
-    width: 36px; height: 36px;
-    position: relative;
+    font-size: 30px;
+    line-height: 1;
+    color: #ff2255;
     animation: heart-pulse 1.8s ease-in-out infinite;
-    filter: drop-shadow(0 0 7px rgba(255,30,80,0.95)) drop-shadow(0 0 16px rgba(255,30,80,0.55));
-  }
-  .hb-heart-svg::before, .hb-heart-svg::after {
-    content: '';
-    position: absolute;
-    width: 18px; height: 18px;
-    background: linear-gradient(135deg, #ff3366, #cc0033);
-    border-radius: 50% 50% 0 0;
-  }
-  .hb-heart-svg::before {
-    left: 9px; top: 2px;
-    transform: rotate(-45deg);
-    transform-origin: 0% 100%;
-  }
-  .hb-heart-svg::after {
-    left: 9px; top: 2px;
-    transform: rotate(45deg);
-    transform-origin: 100% 100%;
+    filter: drop-shadow(0 0 8px rgba(255,30,80,0.95)) drop-shadow(0 0 18px rgba(255,30,80,0.5));
+    user-select: none;
   }
   @keyframes heart-pulse {
     0%,100%{transform:scale(1);filter:drop-shadow(0 0 5px rgba(255,30,80,0.8)) drop-shadow(0 0 12px rgba(255,30,80,0.4))}
@@ -1049,7 +1034,7 @@
               <div class="hb-orb-ring"></div>
               <div class="hb-orb-ring"></div>
               <div class="hb-orb-center" id="hbOrb" onclick="sendPing()" title="Click to ping" style="width:72px;height:72px">
-                <div class="hb-heart-svg"></div>
+                <div class="hb-heart-svg">♥</div>
               </div>
             </div>
             <div class="hb-orb-label"><strong id="dbCountdown">—</strong>until deadline</div>
@@ -1261,7 +1246,7 @@
           <button onclick="sendPing()" id="hbSendBtn" style="position:relative;display:inline-flex;align-items:center;justify-content:center;gap:14px;background:linear-gradient(135deg,rgba(180,0,60,0.15),rgba(120,0,40,0.25));border:1px solid rgba(220,30,80,0.4);color:#fff;padding:18px 48px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;letter-spacing:0.08em;text-transform:uppercase;transition:all 0.3s;overflow:hidden"
             onmouseover="this.style.borderColor='rgba(255,60,100,0.7)';this.style.background='linear-gradient(135deg,rgba(220,0,70,0.25),rgba(160,0,50,0.35))';this.style.boxShadow='0 0 32px rgba(255,30,80,0.3),0 0 64px rgba(255,30,80,0.1)'"
             onmouseout="this.style.borderColor='rgba(220,30,80,0.4)';this.style.background='linear-gradient(135deg,rgba(180,0,60,0.15),rgba(120,0,40,0.25))';this.style.boxShadow=''">
-            <div class="hb-heart-svg" style="width:28px;height:28px;flex-shrink:0"></div>
+            <div class="hb-heart-svg" style="font-size:22px;flex-shrink:0">♥</div>
             Send Heartbeat
           </button>
 
