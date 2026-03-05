@@ -4574,6 +4574,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ─── Dashboard navigation ───────────────────────────────────────
 function dbShowPage(pageId, navEl) {
+  // Abandoned wallets are locked to the tombstone — no navigation allowed except watcher
+  if (ghostState.ghost.status === 'abandoned' && pageId !== 'watcher') {
+    _updateInitPageForAbandoned();
+    document.querySelectorAll('.db-page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.db-nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('db-page-init')?.classList.add('active');
+    document.getElementById('nav-overview')?.classList.add('active');
+    return;
+  }
   // When opening beneficiaries page, always refresh vault state for accurate pickers
   if (pageId === 'beneficiaries' && ghostState.ghost.status !== 'none') {
     // Re-fetch vault tokens and pickers async — don't block navigation
