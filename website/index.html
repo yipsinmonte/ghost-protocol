@@ -6339,8 +6339,10 @@ async function dbAddBeneficiary(action) {
     const discriminator = [105, 214, 106, 141, 180, 166, 123, 238];
 
     // Args: recipient(32), amount(u64), token_mint(Option<Pubkey>=33), action(u8) = 74 bytes
-    // Use actual token decimals (not hardcoded 6)
-    const tokenDecimals = t.decimals ?? 6;
+    // Use actual token decimals from live vault data (not stale picker selection)
+    const _liveVt = ghostState.vaultTokens.find(v => v.mint === t.mint) || t;
+    const tokenDecimals = _liveVt.decimals ?? t.decimals ?? 6;
+    console.log('[Ghost] Bene add:', t.symbol, 'amount:', amount, 'decimals:', tokenDecimals, 'raw:', BigInt(Math.round(amount * Math.pow(10, tokenDecimals))).toString());
     const amountRaw = BigInt(Math.round(amount * Math.pow(10, tokenDecimals)));
     const buf = new ArrayBuffer(32 + 8 + 33 + 1);
     const dv = new DataView(buf);
