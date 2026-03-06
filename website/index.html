@@ -7230,17 +7230,29 @@ async function guardianWithdrawAll(ownerAddress) {
         if (rawAmount <= 0n) continue;
         const mintPk = new PublicKey(info.mint);
         const decimals = info.tokenAmount?.decimals || 0;
-        const tokenProgPk = (acct._sourceProgram === TOKEN22_PROG_STR) ? TOKEN22_PK : TOKEN_PK;
-        const isToken22 = acct._sourceProgram === TOKEN22_PROG_STR;
+        // Detect token program from mint account owner (most reliable method)
+        let tokenProgStr = TOKEN_PROG_STR;
+        try {
+          const mintAcct = await connection.getAccountInfo(mintPk);
+          if (mintAcct?.owner) tokenProgStr = mintAcct.owner.toBase58();
+        } catch(_) {}
+        const tokenProgPk = new PublicKey(tokenProgStr);
+        const isToken22 = tokenProgStr === TOKEN22_PROG_STR;
         const feeBps = isToken22 ? await getTransferFeeBps(info.mint) : 0;
         const vaultTokenAcct = new PublicKey(acct.pubkey);
+        console.log('[Ghost] Guardian prefetch:', info.mint?.slice(0,8), 'tokenProg:', tokenProgStr.slice(0,8), 'vaultAcct:', acct.pubkey?.slice?.(0,8), 'amount:', rawAmount.toString());
         let recipientAta;
         try {
-          const ex = await connection.getTokenAccountsByOwner(recoveryWalletPk, { mint: mintPk });
-          if (ex.value.length > 0) recipientAta = ex.value[0].pubkey;
+          // Use raw RPC to query specific token program — web3.js defaults to classic SPL only
+          const rpcRes = await fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({jsonrpc:'2.0',id:'gw_ata',method:'getTokenAccountsByOwner',
+              params:[recoveryWalletPk.toBase58(), {mint: info.mint}, {encoding:'jsonParsed'}]}) });
+          const rpcData = await rpcRes.json();
+          if (rpcData.result?.value?.length > 0) recipientAta = new PublicKey(rpcData.result.value[0].pubkey);
         } catch(_) {}
         if (!recipientAta) recipientAta = await findATAWithProg(recoveryWalletPk, mintPk, tokenProgPk);
         const ataInfo = await connection.getAccountInfo(recipientAta);
+        console.log('[Ghost] Guardian ATA:', recipientAta.toBase58?.() || recipientAta, 'exists:', !!ataInfo, 'needsCreate:', !ataInfo);
         splItems.push({ info, rawAmount, mintPk, decimals, tokenProgPk, vaultTokenAcct, recipientAta, needsAta: !ataInfo, feeBps });
       }
 
@@ -7256,8 +7268,10 @@ async function guardianWithdrawAll(ownerAddress) {
           const tx = new Transaction({ recentBlockhash: blockhash, feePayer: recoveryWalletPk });
 
           for (const item of batch) {
-            // Create recipient ATA if needed
-            if (item.needsAta) tx.add(createATAInstruction(recoveryWalletPk, item.recipientAta, recoveryWalletPk, item.mintPk, item.tokenProgPk));
+            if (item.needsAta) {
+              console.log('[Ghost] Guardian: creating ATA for', item.mintPk.toBase58().slice(0,8), 'prog:', item.tokenProgPk.toBase58().slice(0,8));
+              tx.add(createATAInstruction(recoveryWalletPk, item.recipientAta, recoveryWalletPk, item.mintPk, item.tokenProgPk));
+            }
 
             // Adjust amount for Token-2022 transfer fee
             let adjAmount = item.rawAmount;
@@ -7269,6 +7283,7 @@ async function guardianWithdrawAll(ownerAddress) {
             txData.set(disc, 0);
             txData.set(new Uint8Array(amtBuf), 8);
 
+            console.log('[Ghost] Guardian ix:', item.mintPk.toBase58().slice(0,8), 'vault:', item.vaultTokenAcct.toBase58().slice(0,8), 'recv:', item.recipientAta.toBase58().slice(0,8), 'prog:', item.tokenProgPk.toBase58().slice(0,8), 'amt:', adjAmount.toString());
             tx.add(new TransactionInstruction({ programId, keys: [
               { pubkey: ghostPda,             isSigner: false, isWritable: true  },
               { pubkey: ownerPk,              isSigner: false, isWritable: false },
