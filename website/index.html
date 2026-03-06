@@ -1221,7 +1221,7 @@
         <!-- BURN OPTION -->
         <div class="burn-section">
           <div class="db-form-title">🔥 Add Burn Instruction</div>
-          <div class="db-info" style="border-color:rgba(255,61,90,0.3)">Permanently destroy a token amount on execution. No recipient needed. Does not count toward beneficiary slots.</div>
+          <div class="db-info" style="border-color:rgba(255,61,90,0.3)">Permanently destroy a token on execution. Burns the <strong>entire vault balance</strong> of the selected token. Cannot be combined with transfer beneficiaries for the same token.</div>
           <div class="db-form-group" style="margin-bottom:14px">
             <label>Token to Burn (from vault)</label>
             <div class="token-picker" id="burnPicker">
@@ -1237,11 +1237,10 @@
             </div>
           </div>
           <div class="db-form-group" style="margin-bottom:14px">
-            <label>Amount to Burn</label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="number" id="burnAmount" placeholder="0" style="flex:1">
-              <button class="db-btn db-btn-outline" style="padding:7px 10px;font-size:11px;flex-shrink:0" onclick="(function(){const t=ghostState.selectedTokens.burn;if(t&&t.mint!=='whole-vault-burn'){const vt=ghostState.vaultTokens.find(v=>v.mint===t.mint||v.symbol===t.symbol);if(vt){var dec=vt.decimals||6;var sel=ghostState.selectedTokens.burn;var tBal=sel?sel.balance:vt.balance;var vtF=Math.floor(vt.balance*Math.pow(10,dec))/Math.pow(10,dec);var tF=Math.floor(tBal*Math.pow(10,dec))/Math.pow(10,dec);document.getElementById('burnAmount').value=Math.min(vtF,tF);}}})()" type="button">MAX</button>
+            <div id="burnAmountNote" style="padding:10px 14px;background:rgba(255,61,90,0.06);border:1px solid rgba(255,61,90,0.2);border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:11px;color:#ff8899;line-height:1.5">
+              🔥 Burns <strong>100%</strong> of this token's vault balance on execution. The contract burns the entire token account — partial burns are not supported.
             </div>
+            <input type="hidden" id="burnAmount" value="0">
           </div>
           <button class="db-btn db-btn-danger" id="addBurnBtn" onclick="dbAddBeneficiary('burn')">🔥 Add Burn Instruction</button>
         </div>
@@ -6270,19 +6269,60 @@ async function dbAddBeneficiary(action) {
   }
 
   const amountInput = isBurn ? 'burnAmount' : 'newAmount';
-  const amount = parseFloat(document.getElementById(amountInput).value);
-  if (!amount || amount <= 0) { showNotif('Enter a valid amount', 'error'); return; }
+  // For burn: auto-use full vault balance (contract burns 100% of token account)
+  let amount;
+  if (isBurn) {
+    const vaultToken = ghostState.vaultTokens.find(v => v.symbol === t.symbol || v.mint === t.mint);
+    if (!vaultToken) { showNotif('⚠️ ' + t.symbol + ' is not in your vault', 'error'); return; }
+    amount = vaultToken.balance;
+    // Block if this token already has transfer beneficiaries — burn would destroy their allocation
+    const hasTransfers = ghostState.ghost.beneficiaries.some(b => 
+      (b.token === t.symbol || b.mint === t.mint) && b.action !== 'burn' && b.action !== 'whole-vault-share'
+    );
+    if (hasTransfers) {
+      showNotif('⚠️ ' + t.symbol + ' already has transfer beneficiaries — burn would destroy their allocation. Remove transfers first.', 'error');
+      return;
+    }
+    // Block if this token already has a burn instruction
+    const hasBurn = ghostState.ghost.beneficiaries.some(b => 
+      (b.token === t.symbol || b.mint === t.mint) && b.action === 'burn'
+    );
+    if (hasBurn) {
+      showNotif('⚠️ ' + t.symbol + ' already has a burn instruction', 'error');
+      return;
+    }
+  } else {
+    amount = parseFloat(document.getElementById(amountInput).value);
+    if (!amount || amount <= 0) { showNotif('Enter a valid amount', 'error'); return; }
+  }
+
+  // Block if ghost is awakened — contract rejects beneficiary changes during awakening
+  if (ghostState.ghost.status === 'awakened' || ghostState.ghost.awakened) {
+    showNotif('⚠️ Ghost is awakened — cancel the awakening (send a ping) before modifying beneficiaries', 'error');
+    return;
+  }
 
   // Validate against vault balance
   const vaultToken = ghostState.vaultTokens.find(v => v.symbol === t.symbol || v.mint === t.mint);
   if (!vaultToken) { showNotif('⚠️ ' + t.symbol + ' is not in your vault', 'error'); return; }
-  const alreadyAssigned = ghostState.ghost.beneficiaries
-    .filter(b => b.token === t.symbol)
-    .reduce((sum, b) => sum + b.amount, 0);
-  const remaining = vaultToken.balance - alreadyAssigned;
-  if (amount > remaining) {
-    showNotif('⚠️ Only ' + remaining.toLocaleString() + ' ' + t.symbol + ' available to assign', 'error');
-    return;
+
+  if (!isBurn) {
+    // Block transfer if this token already has a burn instruction — burn destroys everything
+    const tokenHasBurn = ghostState.ghost.beneficiaries.some(b => 
+      (b.token === t.symbol || b.mint === t.mint) && b.action === 'burn'
+    );
+    if (tokenHasBurn) {
+      showNotif('⚠️ ' + t.symbol + ' has a burn instruction — remove it before assigning transfer beneficiaries', 'error');
+      return;
+    }
+    const alreadyAssigned = ghostState.ghost.beneficiaries
+      .filter(b => b.token === t.symbol && b.action !== 'whole-vault-share')
+      .reduce((sum, b) => sum + b.amount, 0);
+    const remaining = vaultToken.balance - alreadyAssigned;
+    if (amount > remaining) {
+      showNotif('⚠️ Only ' + remaining.toLocaleString() + ' ' + t.symbol + ' available to assign', 'error');
+      return;
+    }
   }
 
   let recipient = '(burn)';
@@ -6411,7 +6451,14 @@ async function dbAddBeneficiary(action) {
     showNotif(isBurn ? '🔥 Burn instruction confirmed!' : ('✅ Beneficiary added on-chain!' + mergeNote2), 'green');
   } catch(err) {
     console.error('Add beneficiary error:', err);
-    showNotif('Failed: ' + (err.message || err), 'error');
+    const errMsg = err.message || String(err);
+    if (errMsg.includes('Custom":6003') || errMsg.includes('Custom:6003')) {
+      showNotif('⚠️ Ghost is awakened — send a heartbeat ping first, then retry', 'error');
+    } else if (errMsg.includes('Custom":6001') || errMsg.includes('Custom:6001')) {
+      showNotif('⚠️ Amount exceeds vault balance', 'error');
+    } else {
+      showNotif('Failed: ' + errMsg, 'error');
+    }
   }
 }
 
@@ -7686,12 +7733,15 @@ function selectToken(pickerId, mintOrIdx) {
   }
   if (pickerId === 'burn') {
     const isWholeBurn = t.mint === '__whole_vault_burn__';
-    const burnAmtRow = document.getElementById('burnAmount');
-    const burnAmtLabel = burnAmtRow?.previousElementSibling;
-    if (burnAmtRow) burnAmtRow.style.display = isWholeBurn ? 'none' : '';
-    if (burnAmtLabel) burnAmtLabel.style.display = isWholeBurn ? 'none' : '';
+    const burnNote = document.getElementById('burnAmountNote');
+    if (burnNote) burnNote.style.display = isWholeBurn ? 'none' : '';
     const addBurnBtn = document.getElementById('addBurnBtn');
-    if (addBurnBtn) addBurnBtn.textContent = isWholeBurn ? '🔥 Set Burn Entire Vault' : '🔥 Add Burn Instruction';
+    if (addBurnBtn) addBurnBtn.textContent = isWholeBurn ? '🔥 Set Burn Entire Vault' : '🔥 Burn 100% of ' + resolveDisplaySym(t);
+    // Auto-set hidden amount to full vault balance
+    if (!isWholeBurn) {
+      const vt = ghostState.vaultTokens.find(v => v.mint === t.mint);
+      if (vt) document.getElementById('burnAmount').value = vt.balance;
+    }
   }
 }
 
