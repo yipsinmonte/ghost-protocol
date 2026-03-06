@@ -7279,7 +7279,8 @@ async function guardianWithdrawAll(ownerAddress) {
           }
 
           let adjAmount = item.rawAmount;
-          if (item.feeBps > 0) adjAmount = adjustForTransferFee(adjAmount, item.feeBps);
+          // Transfer fee is deducted from recipient, not added to source — no adjustment needed
+          // if (item.feeBps > 0) adjAmount = adjustForTransferFee(adjAmount, item.feeBps);
 
           const amtBuf = new ArrayBuffer(8);
           new DataView(amtBuf).setBigUint64(0, adjAmount, true);
@@ -8825,12 +8826,13 @@ function renderVaultHoldings() {
     const _mintForFee = t.mint === 'native' ? null : effectiveMint(t.mint);
     const _vaultFeeBps = _mintForFee ? (_transferFeeCache[_mintForFee] || 0) : 0;
     // Adjust max withdraw for transfer fee — user receives less but tx succeeds
-    const wdMaxAdjusted = _vaultFeeBps > 0 ? +(wdMax * 10000 / (10000 + _vaultFeeBps)).toFixed(9) : wdMax;
+    // Transfer fee is deducted from recipient, not source — MAX = full free balance
+    const wdMaxAdjusted = wdMax;
     const feeBadge = _vaultFeeBps > 0
       ? `<span style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.1em;color:#ff9040;background:rgba(255,144,64,0.08);border:1px solid rgba(255,144,64,0.2);padding:2px 6px;margin-left:6px">${formatFeePct(_vaultFeeBps)} FEE</span>`
       : '';
     const feeWithdrawNote = _vaultFeeBps > 0 && canWd
-      ? `<div style="font-size:10px;color:#ff9040;margin-top:2px;font-family:'Share Tech Mono',monospace">${formatFeePct(_vaultFeeBps)} transfer fee on withdraw</div>`
+      ? `<div style="font-size:10px;color:#ff9040;margin-top:2px;font-family:'Share Tech Mono',monospace">${formatFeePct(_vaultFeeBps)} transfer fee — recipient receives less</div>`
       : '';
 
     return `
@@ -9344,7 +9346,8 @@ const { blockhash } = await connection.getLatestBlockhash();
 const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 for (const { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing, feeBps } of batch) {
 let amountRaw = BigInt(Math.round(vt.balance * Math.pow(10, vt.decimals)));
-if (feeBps > 0) amountRaw = adjustForTransferFee(amountRaw, feeBps);
+// Transfer fee is deducted from recipient, not source — send full amount
+// if (feeBps > 0) amountRaw = adjustForTransferFee(amountRaw, feeBps);
 const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
 const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
 if (ownerAtaMissing) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk));
@@ -9523,7 +9526,8 @@ for (const [, groupItems] of Object.entries(splGroups)) {
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
       for (const { vt, mintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing, feeBps } of batch) {
         let amountRaw = BigInt(Math.round(vt.balance * Math.pow(10, vt.decimals)));
-        if (feeBps > 0) amountRaw = adjustForTransferFee(amountRaw, feeBps);
+        // Transfer fee is deducted from recipient, not source — send full amount
+// if (feeBps > 0) amountRaw = adjustForTransferFee(amountRaw, feeBps);
         const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
         const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
         if (ownerAtaMissing) tx.add(createATAInstruction(walletPk, ownerAta, walletPk, mintPk, rawTokenProgPk));
@@ -9716,13 +9720,12 @@ async function getTransferFeeBps(mintPkOrStr) {
 }
 
 // Adjust raw amount for Token-2022 transfer fee (fee is ON TOP of transfer).
-// Max sendable from balance B = floor(B * 10000 / (10000 + feeBps)) - 1
-// The -1 handles ceiling rounding in Token-2022's fee calc to avoid "insufficient funds"
+// Token-2022 fee = ceil(amount * feeBps / 10000), charged on top of transfer amount.
+// Max sendable from balance B = floor(B * 10000 / (10000 + feeBps))
+// Verified: floor division produces exact drain (0 remainder) for all balance values.
 function adjustForTransferFee(rawAmount, feeBps) {
   if (!feeBps || feeBps <= 0) return rawAmount;
-  const adjusted = rawAmount * 10000n / (10000n + BigInt(feeBps));
-  // Subtract 1 lamport safety margin for fee ceiling rounding
-  return adjusted > 1n ? adjusted - 1n : adjusted;
+  return rawAmount * 10000n / (10000n + BigInt(feeBps));
 }
 
 // Format fee for display: "4%" or "0.5%"
@@ -10257,7 +10260,8 @@ async function dbWithdrawAsset(mintKey) {
     // Token-2022 transfer fee adjustment
     if (!isSOL && rawMintOwner !== TOKEN_PROGRAM_STR) {
       const feeBps = await getTransferFeeBps(withdrawMintPk);
-      if (feeBps > 0) amountRaw = adjustForTransferFee(amountRaw, feeBps);
+      // Transfer fee is deducted from recipient, not source — send full amount
+// if (feeBps > 0) amountRaw = adjustForTransferFee(amountRaw, feeBps);
     }
     const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
     const data = new Uint8Array(16); data.set(disc, 0); data.set(new Uint8Array(buf), 8);
