@@ -1240,7 +1240,7 @@
             <label>Amount to Burn</label>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="number" id="burnAmount" placeholder="0" style="flex:1">
-              <button class="db-btn db-btn-outline" style="padding:7px 10px;font-size:11px;flex-shrink:0" onclick="(function(){const t=ghostState.selectedTokens.burn;if(t&&t.mint!=='whole-vault-burn'){const vt=ghostState.vaultTokens.find(v=>v.mint===t.mint||v.symbol===t.symbol);if(vt)document.getElementById('burnAmount').value=vt.balance;}})()" type="button">MAX</button>
+              <button class="db-btn db-btn-outline" style="padding:7px 10px;font-size:11px;flex-shrink:0" onclick="(function(){const t=ghostState.selectedTokens.burn;if(t&&t.mint!=='whole-vault-burn'){const vt=ghostState.vaultTokens.find(v=>v.mint===t.mint||v.symbol===t.symbol);if(vt){var dec=vt.decimals||6;document.getElementById('burnAmount').value=Math.floor(vt.balance*Math.pow(10,dec))/Math.pow(10,dec);}}})()" type="button">MAX</button>
             </div>
           </div>
           <button class="db-btn db-btn-danger" id="addBurnBtn" onclick="dbAddBeneficiary('burn')">🔥 Add Burn Instruction</button>
@@ -6511,8 +6511,9 @@ function updateBeneRemaining() {
   const assigned = ghostState.ghost.beneficiaries
     .filter(b => b.token === t.symbol && b.action !== 'whole-vault-share')
     .reduce((s, b) => s + b.amount, 0);
-  const rem = vt.balance - assigned;
-  lbl.textContent = '· ' + rem.toLocaleString() + ' ' + t.symbol + ' remaining';
+  const dec = vt.decimals ?? 6;
+  const rem = Math.floor((vt.balance - assigned) * Math.pow(10, dec)) / Math.pow(10, dec);
+  lbl.textContent = '· ' + rem.toLocaleString(undefined,{maximumFractionDigits:dec}) + ' ' + t.symbol + ' remaining';
   lbl.style.color = rem <= 0 ? '#ff3d5a' : 'var(--muted)';
 }
 
@@ -6524,8 +6525,13 @@ function fillMaxBene() {
   const assigned = ghostState.ghost.beneficiaries
     .filter(b => b.token === t.symbol && b.action !== 'whole-vault-share')
     .reduce((s, b) => s + b.amount, 0);
-  const rem = Math.max(0, vt.balance - assigned);
-  document.getElementById('newAmount').value = rem;
+  // Use the minimum of live vault balance and picker-displayed balance to avoid exceeding what user sees
+  const effectiveBal = Math.min(vt.balance, t.balance || vt.balance);
+  const rem = Math.max(0, effectiveBal - assigned);
+  // Round to token's decimal precision to avoid fractional artifacts
+  const dec = vt.decimals ?? 6;
+  const rounded = Math.floor(rem * Math.pow(10, dec)) / Math.pow(10, dec);
+  document.getElementById('newAmount').value = rounded;
   updateBeneRemaining();
 }
 
