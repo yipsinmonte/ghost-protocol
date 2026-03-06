@@ -9252,18 +9252,33 @@ const disc = [180, 34, 37, 46, 156, 0, 211, 238];
 showNotif('Preparing withdrawal of ' + total + ' asset(s)...', '');
 
 // ── Sign and send each tx individually — matches deposit pattern (no Phantom warnings) ──
-// signAllTransactions triggers Phantom's "unable to predict outcome" warning even for
-// clean SPL-only txs. Individual signTransaction calls work warning-free for both
-// deposit and single withdraw, so we use the same approach here.
+// signAllTransactions triggers Phantom's "unable to predict outcome" warning.
+// Individual signTransaction works warning-free (proven by deposit + single withdraw).
 
-// SPL withdrawals — one batch per tx, sign individually
+// SPL prefetch
+const splMeta2 = await Promise.all(splTokens.map(async vt => {
+  const mintPk = new PublicKey(effectiveMint(vt.mint));
+  let rawMintOwner = TOKEN_PROGRAM_STR;
+  try { const ma = await connection.getAccountInfo(mintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
+  const rawTokenProgPk = new PublicKey(rawMintOwner);
+  let vaultAta;
+  try { const va = await connection.getTokenAccountsByOwner(vaultPda, { mint: mintPk }); if (va.value.length > 0) vaultAta = va.value[0].pubkey; } catch(e) {}
+  if (!vaultAta) vaultAta = await findATAWithProg(vaultPda, mintPk, rawTokenProgPk);
+  let ownerAta;
+  { const ex = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk }).catch(()=>({value:[]})); ownerAta = ex.value[0]?.pubkey || await findATA(walletPk, mintPk); }
+  const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
+  return { vt, mintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing: !ownerAtaInfo };
+}));
+
+// Group by token program
 const splGroups = {};
-for (const item of splMeta) {
+for (const item of splMeta2) {
   const prog = item.rawTokenProgPk.toBase58();
   if (!splGroups[prog]) splGroups[prog] = [];
   splGroups[prog].push(item);
 }
 
+// SPL withdrawals — sign each batch individually
 const BATCH_SIZE = 3;
 for (const [, groupItems] of Object.entries(splGroups)) {
   for (let i = 0; i < groupItems.length; i += BATCH_SIZE) {
@@ -9314,7 +9329,7 @@ for (const [, groupItems] of Object.entries(splGroups)) {
   }
 }
 
-// SOL withdrawal — keypair wSOL account, individual signTransaction
+// SOL withdrawal — individual signTransaction
 for (const vt of solTokens) {
   try {
     const amount = vt.balance;
