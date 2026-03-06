@@ -7694,17 +7694,22 @@ async function loadWalletTokens() {
     // Always use fresh on-chain balances as source of truth
     // Preserve logos/names fetched this session, but never keep stale balances
     // Exception: tokens recently deposited are protected for 15s — stale RPC would restore
-    // their balance and re-show them in the deposit dropdown
+    // their old balance and re-show them in the deposit dropdown
     const _refreshNow = Date.now();
     for (const fresh of freshTokens) {
       const existing = ghostState.walletTokens.find(t => t.mint === fresh.mint);
       if (existing) {
         if (existing._recentlyDeposited && (_refreshNow - existing._recentlyDeposited) < 15000) {
-          // Skip balance update — chain likely stale, keep the zero we set on deposit
-          // UNLESS chain shows a LOWER balance (meaning it caught up)
-          if (fresh.balance < existing.balance || existing.balance === 0) continue;
+          // Chain likely stale — keep the balance we set on deposit (0 for SPL, remainder for SOL)
+          // UNLESS chain shows a LOWER balance (meaning it caught up and confirms the deposit)
+          if (fresh.balance <= existing.balance) {
+            // Update symbol/logo but NOT balance
+            existing.symbol = fresh.symbol || existing.symbol;
+            if (fresh.logoUrl) existing.logoUrl = fresh.logoUrl;
+            continue;
+          }
         }
-        delete existing._recentlyDeposited; // clear flag once chain has caught up
+        delete existing._recentlyDeposited;
         existing.balance = fresh.balance;
         existing.symbol = fresh.symbol || existing.symbol;
         if (fresh.logoUrl) existing.logoUrl = fresh.logoUrl;
@@ -8894,7 +8899,7 @@ for (const [progStr, items] of Object.entries(splGroups)) {
           ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, _pendingDeposit: Date.now() });
         }
         t.balance = 0;
-        t._recentlyDeposited = Date.now(); // protect from stale RPC restoring balance
+        t._recentlyDeposited = Date.now();
         addActivityRow('Vault Deposit ' + amount.toLocaleString() + ' ' + t.symbol, sig.slice(0,4)+'...'+sig.slice(-4), 'deposit');
         successCount++;
       }
@@ -9035,8 +9040,18 @@ for (const t of solTokens) {
     const existing = ghostState.vaultTokens.find(v => v.mint === 'native' || v.mint === 'So11111111111111111111111111111111111111112');
     if (existing) { existing.balance += totalDepositedSOL; existing.mint = 'native'; }
     else { ghostState.vaultTokens.push({ symbol: 'SOL', mint: 'native', balance: totalDepositedSOL, decimals: 9, logoUrl: null, _pendingDeposit: Date.now() }); }
-    t.balance = 0;
-    t._recentlyDeposited = Date.now();
+    // SOL always has a remainder (fees + rent reserve). Re-fetch live balance post-deposit
+    // to show accurate remainder in dropdown instead of zeroing it out
+    let _postDepositSOL = 0;
+    try {
+      const _postRes = await fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({jsonrpc:'2.0',id:'solbal_post',method:'getBalance',params:[ghostState.publicKey]}) });
+      const _postData = await _postRes.json();
+      _postDepositSOL = (_postData.result?.value || 0) / 1e9;
+    } catch(_) {
+      _postDepositSOL = Math.max(0, SOL_RESERVE - 0.005); // fallback estimate
+    }
+    t.balance = _postDepositSOL;
     addActivityRow('Vault Deposit ' + totalDepositedSOL.toLocaleString() + ' SOL', depSig.slice(0,4)+'...'+depSig.slice(-4), 'deposit');
     successCount++;
   } catch(err) { console.error('SOL deposit error:', err); showNotif('SOL deposit failed: ' + (err.message || err), 'error'); }
