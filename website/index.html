@@ -8668,7 +8668,7 @@ function renderVaultHoldings() {
   }
   const depNotice = document.getElementById('depositWholeVaultNotice');
   const depRecip = document.getElementById('depositWholeVaultRecip');
-  const wvBene = ghostState.ghost.wholeVaultRecipient ? { recipient: ghostState.ghost.wholeVaultRecipient } : null;
+  const wvBene = ghostState.ghost?.wholeVaultRecipient ? { recipient: ghostState.ghost.wholeVaultRecipient } : null;
   if (depNotice) depNotice.style.display = wvBene ? 'block' : 'none';
   if (depRecip && wvBene) depRecip.textContent = wvBene.recipient;
 }
@@ -8734,25 +8734,47 @@ const splMeta = await Promise.all(splTokens.map(async t => {
 
   // Re-fetch on-chain balance so we never send more than available
   let onChainBalance = t.balance;
-  let onChainRaw = null; // raw amount string — avoids float→int rounding errors
+  let onChainRaw = null; // raw lamport string — avoids float→int rounding
+  let ownerAtaFromChain = null;
   try {
     const ownerAccts = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk });
     if (ownerAccts.value.length > 0) {
-      const parsed = ownerAccts.value[0].account?.data?.parsed?.info?.tokenAmount;
+      // Use the SAME account for both balance and pubkey — avoids mismatches from separate RPC calls
+      const acct = ownerAccts.value[0];
+      ownerAtaFromChain = acct.pubkey;
+      const parsed = acct.account?.data?.parsed?.info?.tokenAmount;
       if (parsed) {
         onChainBalance = Number(parsed.uiAmount || 0);
-        onChainRaw = parsed.amount || null; // raw lamport string e.g. "2532632"
+        onChainRaw = parsed.amount || null;
       }
     }
   } catch(_) {}
+  console.log('[Ghost] DepositAll Phase1:', t.symbol, '| onChainBalance:', onChainBalance, '| onChainRaw:', onChainRaw, '| ownerAta:', ownerAtaFromChain?.toBase58?.() || 'fallback');
   if (onChainBalance <= 0) return null; // skip — nothing actually in wallet
 
   let rawMintOwner = TOKEN_PROGRAM_STR;
   try { const ma = await connection.getAccountInfo(mintPk); rawMintOwner = ma?.owner?.toBase58() || TOKEN_PROGRAM_STR; } catch(e) {}
   const rawTokenProgPk = new PublicKey(rawMintOwner || TOKEN_PROGRAM_STR);
 
-  const ownerAta = (await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk }).catch(()=>({value:[]}))).value[0]?.pubkey
-    || await findATA(walletPk, mintPk);
+  // If getTokenAccountsByOwner returned nothing (possible if token is Token-2022 but we queried classic),
+  // try again with the detected token program
+  if (!ownerAtaFromChain && rawMintOwner !== TOKEN_PROGRAM_STR) {
+    try {
+      const ownerAccts2 = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk, programId: rawTokenProgPk });
+      if (ownerAccts2.value.length > 0) {
+        const acct = ownerAccts2.value[0];
+        ownerAtaFromChain = acct.pubkey;
+        const parsed = acct.account?.data?.parsed?.info?.tokenAmount;
+        if (parsed) {
+          onChainBalance = Number(parsed.uiAmount || 0);
+          onChainRaw = parsed.amount || null;
+        }
+        console.log('[Ghost] DepositAll Phase1 retry with', rawMintOwner.slice(0,8), ':', t.symbol, '| balance:', onChainBalance, '| raw:', onChainRaw);
+      }
+    } catch(_) {}
+  }
+
+  const ownerAta = ownerAtaFromChain || await findATAWithProg(walletPk, mintPk, rawTokenProgPk);
 
   // Check for existing vault token account first
   let vaultAta;
@@ -8817,17 +8839,48 @@ for (const [progStr, items] of Object.entries(splGroups)) {
       const { blockhash } = await connection.getLatestBlockhash();
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: walletPk });
 
-      for (const { t, mintPk, rawTokenProgPk, ownerAta, vaultAta, onChainBalance, onChainRaw } of batch) {
-        // Use raw amount string directly from chain when available — avoids float rounding errors
-        // that can produce an amount 1 lamport above actual balance, causing TransferChecked to fail
-        const amountRaw = onChainRaw ? BigInt(onChainRaw) : BigInt(Math.round(onChainBalance * Math.pow(10, t.decimals)));
+      for (const item of batch) {
+        const { t, mintPk, rawTokenProgPk, ownerAta, vaultAta, onChainBalance, onChainRaw } = item;
+        // DEFENSIVE: Re-fetch the actual raw balance from the ownerAta account RIGHT NOW
+        // because Phase 2 vault account creation (and earlier batch txs) may have caused
+        // RPC state to update, and the balance captured in Phase 1 may be stale
+        let finalRaw = onChainRaw;
+        try {
+          const freshAcct = await connection.getAccountInfo(ownerAta, { encoding: 'jsonParsed' });
+          const freshParsed = freshAcct?.data?.parsed?.info?.tokenAmount;
+          if (freshParsed?.amount) {
+            finalRaw = freshParsed.amount;
+            console.log('[Ghost] DepositAll Phase3 re-fetch:', t.symbol, '| ownerAta:', ownerAta.toBase58(), '| freshRaw:', finalRaw, '| oldRaw:', onChainRaw);
+          } else {
+            // If jsonParsed failed, try getTokenAccountsByOwner as fallback
+            const freshAccts = await connection.getTokenAccountsByOwner(walletPk, { mint: mintPk });
+            for (const fa of freshAccts.value) {
+              const fp = fa.account?.data?.parsed?.info?.tokenAmount;
+              if (fp?.amount && BigInt(fp.amount) > 0n) {
+                finalRaw = fp.amount;
+                // Also fix ownerAta if it was pointing to wrong account
+                if (fa.pubkey.toBase58() !== ownerAta.toBase58()) {
+                  console.warn('[Ghost] DepositAll Phase3: ownerAta MISMATCH! Stored:', ownerAta.toBase58(), 'Actual:', fa.pubkey.toBase58());
+                  item.ownerAta = fa.pubkey; // fix it
+                }
+                break;
+              }
+            }
+            console.log('[Ghost] DepositAll Phase3 fallback re-fetch:', t.symbol, '| finalRaw:', finalRaw);
+          }
+        } catch(refetchErr) {
+          console.warn('[Ghost] DepositAll Phase3 re-fetch failed for', t.symbol, refetchErr);
+        }
+        const amountRaw = finalRaw ? BigInt(finalRaw) : BigInt(Math.round(onChainBalance * Math.pow(10, t.decimals)));
+        if (amountRaw <= 0n) { console.warn('[Ghost] DepositAll Phase3: skipping', t.symbol, '— zero balance'); continue; }
+        console.log('[Ghost] DepositAll Phase3:', t.symbol, '| amountRaw:', amountRaw.toString(), '| finalRaw:', finalRaw, '| ownerAta:', (item.ownerAta || ownerAta).toBase58(), '| vaultAta:', vaultAta.toBase58(), '| tokenProg:', rawTokenProgPk.toBase58());
         const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, amountRaw, true);
         const data = new Uint8Array(16); data.set(depositDisc, 0); data.set(new Uint8Array(buf), 8);
         tx.add(new TransactionInstruction({ programId, keys: [
           { pubkey: ghostPda,       isSigner: false, isWritable: false },
           { pubkey: walletPk,       isSigner: true,  isWritable: true  },
           { pubkey: mintPk,         isSigner: false, isWritable: false },
-          { pubkey: ownerAta,       isSigner: false, isWritable: true  },
+          { pubkey: item.ownerAta || ownerAta, isSigner: false, isWritable: true  },
           { pubkey: vaultAta,       isSigner: false, isWritable: true  },
           { pubkey: rawTokenProgPk, isSigner: false, isWritable: false },
         ], data }));
@@ -8849,6 +8902,11 @@ for (const [progStr, items] of Object.entries(splGroups)) {
       for (const { t, vaultAta: va, onChainBalance } of batch) {
         const amount = onChainBalance;
         const vaultMint = t.mint;
+        // Clear withdrawn-mint suppression — we just deposited this token, vault scanner
+        // should show it immediately instead of suppressing it from a previous withdrawal
+        ghostState._withdrawnMints.delete(vaultMint);
+        ghostState._withdrawnMints.delete(t.mint);
+        _saveWithdrawnMints();
         const existing = ghostState.vaultTokens.find(v => v.mint === vaultMint);
         if (existing) { existing.balance += amount; } else {
           ghostState.vaultTokens.push({ symbol: t.symbol, mint: vaultMint, balance: amount, decimals: t.decimals, logoUrl: t.logoUrl||null, _pendingDeposit: Date.now() });
@@ -8890,9 +8948,8 @@ for (const t of solTokens) {
     try {
       const ex = await connection.getTokenAccountsByOwner(vaultPda, { mint: WSOL_MINT_PK });
       if (!ex.value.length) {
-        const vaultWsolAtaCheck = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
-        const vaultWsolInfo = await connection.getAccountInfo(vaultWsolAtaCheck);
-        if (!vaultWsolInfo) vaultWsolRentReserve = wsolRent / 1e9;
+        const _vwCheck = await findATAWithProg(vaultPda, WSOL_MINT_PK, TOKEN_PROG_PK);
+        if (!(await connection.getAccountInfo(_vwCheck).catch(()=>null))) vaultWsolRentReserve = wsolRent / 1e9;
       }
     } catch(_) { vaultWsolRentReserve = wsolRent / 1e9; }
 
@@ -8989,6 +9046,9 @@ for (const t of solTokens) {
     if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
     const totalDepositedSOL = totalLamports / 1e9;
+    ghostState._withdrawnMints.delete('native');
+    ghostState._withdrawnMints.delete('So11111111111111111111111111111111111111112');
+    _saveWithdrawnMints();
     const existing = ghostState.vaultTokens.find(v => v.mint === 'native' || v.mint === 'So11111111111111111111111111111111111111112');
     if (existing) { existing.balance += totalDepositedSOL; existing.mint = 'native'; }
     else { ghostState.vaultTokens.push({ symbol: 'SOL', mint: 'native', balance: totalDepositedSOL, decimals: 9, logoUrl: null, _pendingDeposit: Date.now() }); }
@@ -9577,6 +9637,10 @@ async function dbDeposit() {
     // For SOL: store as 'native' in vaultTokens so it merges correctly with chain-fetched SOL entry
     // On-chain the vault holds a wSOL ATA but we always display/track as 'native' internally
     const vaultMint = isSOL ? 'native' : mintStr;
+    // Clear withdrawn-mint suppression — we just deposited this token
+    ghostState._withdrawnMints.delete(vaultMint);
+    if (isSOL) ghostState._withdrawnMints.delete('So11111111111111111111111111111111111111112');
+    _saveWithdrawnMints();
     const vaultSym  = isSOL ? 'SOL' : displaySym;
     const vaultLogo = isSOL ? 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png' : (t.logoUrl || null);
     const vaultName = isSOL ? 'Solana' : (t.name || null);
@@ -9749,7 +9813,7 @@ async function dbDeposit() {
     // Phase 2: For SOL — wrap native SOL to wSOL in separate tx
     let effectiveOwnerAta = ownerAta;
     if (isSOL) {
-      // Re-fetch live SOL balance — Phase 1 (vault account creation) may have consumed rent + fees
+      // Re-fetch live SOL balance — Phase 1 vault account creation may have consumed rent + fees
       let _liveBalSingle = t.balance;
       try {
         const _balResp = await fetch(RPC_URL, { method:'POST', headers:{'Content-Type':'application/json'},
