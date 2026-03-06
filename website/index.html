@@ -10776,7 +10776,7 @@ async function dbAbandonOnChain() {
     title: _isExecuted ? 'Reclaim Stake' : 'Abandon Ghost',
     message: _isExecuted
       ? `Reclaim your remaining staked $GHOST from your executed ghost.${bountyNote}\n\nBurns ${burnAmt} $GHOST (50% penalty).\nReturns ${returnAmt} $GHOST to your wallet.\nVault assets were already distributed by the protocol.\n\nCANNOT be undone.`
-      : `This permanently closes your ghost on-chain.${bountyNote}\n\nBurns ${burnAmt} $GHOST (50% of stake).\nReturns ${returnAmt} $GHOST to your wallet.\nVault assets remain in vault — withdraw them first if needed.\n\nCANNOT be undone.`,
+      : `This permanently closes your ghost on-chain.${bountyNote}\n\nBurns ${burnAmt} $GHOST (50% of stake).\nReturns ${returnAmt} $GHOST to your wallet.\nVault assets will be returned to your wallet before closing.\n\nCANNOT be undone.`,
     okLabel: _isExecuted ? 'RECLAIM STAKE' : 'ABANDON FOREVER', danger: true
   });
   if (!_ok) return;
@@ -10974,6 +10974,18 @@ async function dbAbandon(skipConfirm, onChain, wasExecuted) {
     return;
   }
 
+  // For alive abandon — also skip straight to tombstone after fly-up
+  if (onChain && !wasExecuted) {
+    ghostState.ghost = { status:'abandoned', stakedGhost:0, pingCount:0, beneficiaries:[], wholeVaultShares:[] };
+    ghostState.walletConnected = true;
+    try { localStorage.setItem('ghostAbandoned_' + ghostState.publicKey, '1'); } catch(e) {}
+    saveSession();
+    document.querySelectorAll('.db-page').forEach(p => p.classList.remove('active'));
+    document.getElementById('db-page-init')?.classList.add('active');
+    _updateInitPageForAbandoned();
+    return;
+  }
+
   // Step 4: Reset state to show "no vault" / aftermath
   const stakedAmt = ghostState.ghost.stakedGhost || 0;
   const burnedAmt = Math.floor(stakedAmt * 0.5);
@@ -11015,7 +11027,7 @@ async function dbAbandon(skipConfirm, onChain, wasExecuted) {
           ${onChain
             ? (wasExecuted
                 ? '50% of your remaining stake was burned.<br>50% was returned to your wallet.<br>Vault assets were already distributed by the protocol.'
-                : '50% of your staked $GHOST was burned.<br>50% was returned to your wallet.<br>Your vault assets remain — withdraw them via direct SPL transfer.')
+                : '50% of your staked $GHOST was burned.<br>50% was returned to your wallet.<br>Vault assets were returned to your wallet before closing.')
             : 'Your local account state has been reset.<br>Your vault assets are untouched on-chain.<br>Register a new ghost account to continue.'
           }
         </div>
