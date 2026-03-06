@@ -1058,6 +1058,16 @@
           <div class="db-progress-bar">
             <div class="db-progress-fill" id="dbProgressFill" style="width:0%"></div>
           </div>
+          <!-- Grace period bar — shown only when heartbeat expired -->
+          <div id="dbGraceBarWrap" style="display:none;margin-top:8px">
+            <div class="db-progress-header">
+              <span class="db-progress-label" style="color:#ffaa33">⚠️ Grace Period</span>
+              <span class="db-progress-val" id="dbGraceVal" style="color:#ffaa33">—</span>
+            </div>
+            <div class="db-progress-bar" style="background:rgba(255,170,51,0.08)">
+              <div class="db-progress-fill" id="dbGraceFill" style="width:0%;background:#ffaa33"></div>
+            </div>
+          </div>
         </div>
 
         <!-- VAULT OVERVIEW — shows all assets -->
@@ -5224,12 +5234,46 @@ function updateCountdown() {
   const elapsed = Date.now() - ghostState.ghost.lastHeartbeat;
   const total = ghostState.ghost.intervalSeconds * 1000;
   const pct = Math.min(100, (elapsed / total) * 100).toFixed(1);
+  const heartbeatExpired = remaining <= 0 && total > 0;
 
   const cdEl = document.getElementById('dbCountdown'); if (cdEl) cdEl.textContent = str;
   const bigEl = document.getElementById('dbBigCountdown'); if (bigEl) bigEl.textContent = str;
-  const pvEl = document.getElementById('dbProgressVal'); if (pvEl) pvEl.textContent = pct + '% elapsed';
+  const pvEl = document.getElementById('dbProgressVal');
   const fill = document.getElementById('dbProgressFill');
-  if (fill) { fill.style.width = pct + '%'; fill.className = 'db-progress-fill' + (parseFloat(pct) > 80 ? ' warn' : ''); }
+
+  if (heartbeatExpired) {
+    // Heartbeat expired — grey out the bar, show 100%
+    if (pvEl) pvEl.textContent = '100% — EXPIRED';
+    if (fill) { fill.style.width = '100%'; fill.style.background = '#555'; fill.className = 'db-progress-fill'; }
+
+    // Show grace period bar
+    const graceWrap = document.getElementById('dbGraceBarWrap');
+    const graceSeconds = ghostState.ghost.gracePeriodSeconds || ghostState.ghost.graceSeconds || 0;
+    if (graceWrap && graceSeconds > 0) {
+      graceWrap.style.display = '';
+      const graceElapsed = elapsed - total; // how long since heartbeat expired
+      const gracePct = Math.min(100, (graceElapsed / (graceSeconds * 1000)) * 100).toFixed(1);
+      const graceRemaining = Math.max(0, graceSeconds * 1000 - graceElapsed);
+      const gvEl = document.getElementById('dbGraceVal');
+      const gfEl = document.getElementById('dbGraceFill');
+      if (gvEl) gvEl.textContent = gracePct + '% — ' + formatDuration(graceRemaining) + ' left';
+      if (gfEl) { gfEl.style.width = gracePct + '%'; }
+
+      // Auto-detect awakening transition
+      if (parseFloat(gracePct) >= 100 && ghostState.ghost.status !== 'executed' && ghostState.ghost.status !== 'awakened') {
+        ghostState.ghost.status = 'awakened';
+        ghostState.ghost.awakened = true;
+        renderDashboard();
+      }
+    }
+  } else {
+    if (pvEl) pvEl.textContent = pct + '% elapsed';
+    if (fill) { fill.style.width = pct + '%'; fill.style.background = ''; fill.className = 'db-progress-fill' + (parseFloat(pct) > 80 ? ' warn' : ''); }
+    // Hide grace bar when heartbeat is active
+    const graceWrap = document.getElementById('dbGraceBarWrap');
+    if (graceWrap) graceWrap.style.display = 'none';
+  }
+
   // Also keep "last ping" label in sync
   const lastEl = document.getElementById('dbLastPing');
   if (lastEl && ghostState.ghost.lastHeartbeat) {
@@ -6750,32 +6794,92 @@ async function dbLookupSoul() {
     const now = Math.floor(Date.now() / 1000);
     const silenceSeconds = now - lastBeat;
     const remainingSeconds = Math.max(0, interval - silenceSeconds);
-    const remainingDays = Math.floor(remainingSeconds / 86400);
-    const lastPingDays = Math.floor(silenceSeconds / 86400);
+    const hbPct = interval > 0 ? Math.min(100, (silenceSeconds / interval) * 100) : 0;
+    const graceLeftSecs = awakened ? Math.max(0, grace - (silenceSeconds - interval)) : 0;
+    const gracePct = (awakened && grace > 0) ? Math.min(100, 100 - (graceLeftSecs / grace) * 100) : 0;
+
+    // Format with d/h/m
+    const _fmtT = (secs) => {
+      const d = Math.floor(secs/86400), h = Math.floor((secs%86400)/3600), m = Math.floor((secs%3600)/60);
+      if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
+      if (h > 0) return h + 'h ' + m + 'm';
+      return m + 'm';
+    };
 
     let status, statusColor, statusNote;
     if (executed) {
       status = 'EXECUTED'; statusColor = '#ff3366';
-      statusNote = '// Ghost has been executed — assets distributed';
+      statusNote = '💀 Ghost has been executed — assets distributed';
     } else if (awakened) {
       status = 'AWAKENED 👻'; statusColor = '#ffaa33';
-      statusNote = '// Grace period active — recovery wallet can still cancel';
-    } else if (silenceSeconds > interval) {
+      statusNote = '⚠️ Grace period active — recovery wallet can cancel · ' + _fmtT(graceLeftSecs) + ' remaining';
+    } else if (silenceSeconds > interval && interval > 0) {
       status = 'SILENT ⚠️'; statusColor = '#ffaa33';
-      statusNote = '// Silence detected — grace period may be active';
+      statusNote = '⚠️ Silence detected — awakening imminent';
     } else {
-      status = 'ALIVE'; statusColor = '#33ff99';
-      statusNote = '// Soul is alive (' + remainingDays + ' days remaining)';
+      status = 'ALIVE ✅'; statusColor = '#33ff99';
+      statusNote = '💓 Soul is alive — ' + _fmtT(remainingSeconds) + ' until silence detected';
     }
 
+    const hbBarColor = hbPct > 80 ? '#ff3366' : hbPct > 50 ? '#ffaa33' : '#6633ff';
+    const graceBarColor = '#ffaa33';
+
     result.innerHTML = `
-      <span style="color:#c0bce0">SOUL</span> &nbsp;${addr.slice(0,8)}...<br>
-      <span style="color:#c0bce0">GHOST PDA</span> &nbsp;${ghostPda.toString().slice(0,8)}...<br>
-      <span style="color:#c0bce0">STATUS</span> &nbsp;<span style="color:${statusColor}">${status}</span><br>
-      <span style="color:#c0bce0">LAST PING</span> &nbsp;${lastPingDays} days ago<br>
-      <span style="color:#c0bce0">INTERVAL</span> &nbsp;${Math.floor(interval/86400)} days<br>
-      <span style="color:#c0bce0">GRACE PERIOD</span> &nbsp;${Math.floor(grace/86400)} days<br>
-      <span style="color:rgba(120,80,255,0.4)">${statusNote}</span>
+      <div style="padding:4px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.2em;color:#8080a0;margin-bottom:4px">SOUL</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:14px;color:#e0ddf0">${addr.slice(0,8)}...${addr.slice(-6)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.2em;color:#8080a0;margin-bottom:4px">STATUS</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:${statusColor};letter-spacing:0.05em">${status}</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+          <div style="background:rgba(102,51,255,0.04);border:1px solid rgba(102,51,255,0.12);padding:10px 12px">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.15em;color:#8080a0;margin-bottom:4px">LAST PING</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:#e0ddf0">${_fmtT(silenceSeconds)}</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#6060a0">ago</div>
+          </div>
+          <div style="background:rgba(102,51,255,0.04);border:1px solid rgba(102,51,255,0.12);padding:10px 12px">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.15em;color:#8080a0;margin-bottom:4px">INTERVAL</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:#e0ddf0">${_fmtT(interval)}</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#6060a0">heartbeat window</div>
+          </div>
+          <div style="background:rgba(102,51,255,0.04);border:1px solid rgba(102,51,255,0.12);padding:10px 12px">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.15em;color:#8080a0;margin-bottom:4px">GRACE PERIOD</div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:#e0ddf0">${_fmtT(grace)}</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#6060a0">after silence</div>
+          </div>
+        </div>
+
+        ${!executed ? `
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:10px;color:#8080a0;margin-bottom:4px">
+            <span>Heartbeat Window</span>
+            <span style="color:${hbBarColor}">${hbPct.toFixed(1)}%</span>
+          </div>
+          <div style="height:6px;background:rgba(102,51,255,0.08);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${hbPct}%;background:${hbBarColor};border-radius:3px;transition:width 0.5s"></div>
+          </div>
+        </div>
+        ${awakened ? `
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:10px;color:#8080a0;margin-bottom:4px">
+            <span>Grace Period</span>
+            <span style="color:${graceBarColor}">${gracePct.toFixed(1)}% elapsed · ${_fmtT(graceLeftSecs)} left</span>
+          </div>
+          <div style="height:6px;background:rgba(255,170,51,0.08);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${gracePct}%;background:${graceBarColor};border-radius:3px;transition:width 0.5s"></div>
+          </div>
+        </div>` : ''}
+        ` : ''}
+
+        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:${statusColor};margin-top:12px;padding:8px 12px;background:${statusColor}12;border:1px solid ${statusColor}30;border-radius:4px">${statusNote}</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#5050a0;margin-top:8px">Ghost PDA: ${ghostPda.toString().slice(0,12)}...${ghostPda.toString().slice(-8)}</div>
+      </div>
     `;
   } catch(err) {
     result.innerHTML = '<span style="color:var(--pulse)">Error: ' + (err.message || err) + '</span>';
@@ -6937,9 +7041,21 @@ async function scanGuardianAssignments() {
         const daysLeft = Math.floor(remainingSeconds/86400);
         const statusColor = executed ? '#ff3366' : awakened ? '#ffaa33' : '#33ff99';
         const statusText = executed ? 'EXECUTED' : awakened ? '⚠️ AWAKENED' : '✅ ALIVE';
-        const graceLeft = awakened ? Math.max(0, Math.floor((grace - silenceSeconds + interval)/86400)) : 0;
+        const graceLeftSecs = awakened ? Math.max(0, grace - (silenceSeconds - interval)) : 0;
+        const graceLeft = Math.floor(graceLeftSecs/86400);
 
-        const inGrace = awakened && !executed && graceLeft > 0;
+        const inGrace = awakened && !executed && graceLeftSecs > 0;
+
+        // Format with hours/minutes
+        const _fmtDHM = (secs) => {
+          const d = Math.floor(secs/86400), h = Math.floor((secs%86400)/3600), m = Math.floor((secs%3600)/60);
+          if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
+          if (h > 0) return h + 'h ' + m + 'm';
+          return m + 'm';
+        };
+        const lastPingStr = _fmtDHM(silenceSeconds);
+        const intervalStr = _fmtDHM(interval);
+        const graceStr = awakened && !executed ? _fmtDHM(graceLeftSecs) : _fmtDHM(remainingSeconds);
 
         cards.push(`
           <div style="background:#07070f;border:1px solid ${awakened?'rgba(255,170,51,0.35)':'rgba(102,51,255,0.2)'};padding:20px 22px;margin-bottom:12px" data-owner="${ownerB58}" data-awakened="${awakened}" data-executed="${executed}">
@@ -6954,9 +7070,9 @@ async function scanGuardianAssignments() {
               </div>
             </div>
             <div style="display:flex;gap:24px;font-family:'Share Tech Mono',monospace;font-size:12px;color:#9090a8;margin-bottom:14px">
-              <span>Last ping: <span style="color:#c0bce0">${daysSince}d ago</span></span>
-              <span>Interval: <span style="color:#c0bce0">${Math.floor(interval/86400)}d</span></span>
-              ${awakened&&!executed ? `<span>Grace left: <span style="color:#ffaa33">${graceLeft}d</span></span>` : `<span>Time left: <span style="color:#c0bce0">${daysLeft}d</span></span>`}
+              <span>last ping: <span style="color:#c0bce0">${lastPingStr}</span></span>
+              <span>Interval: <span style="color:#c0bce0">${intervalStr}</span></span>
+              ${awakened&&!executed ? `<span>Grace left: <span style="color:#ffaa33">${graceStr}</span></span>` : `<span>Time left: <span style="color:#c0bce0">${graceStr}</span></span>`}
             </div>
             ${!executed ? `
             <div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid rgba(102,51,255,0.12)">
@@ -7082,6 +7198,8 @@ async function guardianWithdrawAll(ownerAddress) {
         const mintPk = new PublicKey(info.mint);
         const decimals = info.tokenAmount?.decimals || 0;
         const tokenProgPk = (acct.account?.owner === TOKEN22_PROG_STR) ? TOKEN22_PK : TOKEN_PK;
+        const isToken22 = acct.account?.owner === TOKEN22_PROG_STR;
+        const feeBps = isToken22 ? await getTransferFeeBps(info.mint) : 0;
         const vaultTokenAcct = new PublicKey(acct.pubkey);
         let recipientAta;
         try {
@@ -7090,11 +7208,11 @@ async function guardianWithdrawAll(ownerAddress) {
         } catch(_) {}
         if (!recipientAta) recipientAta = await findATAWithProg(recoveryWalletPk, mintPk, tokenProgPk);
         const ataInfo = await connection.getAccountInfo(recipientAta);
-        splItems.push({ info, rawAmount, mintPk, decimals, tokenProgPk, vaultTokenAcct, recipientAta, needsAta: !ataInfo });
+        splItems.push({ info, rawAmount, mintPk, decimals, tokenProgPk, vaultTokenAcct, recipientAta, needsAta: !ataInfo, feeBps });
       }
 
-      // Chunk into batches of up to 5 to stay within tx size limit
-      const BATCH_SIZE = 5;
+      // Chunk into batches — individual signTransaction per batch (avoids Phantom warning)
+      const BATCH_SIZE = 3;
       for (let batchStart = 0; batchStart < splItems.length; batchStart += BATCH_SIZE) {
         const batch = splItems.slice(batchStart, batchStart + BATCH_SIZE);
         const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
@@ -7108,8 +7226,12 @@ async function guardianWithdrawAll(ownerAddress) {
             // Create recipient ATA if needed
             if (item.needsAta) tx.add(createATAInstruction(recoveryWalletPk, item.recipientAta, recoveryWalletPk, item.mintPk, item.tokenProgPk));
 
+            // Adjust amount for Token-2022 transfer fee
+            let adjAmount = item.rawAmount;
+            if (item.feeBps > 0) adjAmount = adjustForTransferFee(adjAmount, item.feeBps);
+
             const amtBuf = new ArrayBuffer(8);
-            new DataView(amtBuf).setBigUint64(0, item.rawAmount, true);
+            new DataView(amtBuf).setBigUint64(0, adjAmount, true);
             const txData = new Uint8Array(16);
             txData.set(disc, 0);
             txData.set(new Uint8Array(amtBuf), 8);
@@ -7128,7 +7250,7 @@ async function guardianWithdrawAll(ownerAddress) {
 
           showNotif('Sign to withdraw ' + batch.length + ' token' + (batch.length > 1 ? 's' : '') + batchLabel + '...', '');
           const signed = await ghostState.provider.signTransaction(tx);
-          const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+          const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
           const conf = await connection.confirmTransaction(sig, 'confirmed');
           if (conf.value?.err) throw new Error('TX failed: ' + JSON.stringify(conf.value.err));
 
@@ -9535,11 +9657,13 @@ async function getTransferFeeBps(mintPkOrStr) {
 }
 
 // Adjust raw amount for Token-2022 transfer fee (fee is ON TOP of transfer).
-// Max sendable from balance B = floor(B * 10000 / (10000 + feeBps))
+// Max sendable from balance B = floor(B * 10000 / (10000 + feeBps)) - 1
+// The -1 handles ceiling rounding in Token-2022's fee calc to avoid "insufficient funds"
 function adjustForTransferFee(rawAmount, feeBps) {
   if (!feeBps || feeBps <= 0) return rawAmount;
   const adjusted = rawAmount * 10000n / (10000n + BigInt(feeBps));
-  return adjusted;
+  // Subtract 1 lamport safety margin for fee ceiling rounding
+  return adjusted > 1n ? adjusted - 1n : adjusted;
 }
 
 // Format fee for display: "4%" or "0.5%"
