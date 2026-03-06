@@ -7990,8 +7990,20 @@ async function loadWalletTokens() {
             const rawAmount = BigInt(info.tokenAmount.amount || '0');
             if (rawAmount <= 0n) continue;
             const decimals = info.tokenAmount.decimals || 0;
-            // Compute balance from raw amount to avoid floating-point rounding to zero
-            const balance = Number(rawAmount) / Math.pow(10, decimals);
+            // Token-2022 TransferFee: account balance includes withheld fees that are NOT transferable.
+            // Subtract withheldAmount to show only the actual transferable balance.
+            let withheldRaw = 0n;
+            const extensions = info.extensions;
+            if (extensions && Array.isArray(extensions)) {
+              const tfaExt = extensions.find(e => e.extension === 'transferFeeAmount');
+              if (tfaExt?.state?.withheldAmount) {
+                withheldRaw = BigInt(tfaExt.state.withheldAmount);
+              }
+            }
+            const transferableRaw = rawAmount - withheldRaw;
+            if (transferableRaw <= 0n) continue;
+            // Compute balance from transferable amount to avoid showing non-transferable withheld fees
+            const balance = Number(transferableRaw) / Math.pow(10, decimals);
             const mint = info.mint;
             // Normalise wSOL → display as SOL (same as native)
             const _isWSOL = mint === 'So11111111111111111111111111111111111111112';
