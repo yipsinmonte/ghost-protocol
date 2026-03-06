@@ -4057,6 +4057,26 @@ function updateDashboardUI() {
       const _gPrice = PRICE_CACHE[GHOST_MINT] || 0;
       const _sUsd = _gPrice > 0 ? '<br><span style="font-size:10px;color:#9090b8;font-weight:300">\u2248 $' + (_sAmt * _gPrice).toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>' : '';
       stakeEl.innerHTML = _sAmt.toLocaleString() + ' $GHOST' + _sUsd;
+      // Fetch actual on-chain balance — may be less due to executor bounties
+      if (ghostState.publicKey && _sAmt > 0) {
+        (async () => {
+          try {
+            const { PublicKey: _SPK } = solanaWeb3;
+            const _sc = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+            const [_ssv] = await _SPK.findProgramAddress(
+              [new TextEncoder().encode('stake_vault'), new _SPK(ghostState.publicKey).toBytes()],
+              new _SPK(PROGRAM_ID)
+            );
+            const _ssvBal = await _sc.getTokenAccountBalance(_ssv);
+            const _actualS = Number(_ssvBal.value.amount) / 1_000_000;
+            if (_actualS < _sAmt && _actualS > 0) {
+              const _lostS = _sAmt - _actualS;
+              const _usdS = _gPrice > 0 ? '<br><span style="font-size:10px;color:#9090b8;font-weight:300">\u2248 $' + (_actualS * _gPrice).toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>' : '';
+              stakeEl.innerHTML = _actualS.toLocaleString() + ' $GHOST' + _usdS + '<br><span style="font-size:9px;color:#ff9040">(' + _lostS.toLocaleString() + ' bounties)</span>';
+            }
+          } catch(_) {}
+        })();
+      }
     }
   }
   if (pingsEl) pingsEl.textContent = isNone ? '—' : g.pingCount;
@@ -10924,25 +10944,35 @@ async function dbAbandon(skipConfirm, onChain, wasExecuted) {
   overlay.innerHTML = `
     <div style="position:relative;text-align:center">
       ${particles}
-      <span class="ghost-fly-char">👻</span>
+      <span class="ghost-fly-char">${wasExecuted ? '💰' : '👻'}</span>
       <div id="abandonMsg" style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#a060ff;margin-top:20px;opacity:0;transition:opacity 0.6s">
-        ${onChain ? 'Ghost abandoned on-chain' : 'Account reset…'}
+        ${wasExecuted ? 'Stake reclaimed' : onChain ? 'Ghost abandoned on-chain' : 'Account reset…'}
       </div>
       <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#6050a0;margin-top:8px;opacity:0;transition:opacity 0.6s" id="abandonSub">
-        ${onChain ? '50% staked $GHOST burned · 50% returned to wallet' : 'Vault assets untouched on-chain'}
+        ${wasExecuted ? '50% burned · 50% returned to wallet' : onChain ? '50% staked $GHOST burned · 50% returned to wallet' : 'Vault assets untouched on-chain'}
       </div>
     </div>`;
   document.body.appendChild(overlay);
 
-  // Fade in the text message after 1.2s
   setTimeout(() => {
     document.getElementById('abandonMsg').style.opacity = '1';
     document.getElementById('abandonSub').style.opacity = '1';
-  }, 1200);
+  }, wasExecuted ? 600 : 1200);
 
-  // Step 3: After animation (2.8s), clean up and show aftermath
-  await new Promise(r => setTimeout(r, 2800));
+  await new Promise(r => setTimeout(r, wasExecuted ? 1800 : 2800));
   overlay.remove();
+
+  // For executed reclaim — skip the intermediate recap, go straight to tombstone
+  if (onChain && wasExecuted) {
+    ghostState.ghost = { status:'abandoned', stakedGhost:0, pingCount:0, beneficiaries:[], wholeVaultShares:[] };
+    ghostState.walletConnected = true;
+    try { localStorage.setItem('ghostAbandoned_' + ghostState.publicKey, '1'); } catch(e) {}
+    saveSession();
+    document.querySelectorAll('.db-page').forEach(p => p.classList.remove('active'));
+    document.getElementById('db-page-init')?.classList.add('active');
+    _updateInitPageForAbandoned();
+    return;
+  }
 
   // Step 4: Reset state to show "no vault" / aftermath
   const stakedAmt = ghostState.ghost.stakedGhost || 0;
