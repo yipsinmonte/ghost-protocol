@@ -113,7 +113,7 @@
   .sol-badge { background: rgba(153,69,255,0.15); border: 1px solid rgba(153,69,255,0.3); color: var(--sol); font-size: 12px; padding: 3px 10px; letter-spacing: 0.2em; }
 
   /* ─── HERO ────────────────────────────────────────────── */
-  .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 100px 40px 80px; position: relative; overflow: hidden; }
+  .hero { min-height: 92vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 0px 40px 24px; position: relative; overflow: hidden; }
   .hero-bg { position: absolute; inset: 0; background: radial-gradient(ellipse 60% 50% at 50% 60%, rgba(102,51,255,0.08) 0%, transparent 70%), radial-gradient(ellipse 30% 30% at 20% 20%, rgba(51,17,170,0.05) 0%, transparent 60%); pointer-events: none; }
   .hero-scanline { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
   .hero-scanline::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent 0%, rgba(119,68,255,0.15) 20%, rgba(153,102,255,0.3) 50%, rgba(119,68,255,0.15) 80%, transparent 100%); animation: scanline-sweep 8s ease-in-out infinite; box-shadow: 0 0 20px rgba(119,68,255,0.4); }
@@ -127,15 +127,15 @@
     10%  { opacity: 0.5; }
     100% { width: 1100px; height: 1100px; opacity: 0; transform: translate(-50%,-50%) scale(1); }
   }
-  .hero-logo { width: 120px; height: 120px; margin-bottom: 32px; animation: fade-up 1s ease both; filter: drop-shadow(0 0 30px rgba(102,51,255,0.5)); }
-  .hero-eyebrow { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.4em; color: var(--muted); text-transform: uppercase; margin-bottom: 24px; animation: fade-up 1s ease 0.1s both; }
+  .hero-logo { width: 120px; height: 120px; margin-bottom: 20px; animation: fade-up 1s ease both; filter: drop-shadow(0 0 30px rgba(102,51,255,0.5)); }
+  .hero-eyebrow { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.4em; color: var(--muted); text-transform: uppercase; margin-bottom: 16px; animation: fade-up 1s ease 0.1s both; }
   .hero-eyebrow::before { content: '◈ '; }
   .hero-eyebrow::after { content: ' ◈'; }
-  .hero-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(72px, 15vw, 160px); letter-spacing: -0.02em; line-height: 0.9; color: var(--white); margin-bottom: 8px; animation: fade-up 1s ease 0.2s both; position: relative; }
+  .hero-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(72px, 15vw, 160px); letter-spacing: -0.02em; line-height: 0.9; color: var(--white); margin-bottom: 40px; animation: fade-up 1s ease 0.2s both; position: relative; }
   .hero-title::after { content: 'GHOST'; position: absolute; inset: 0; color: transparent; -webkit-text-stroke: 1px rgba(102,51,255,0.3); transform: translate(3px, 3px); z-index: -1; }
   .hero-ticker { font-family: 'Share Tech Mono', monospace; font-size: 18px; letter-spacing: 0.3em; color: rgba(255,255,255,0.5); margin-bottom: 32px; animation: fade-up 1s ease 0.25s both; }
   .hero-sub { font-size: clamp(18px, 2.5vw, 24px); font-weight: 400; color: var(--text); max-width: 540px; margin: 0 auto 48px; animation: fade-up 1s ease 0.3s both; line-height: 1.5; }
-  .hero-actions { display: flex; flex-direction: column; align-items: center; gap: 20px; animation: fade-up 1s ease 0.4s both; margin-bottom: 64px; position: relative; z-index: 10; }
+  .hero-actions { display: flex; flex-direction: column; align-items: center; gap: 20px; animation: fade-up 1s ease 0.4s both; margin-bottom: 28px; position: relative; z-index: 10; }
   /* legacy btn-pump kept for any remaining uses */
   .btn-pump { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase; padding: 12px 28px; background: transparent; border: 1px solid rgba(119,68,255,0.35); color: var(--muted); text-decoration: none; transition: all 0.3s; display: flex; align-items: center; gap: 10px; }
   .btn-pump:hover { border-color: rgba(119,68,255,0.6); color: var(--text); }
@@ -165,7 +165,7 @@
   @keyframes hb-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
   /* ─── STATS / TICKER ──────────────────────────────────── */
-  .stats-wrap { max-width: 1100px; margin: 0 auto; }
+  .stats-wrap { max-width: 1100px; margin: 0 auto; padding-top: 0; margin-bottom: 20px; }
   .stats { display: flex; justify-content: center; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.01); }
   .stat { flex: 1; padding: 48px 36px; text-align: center; border-right: 1px solid rgba(255,255,255,0.05); position: relative; }
   .stat:last-child { border-right: none; }
@@ -179,8 +179,8 @@
   .ticker-value.down { color: #ff3d5a; }
 
   /* ─── SECTIONS ────────────────────────────────────────── */
-  section { padding: 100px 48px; max-width: 1200px; margin: 0 auto; }
-  .section-tag { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.4em; color: var(--muted); text-transform: uppercase; margin-bottom: 24px; display: block; }
+  section { padding: 70px 48px; max-width: 1200px; margin: 0 auto; }
+  .section-tag { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 0.4em; color: var(--muted); text-transform: uppercase; margin-bottom: 16px; display: block; }
   .section-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: clamp(36px, 5vw, 60px); color: var(--white); line-height: 1.1; margin-bottom: 24px; }
   .section-body { font-size: 18px; color: var(--text); max-width: 560px; line-height: 1.8; }
   .how-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: start; margin-top: 72px; }
@@ -875,6 +875,8 @@
     .section-divider { margin: 0 auto 48px; }
     .manifesto blockquote { font-size: clamp(20px, 4vw, 32px); padding: 0 10px; text-align: center; }
     .how-grid, .roadmap-grid, .actions-grid { grid-template-columns: 1fr !important; gap: 16px; }
+    .risks-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+    .risks-grid > div { padding: 20px !important; }
     .how-step h3, .road-card h3, .action-card h3 { text-align: center; }
     .how-step p, .road-card li, .action-card p { text-align: left; }
     .road-card { padding: 28px 20px; }
@@ -1936,8 +1938,6 @@
   </svg>
   <p class="hero-eyebrow">Trustless · Solana · Digital Legacy Protocol</p>
   <h1 class="hero-title" data-text="GHOST">GHOST</h1>
-  <p class="hero-ticker">$GHOST</p>
-  <p class="hero-sub">Miss your heartbeat.<br><em>Your ghost awakens.</em></p>
   <div class="hero-actions">
     <button class="btn-register" onclick="ghostState.connected ? openDashboard() : openModal()">
       <span class="btn-register-pulse"></span>
@@ -1967,7 +1967,7 @@
 </div>
 
 <!-- PRICE TICKER -->
-<div class="stats-wrap reveal">
+<div class="stats-wrap reveal" style="margin-top:-10px">
   <div class="price-ticker">
     <div class="ticker-item"><span class="ticker-label">$GHOST Price</span><span class="ticker-value up" id="price">—</span></div>
     <div class="ticker-item"><span class="ticker-label">Market Cap</span><span class="ticker-value" id="mcap">—</span></div>
@@ -2099,8 +2099,8 @@
 <section id="risks" style="max-width:900px;">
   <span class="section-tag reveal">§05 — Risks</span>
   <h2 class="section-title reveal">Important<br>disclaimers.</h2>
-  <p class="section-body reveal">$GHOST is an experimental protocol. Read before you ghost.</p>
-  <div class="reveal" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:40px">
+  <p class="section-body reveal">GHOST is an experimental protocol. Read before you ghost.</p>
+  <div class="reveal risks-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:40px">
     <div style="padding:28px;background:rgba(255,61,90,0.04);border:1px solid rgba(255,61,90,0.15)">
       <div style="font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:0.25em;color:rgba(255,96,128,0.6);margin-bottom:10px;text-transform:uppercase">Smart Contract Risk</div>
       <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#b0a8d0;line-height:1.8;margin:0">Despite auditing, smart contracts may contain vulnerabilities. Funds deposited in ghost vaults could be at risk.</p>
@@ -2118,7 +2118,7 @@
       <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#b0a8d0;line-height:1.8;margin:0">$GHOST is a volatile digital asset. Its value may go to zero. Do not invest more than you can afford to lose.</p>
     </div>
   </div>
-  <p class="reveal" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#555570;margin-top:28px;line-height:1.8;text-align:center">This does not constitute financial, legal, or investment advice. $GHOST is an experimental protocol. Participate at your own risk.</p>
+  <p class="reveal" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#555570;margin-top:28px;line-height:1.8;text-align:center">This does not constitute financial, legal, or investment advice. GHOST is an experimental protocol. Participate at your own risk.</p>
 </section>
 
 <!-- FAQ -->
