@@ -2932,12 +2932,18 @@ async function connectWallet(name) {
     }
     const pubkey = resp.publicKey.toString();
     // Sign BEFORE any UI update — cancelling sign leaves UI untouched (not connected)
-    try {
-      const authMsg = new TextEncoder().encode('Authenticate with GHOST Protocol — ' + new Date().toISOString());
-      await provider.signMessage(authMsg, 'utf8');
-    } catch(signErr) {
-      try { await provider.disconnect(); } catch(e) {}
-      throw new Error('Authentication cancelled — approve the sign request to connect.');
+    // Skip auth signature inside wallet in-app browsers — they auto-approve connect
+    // and the signMessage popup can hang inside their own browser context
+    const _isInAppBrowser = window.phantom?.solana?.isPhantom && /Phantom/i.test(navigator.userAgent)
+      || window.solflare?.isSolflare && /Solflare/i.test(navigator.userAgent);
+    if (!_isInAppBrowser) {
+      try {
+        const authMsg = new TextEncoder().encode('Authenticate with GHOST Protocol — ' + new Date().toISOString());
+        await provider.signMessage(authMsg, 'utf8');
+      } catch(signErr) {
+        try { await provider.disconnect(); } catch(e) {}
+        throw new Error('Authentication cancelled — approve the sign request to connect.');
+      }
     }
     // Sign succeeded — clear ALL old state before updating to new wallet
     ghostState.ghost = { status:'none', lastHeartbeat:null, intervalSeconds:365*86400, gracePeriodSeconds:30*86400, awakenedAt:null, executed:false, stakedGhost:0, pingCount:0, vaultBalance:0, recoveryWallet:null, beneficiaries:[], wholeVaultAction:0 };
@@ -5053,8 +5059,8 @@ async function initializeGhost() {
     return;
   }
 
-  // Demo mode
-  if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
+  // Demo mode — only if explicitly connected as demo
+  if (ghostState.walletName?.includes('demo')) {
     ghostState.ghost.status = 'alive';
     ghostState.ghost.intervalSeconds = intervalSeconds;
     ghostState.ghost.gracePeriodSeconds = graceSeconds;
@@ -5067,6 +5073,12 @@ async function initializeGhost() {
     updateDashboardUI();
     dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
+    return;
+  }
+
+  // No provider = wallet not properly connected — don't silently fall to demo
+  if (!ghostState.provider) {
+    showNotif('⚠️ Wallet not connected — please reconnect and try again.', 'error');
     return;
   }
 
@@ -5505,6 +5517,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try { await fetchGhostAccount(); } catch(e) {}
         updateDashboardUI();
         updateHeroGhostState();
+        // If ghost status is none/abandoned, updateDashboardUI already routed to init/tombstone — don't override
+        const _status = ghostState.ghost?.status;
+        if (_status === 'none' || _status === 'abandoned' || _status === 'needs-migration') return;
         // Now that status is known, navigate to saved page (or overview as fallback)
         const _navTarget = _savedPage !== 'overview' ? _savedPage : 'overview';
         const _navEl = document.getElementById('nav-' + _navTarget) || document.getElementById('nav-overview');
