@@ -2886,9 +2886,18 @@ async function connectWallet(name) {
     // Always disconnect first to force the wallet to show the approve popup
     try { await provider.disconnect(); } catch(e) {}
     // Small delay so Phantom processes the disconnect before we call connect
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 300));
     // onlyIfTrusted: false → always shows the approve popup
-    const resp = await provider.connect({ onlyIfTrusted: false });
+    let resp;
+    try {
+      resp = await provider.connect({ onlyIfTrusted: false });
+    } catch(firstErr) {
+      // Phantom mobile sometimes needs a second attempt after a failed onlyIfTrusted
+      console.warn('[Ghost] First connect attempt failed, retrying...', firstErr.message);
+      try { await provider.disconnect(); } catch(e) {}
+      await new Promise(r => setTimeout(r, 500));
+      resp = await provider.connect({ onlyIfTrusted: false });
+    }
     const pubkey = resp.publicKey.toString();
     // Sign BEFORE any UI update — cancelling sign leaves UI untouched (not connected)
     try {
@@ -5419,6 +5428,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) {
           // User hasn't approved yet or extension not available — they'll need to click connect
           ghostState.provider = null;
+          // Full cleanup so UI shows disconnected state — prevents stale connected UI
+          ghostState.connected = false;
+          ghostState._wasInDashboard = false;
+          const btn = document.getElementById('walletBtn');
+          if (btn) { btn.textContent = 'Connect Wallet'; btn.classList.remove('connected','executed','abandoned'); btn.onclick = openModal; }
+          document.getElementById('navDashboardLink')?.classList.remove('visible');
+          document.getElementById('navDisconnectBtn').style.display = 'none';
+          try { localStorage.removeItem(_sessionKey()); localStorage.removeItem('ghostLastWallet'); } catch(e2) {}
         }
       }
       // Fetch fresh ghost state from chain
