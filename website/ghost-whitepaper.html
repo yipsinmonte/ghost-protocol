@@ -563,7 +563,7 @@
         <div class="step-num">01</div>
         <div class="step-content">
           <div class="step-label">Create Vault</div>
-          <div class="step-desc">Connect your wallet. Stake $GHOST. Set your heartbeat interval and grace period. Optionally add recovery wallets. Your vault PDA is created on-chain.</div>
+          <div class="step-desc">Connect your wallet. Stake $GHOST and pay a 0.02 SOL registration fee (funds the executor bot). Set your heartbeat interval and grace period. Optionally add recovery wallets. Your vault PDA is created on-chain.</div>
         </div>
       </div>
       <div class="step">
@@ -668,9 +668,30 @@
     </table>
   </div>
 
-  <!-- 07 -->
+  <!-- 07 — Protocol Fees -->
   <div class="section">
-    <span class="section-tag">07 — Roadmap</span>
+    <span class="section-tag">07 — Protocol Fees</span>
+    <h2 class="section-title">Transparent. On-chain. Non-negotiable.</h2>
+    <p class="section-body">GHOST charges two fees — both enforced at the program level, visible on-chain, and impossible to alter without a program upgrade.</p>
+
+    <div class="subsection-title">Registration Fee</div>
+    <p class="section-body">A one-time 0.02 SOL fee is charged when initializing a ghost. This funds the executor bot's operational costs — transaction fees, token account rent, and RPC usage. The fee is sent directly to the bot operations wallet on-chain.</p>
+
+    <div class="subsection-title">Execution Fee</div>
+    <p class="section-body">A 0.5% fee is deducted from each asset transfer during execution. When your ghost executes and distributes vault assets to beneficiaries, 99.5% goes to the recipient and 0.5% goes to the protocol fee wallet. Burns are not subject to any fee — tokens are destroyed in full.</p>
+
+    <ul class="arrow-list">
+      <li>0.02 SOL — one-time registration (funds executor bot)</li>
+      <li>0.5% — per-asset execution fee on transfers only</li>
+      <li>~5% — bounty from staked $GHOST per awakening (existing)</li>
+      <li>50% — stake burn penalty on ghost abandonment (existing)</li>
+      <li>No fees on deposits, withdrawals, pings, or configuration changes</li>
+    </ul>
+  </div>
+
+  <!-- 08 -->
+  <div class="section">
+    <span class="section-tag">08 — Roadmap</span>
     <h2 class="section-title">The Path Into the Dark</h2>
 
     <div class="roadmap-rows">
@@ -742,7 +763,7 @@
 
   <!-- 08 -->
   <div class="section">
-    <span class="section-tag" style="margin-top:40px">08 — Risks</span>
+    <span class="section-tag" style="margin-top:40px">09 — Risks</span>
     <h2 class="section-title">Important Disclaimers</h2>
     <p class="section-body">GHOST is an experimental protocol. Read before you ghost.</p>
     <div class="risks-grid">
@@ -772,7 +793,7 @@
   <div class="doc-footer">
     <a href="https://ghost-protocol.rip">ghost-protocol.rip</a>
     &nbsp;·&nbsp;
-    <a href="https://x.com/onchainlegacy">@onchainlegacy</a>
+    <a href="https://x.com/ghostprotocol">@ghostprotocol</a>
     &nbsp;·&nbsp;
     Solana Mainnet · 2026
   </div>
