@@ -2937,27 +2937,40 @@ async function connectWallet(name) {
   }
   try {
     showNotif('Connecting to ' + name + '...', '');
-    // Always disconnect first to force the wallet to show the approve popup
-    try { await provider.disconnect(); } catch(e) {}
-    // Small delay so Phantom processes the disconnect before we call connect
-    await new Promise(r => setTimeout(r, 300));
-    // onlyIfTrusted: false → always shows the approve popup
+
+    // Detect if we're inside a wallet's in-app browser
+    const _isInWalletBrowser = (window.phantom?.solana?.isPhantom && /Phantom/i.test(navigator.userAgent))
+      || (window.solflare?.isSolflare && /Solflare/i.test(navigator.userAgent));
+
     let resp;
-    try {
-      resp = await provider.connect({ onlyIfTrusted: false });
-    } catch(firstErr) {
-      // Phantom mobile sometimes needs a second attempt after a failed onlyIfTrusted
-      console.warn('[Ghost] First connect attempt failed, retrying...', firstErr.message);
+    if (_isInWalletBrowser) {
+      // Inside wallet app — try trusted connect first (no popup needed), fall back to untrusted
+      try {
+        resp = await provider.connect({ onlyIfTrusted: true });
+      } catch(_) {
+        // Trusted failed — try without trust requirement
+        try { await provider.disconnect(); } catch(e) {}
+        await new Promise(r => setTimeout(r, 200));
+        resp = await provider.connect();
+      }
+    } else {
+      // External browser — disconnect first to force approval popup
       try { await provider.disconnect(); } catch(e) {}
-      await new Promise(r => setTimeout(r, 500));
-      resp = await provider.connect({ onlyIfTrusted: false });
+      await new Promise(r => setTimeout(r, 300));
+      try {
+        resp = await provider.connect({ onlyIfTrusted: false });
+      } catch(firstErr) {
+        console.warn('[Ghost] First connect attempt failed, retrying...', firstErr.message);
+        try { await provider.disconnect(); } catch(e) {}
+        await new Promise(r => setTimeout(r, 500));
+        resp = await provider.connect({ onlyIfTrusted: false });
+      }
     }
     const pubkey = resp.publicKey.toString();
     // Sign BEFORE any UI update — cancelling sign leaves UI untouched (not connected)
     // Skip auth signature inside wallet in-app browsers — they auto-approve connect
     // and the signMessage popup can hang inside their own browser context
-    const _isInAppBrowser = window.phantom?.solana?.isPhantom && /Phantom/i.test(navigator.userAgent)
-      || window.solflare?.isSolflare && /Solflare/i.test(navigator.userAgent);
+    const _isInAppBrowser = _isInWalletBrowser;
     if (!_isInAppBrowser) {
       try {
         const authMsg = new TextEncoder().encode('Authenticate with GHOST Protocol — ' + new Date().toISOString());
@@ -6236,7 +6249,7 @@ async function renderActivityLog() {
     if (iconHtml) { msg = msg.replace(/^(\ud83e\ude99|\ud83d\udd25|\ud83d\udc80|\u23f0|\ud83d\udc7b|\ud83d\udc93|\ud83d\udd11|\ud83d\udccb|\u2764|\u26a0|\u2705|\u274c|\u2600|\u2b50|\u{1F493}|[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}])\ufe0f?\s*/u, ''); }
     const tdStyle = iconHtml ? ' style="display:flex;align-items:center;gap:6px"' : '';
     const iconWrap = iconHtml ? '<span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px">' + iconHtml + '</span>' : '';
-    return '<tr><td' + tdStyle + '>' + iconWrap + msg + '</td><td style="white-space:nowrap;color:#9090b8">' + timeStr + '</td><td style="white-space:nowrap"><span class="addr-short">' + short + '</span>' + cpBtn + '</td></tr>';
+    return '<tr><td' + tdStyle + '>' + iconWrap + msg + '</td><td style="white-space:nowrap;color:#9090b8">' + timeStr + '</td><td style="white-space:nowrap">' + cpBtn + '</td></tr>';
   }).join('');
 }
 
