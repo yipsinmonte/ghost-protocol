@@ -33,7 +33,7 @@ const PROGRAM_ID      = process.env.PROGRAM_ID  || '3Es13GXc4qwttE6uSgAAfi1zvBD3
 const BOT_KEYPAIR_B58 = process.env.BOT_KEYPAIR;
 const GHOST_MINT_ADDR = process.env.GHOST_MINT  || 'k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump';
 
-const POLL_INTERVAL_MS  = 5 * 60 * 1000; // 5 minutes
+const POLL_INTERVAL_MS  = 30 * 1000; // 30 seconds
 const VERIFY_DELAY_MS   = 3000;           // wait 3s after confirm before verifying
 const VERIFY_RETRY_MS   = 6000;           // retry delay if verify fails
 const VERIFY_RETRIES    = 2;              // max re-fetch attempts
@@ -76,7 +76,7 @@ console.log('   Program:', PROGRAM_ID);
 console.log('   Bot wallet:', botKp.publicKey.toBase58());
 console.log('   RPC (tx):', RPC_URL);
 console.log('   RPC (gPA):', GPA_RPC_URL);
-console.log('   Polling every', POLL_INTERVAL_MS / 60000, 'minutes\n');
+console.log('   Polling every', POLL_INTERVAL_MS / 1000, 'seconds\n');
 
 // ─── PDA / ATA helpers ───────────────────────────────────────────────────────
 
@@ -682,6 +682,8 @@ async function runBeneficiaries(ghost, label, now) {
     } else {
       console.log(`    [${i}] unknown action ${b.action} — skip`);
     }
+    // Rate limit protection — pause between beneficiary executions
+    if (i < ghost.beneficiaryCount - 1) await sleep(3000);
   }
 
   // ── Whole vault: enumerate ALL vault token accounts ───────────────────────
@@ -717,6 +719,8 @@ async function runBeneficiaries(ghost, label, now) {
           console.warn(`    [whole_vault] unknown action ${ghost.wholeVaultAction} for mint ${mintStr.slice(0,8)}...`);
           skipped++;
         }
+        // Rate limit protection — pause between token executions
+        await sleep(3000);
       }
 
       const action = ghost.wholeVaultAction === 1 ? 'burned' : 'transferred';
