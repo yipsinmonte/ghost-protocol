@@ -1797,9 +1797,11 @@
               </div>
               <div id="stakeWarning" style="display:none;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--red);margin-bottom:10px">⚠️ Minimum 10,000 $GHOST required to summon</div>
               <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(255,120,100,0.85);line-height:1.9;margin-top:8px;padding:12px 14px;background:rgba(255,61,90,0.04);border:1px solid rgba(255,61,90,0.12);border-radius:4px">
-                ⚠️ <strong>Stake costs:</strong><br><br>
-                · <strong>50% burn</strong> — if you abandon your ghost<br><br>
-                · <strong>~5% bounty</strong> — deducted each time your heartbeat expires and an executor bot awakens your ghost, even if you cancel afterwards<br><br>
+                ⚠️ <strong>Protocol fees:</strong><br><br>
+                · <strong>0.02 SOL</strong> — one-time registration fee (funds the executor bot)<br><br>
+                · <strong>0.5% execution fee</strong> — deducted from each asset transferred to beneficiaries on execution<br><br>
+                · <strong>50% burn</strong> — if you abandon your ghost, half your stake is burned<br><br>
+                · <strong>~5% bounty</strong> — deducted from stake each time the executor bot awakens your ghost<br><br>
                 · Keep your heartbeat alive to preserve your full stake
               </div>
             </div>
@@ -5280,8 +5282,9 @@ async function initializeGhost() {
       }
     }
 
-    // Account order matches InitializeGhost context in lib.rs:
-    // ghost, vault, ghost_stake_vault, signer_token_account, signer, token_program, system_program
+    // Account order matches InitializeGhost context in lib.rs (v1.9):
+    // ghost, vault, ghost_mint, ghost_stake_vault, signer_token_account, signer, bot_ops_wallet, token_program, system_program
+    const BOT_OPS_WALLET = new PublicKey('DEi4jzA8bsZDzEhhbf64kFXba7ABnzBNAWbMQKwKGPqC');
     const ix = new TransactionInstruction({
       programId,
       keys: [
@@ -5291,6 +5294,7 @@ async function initializeGhost() {
         { pubkey: ghostStakeVault,        isSigner: false, isWritable: true  },
         { pubkey: signerGhostAta,         isSigner: false, isWritable: true  },
         { pubkey: walletPubkey,           isSigner: true,  isWritable: true  },
+        { pubkey: BOT_OPS_WALLET,         isSigner: false, isWritable: true  },
         { pubkey: ghostTokenProgramId,    isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId,isSigner: false, isWritable: false },
       ],
