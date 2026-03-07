@@ -68,6 +68,9 @@ const tokenProgPk   = new PublicKey(TOKEN_PROG_ADDR);
 const token22ProgPk = new PublicKey(TOKEN22_PROG_ADDR);
 const assocTokenPk  = new PublicKey(ASSOC_TOKEN_ADDR);
 
+// Protocol fee wallet — receives 0.5% of executed transfers (v1.9)
+const PROTOCOL_FEE_WALLET = new PublicKey('2vzr1Wpir7BmwcCetiQ4sJC48vztMdQQ7qRYkZ8udob8');
+
 console.log('👻 GHOST Executor Bot v1.9 starting...');
 console.log('   Program:', PROGRAM_ID);
 console.log('   Bot wallet:', botKp.publicKey.toBase58());
@@ -331,6 +334,9 @@ async function buildExecuteTransfer(ghost, bIndex, bene, recipientTokenAcct) {
   const vaultAta     = deriveATA(vaultPk, mintPk, tokenProg);
   const recipientAcctKey = recipientTokenAcct || deriveATA(recipientPk, mintPk, tokenProg);
 
+  // Protocol fee token account — must exist before calling
+  const feeTokenAcct = await ensureFeeTokenAccount(mintPk, tokenProg);
+
   const data = Buffer.alloc(9);
   DISC.execute_transfer.copy(data, 0);
   data.writeUInt8(bIndex, 8);
@@ -343,8 +349,9 @@ async function buildExecuteTransfer(ghost, bIndex, bene, recipientTokenAcct) {
       { pubkey: mintPk,                      isSigner: false, isWritable: true  },
       { pubkey: vaultAta,                    isSigner: false, isWritable: true  },
       { pubkey: recipientPk,                 isSigner: false, isWritable: false },
-      { pubkey: recipientAcctKey,                isSigner: false, isWritable: true  },
+      { pubkey: recipientAcctKey,            isSigner: false, isWritable: true  },
       { pubkey: tokenProg,                   isSigner: false, isWritable: false },
+      { pubkey: feeTokenAcct,               isSigner: false, isWritable: true  },
       { pubkey: botKp.publicKey,             isSigner: true,  isWritable: false },
     ],
     data,
@@ -381,8 +388,10 @@ async function buildExecuteWholeVaultTransfer(ghost, mintPk, tokenProg, vaultAta
   const [vaultPk]    = deriveVaultPda(ownerPk);
   const recipientPk  = new PublicKey(ghost.wholeVaultRecipient);
   const vaultAtaKey  = vaultAtaPk || deriveATA(vaultPk, mintPk, tokenProg);
-  // Use provided recipient token account (may be manual keypair, not ATA)
   const recipientAcctKey = recipientTokenAcct || deriveATA(recipientPk, mintPk, tokenProg);
+
+  // Protocol fee token account — must exist before calling
+  const feeTokenAcct = await ensureFeeTokenAccount(mintPk, tokenProg);
 
   return new TransactionInstruction({
     programId: programIdPk,
@@ -392,8 +401,9 @@ async function buildExecuteWholeVaultTransfer(ghost, mintPk, tokenProg, vaultAta
       { pubkey: mintPk,                      isSigner: false, isWritable: true  },
       { pubkey: vaultAtaKey,                 isSigner: false, isWritable: true  },
       { pubkey: recipientPk,                 isSigner: false, isWritable: false },
-      { pubkey: recipientAcctKey,                isSigner: false, isWritable: true  },
+      { pubkey: recipientAcctKey,            isSigner: false, isWritable: true  },
       { pubkey: tokenProg,                   isSigner: false, isWritable: false },
+      { pubkey: feeTokenAcct,               isSigner: false, isWritable: true  },
       { pubkey: botKp.publicKey,             isSigner: true,  isWritable: false },
     ],
     data: DISC.execute_whole_vault_transfer,
@@ -427,6 +437,24 @@ async function buildExecuteWholeVaultBurn(ghost, mintPk, tokenProg, vaultAtaPk) 
 // Returns: { pubkey } of the token account, or null on failure.
 // If ATA already exists, returns { pubkey: ata }.
 // If keypair account is created, returns { pubkey: kp.publicKey, kp } (kp must sign tx).
+// ─── Ensure protocol fee wallet has a token account for this mint ────────────
+// Reuses ensureRecipientTokenAccount with PROTOCOL_FEE_WALLET as the owner.
+// Caches results per mint to avoid redundant RPC calls within a scan cycle.
+const _feeAccountCache = {};
+async function ensureFeeTokenAccount(mintPk, tokenProg) {
+  const mintStr = mintPk.toBase58();
+  if (_feeAccountCache[mintStr]) return _feeAccountCache[mintStr];
+  const result = await ensureRecipientTokenAccount(PROTOCOL_FEE_WALLET, mintPk, tokenProg);
+  if (result) {
+    _feeAccountCache[mintStr] = result.pubkey;
+    return result.pubkey;
+  }
+  // Fallback: try derived ATA directly
+  const ata = deriveATA(PROTOCOL_FEE_WALLET, mintPk, tokenProg);
+  _feeAccountCache[mintStr] = ata;
+  return ata;
+}
+
 async function ensureRecipientTokenAccount(ownerPk, mintPk, tokenProg) {
   const ata = deriveATA(ownerPk, mintPk, tokenProg);
   console.log(`    [ata] checking ${ata.toBase58().slice(0,8)}... owner=${ownerPk.toBase58().slice(0,8)}... mint=${mintPk.toBase58().slice(0,8)}...`);
