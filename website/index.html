@@ -1030,9 +1030,10 @@
     /* ── Activity table ── */
     .db-table { font-size: 11px; }
     .db-table th, .db-table td { padding: 8px 4px; }
-    .db-table th:nth-child(3), .db-table td:nth-child(3) { display: none; }
-    .db-table th:nth-child(5), .db-table td:nth-child(5) { display: none; }
-    .db-table th:first-child, .db-table td:first-child { display: none; }
+    /* Hide #, Amount, and Type columns only in beneficiary table */
+    .bene-table th:first-child, .bene-table td:first-child { display: none; }
+    .bene-table th:nth-child(3), .bene-table td:nth-child(3) { display: none; }
+    .bene-table th:nth-child(5), .bene-table td:nth-child(5) { display: none; }
     /* Prevent table overflow on mobile */
     .db-form { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .db-table { min-width: 0; table-layout: auto; }
@@ -1500,7 +1501,7 @@
           <span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#c0bce0" id="dbBSlots">0 / 10 slots</span>
         </div>
         <div class="db-form" style="padding:0;margin-bottom:20px">
-          <table class="db-table">
+          <table class="db-table bene-table">
             <thead><tr><th>#</th><th>Wallet</th><th>Amount</th><th>Token</th><th>Type</th><th>Status</th><th></th></tr></thead>
             <tbody id="dbBeneficiaryList"><tr><td colspan="7" style="text-align:center;color:#c0bce0;padding:20px">No beneficiaries yet</td></tr></tbody>
           </table>
@@ -2426,6 +2427,10 @@ function saveSession() {
     };
     localStorage.setItem(key, JSON.stringify(s));
     localStorage.setItem('ghostLastWallet', ghostState.publicKey || ghostState.walletAddress || '');
+    // Backup recoveryMeta separately so it survives session wipes
+    if (ghostState.recoveryMeta && Object.keys(ghostState.recoveryMeta).length > 0) {
+      localStorage.setItem('ghost_recoveryMeta_backup', JSON.stringify(ghostState.recoveryMeta));
+    }
   } catch(e) {}
 }
 
@@ -2466,6 +2471,13 @@ function loadSession() {
     _loadWithdrawnMints(); // restore mints withdrawn before refresh
     if (s.wasInDashboard) ghostState._wasInDashboard = s.wasInDashboard;
     if (s.recoveryMeta) ghostState.recoveryMeta = s.recoveryMeta;
+    // Restore from backup if main session had no recoveryMeta (cleared by failed reconnect)
+    if (!ghostState.recoveryMeta || Object.keys(ghostState.recoveryMeta).length === 0) {
+      try {
+        const _backup = localStorage.getItem('ghost_recoveryMeta_backup');
+        if (_backup) { ghostState.recoveryMeta = JSON.parse(_backup); }
+      } catch(_) {}
+    }
     if (s.schemaVersion) ghostState.ghost._schemaVersion = s.schemaVersion;
     if (s.confirmedMigrated) ghostState._confirmedMigrated = s.confirmedMigrated;
     return s.lastPage || 'overview';
@@ -2963,6 +2975,10 @@ async function connectWallet(name) {
     ghostState.pingHistory = [];
     ghostState.recoveryWallets = [];
     ghostState.selectedTokens = {};
+    // Preserve recoveryMeta (notes) — restore from backup if lost
+    if (!ghostState.recoveryMeta || Object.keys(ghostState.recoveryMeta).length === 0) {
+      try { const _b = localStorage.getItem('ghost_recoveryMeta_backup'); if (_b) ghostState.recoveryMeta = JSON.parse(_b); } catch(_) {}
+    }
     ghostState.ghostPda = null;
     ghostState.vaultPda = null;
     ghostState.ghostStakeVault = null;
@@ -5489,7 +5505,22 @@ document.addEventListener('DOMContentLoaded', () => {
           if (btn) { btn.textContent = 'Connect Wallet'; btn.classList.remove('connected','executed','abandoned'); btn.onclick = openModal; }
           document.getElementById('navDashboardLink')?.classList.remove('visible');
           document.getElementById('navDisconnectBtn').style.display = 'none';
-          try { localStorage.removeItem(_sessionKey()); localStorage.removeItem('ghostLastWallet'); } catch(e2) {}
+          // Clear session identity but preserve user metadata (nicknames, recovery notes)
+          // recoveryMeta is re-merged on next fetchGhostAccount, nicknames are standalone
+          try {
+            const _oldSession = localStorage.getItem(_sessionKey());
+            localStorage.removeItem(_sessionKey());
+            localStorage.removeItem('ghostLastWallet');
+            // Re-save recoveryMeta if it existed so it survives reconnect
+            if (_oldSession) {
+              try {
+                const _s = JSON.parse(_oldSession);
+                if (_s.recoveryMeta && Object.keys(_s.recoveryMeta).length > 0) {
+                  localStorage.setItem('ghost_recoveryMeta_backup', JSON.stringify(_s.recoveryMeta));
+                }
+              } catch(_) {}
+            }
+          } catch(e2) {}
         }
       }
       // Fetch fresh ghost state from chain
@@ -6320,7 +6351,7 @@ function renderBeneficiaries() {
 
       const wholeNoticeHtml = hasWholeVault ? `
         <div style="margin-top:4px;padding:14px 16px;background:linear-gradient(135deg,rgba(102,51,255,0.12),rgba(160,128,255,0.06));border:1px solid rgba(160,128,255,0.3);display:flex;align-items:center;gap:12px">
-          <span style="font-size:22px;flex-shrink:0">🪙</span>
+          <span style="font-size:22px;flex-shrink:0;display:inline-flex;align-items:center"><svg width="22" height="22" viewBox="0 0 36 36" fill="none"><rect x="3" y="16" width="30" height="17" rx="2" fill="#7c4d00" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="8" rx="2" fill="#a06000" stroke="#f0a020" stroke-width="1.2"/><rect x="2" y="8" width="32" height="11" rx="3" fill="#c07800" stroke="#f0b030" stroke-width="1.2"/><rect x="13" y="19" width="10" height="7" rx="1.5" fill="#f0a020" stroke="#ffd060" stroke-width="0.8"/><circle cx="18" cy="22.5" r="2" fill="#ffd060" stroke="#fff8d0" stroke-width="0.5"/></svg></span>
           <div style="flex:1">
             <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:#e0d0ff;margin-bottom:3px">Entire vault assigned</div>
             <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:#c0bce0">100% → <span style="color:#c0a0ff;cursor:pointer" onclick="copyAddr('${wholeFullAddr}')" title="Click to copy">${wholeRecipient} ⧉</span> · All tokens transferred on execution</div>
@@ -6424,7 +6455,7 @@ function renderBeneficiaries() {
   if (wholeShares.length > 0) {
     rows += `<tr><td colspan="7" style="padding:12px 16px 8px;background:rgba(102,51,255,0.04);border-top:1px solid rgba(160,128,255,0.2);border-bottom:1px solid rgba(160,128,255,0.08)">
       <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:16px">🪙</span>
+        <span style="font-size:16px;display:inline-flex;align-items:center"><svg width="16" height="16" viewBox="0 0 36 36" fill="none"><rect x="3" y="16" width="30" height="17" rx="2" fill="#7c4d00" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="8" rx="2" fill="#a06000" stroke="#f0a020" stroke-width="1.2"/><rect x="2" y="8" width="32" height="11" rx="3" fill="#c07800" stroke="#f0b030" stroke-width="1.2"/><rect x="13" y="19" width="10" height="7" rx="1.5" fill="#f0a020" stroke="#ffd060" stroke-width="0.8"/><circle cx="18" cy="22.5" r="2" fill="#ffd060" stroke="#fff8d0" stroke-width="0.5"/></svg></span>
         <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(160,128,255,0.8);letter-spacing:0.2em;text-transform:uppercase">Whole Vault Assignment</span>
       </div>
     </td></tr>`;
@@ -6432,7 +6463,7 @@ function renderBeneficiaries() {
       const realIdx = all.indexOf(ben);
       const isBurnAll = ben.wholeVaultAction === 1;
       const rowBg = isBurnAll ? 'rgba(255,61,90,0.04)' : 'rgba(102,51,255,0.03)';
-      const icon = isBurnAll ? '🔥' : '🪙';
+      const icon = isBurnAll ? '🔥' : '<span style="display:inline-flex;align-items:center"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><rect x="3" y="16" width="30" height="17" rx="2" fill="#7c4d00" stroke="#f0a020" stroke-width="1.2"/><rect x="3" y="16" width="30" height="8" rx="2" fill="#a06000" stroke="#f0a020" stroke-width="1.2"/><rect x="2" y="8" width="32" height="11" rx="3" fill="#c07800" stroke="#f0b030" stroke-width="1.2"/><rect x="13" y="19" width="10" height="7" rx="1.5" fill="#f0a020" stroke="#ffd060" stroke-width="0.8"/><circle cx="18" cy="22.5" r="2" fill="#ffd060" stroke="#fff8d0" stroke-width="0.5"/></svg></span>';
       const recipCell = isBurnAll
         ? `<div style="display:flex;flex-direction:column;gap:2px"><span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:rgba(255,100,100,0.5);letter-spacing:0.1em;text-transform:uppercase">no recipient</span><span style="font-family:'Syne',sans-serif;font-size:12px;color:rgba(255,80,80,0.7)">Entire vault burned</span></div>`
         : `<div style="display:flex;align-items:center;gap:5px"><span style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#c0bce0;cursor:pointer" onclick="copyAddr('${ben.fullAddr||ben.recipient}')">${ben.recipient}</span><button onclick="copyAddr('${ben.fullAddr||ben.recipient}')" style="background:none;border:none;color:#443366;font-size:10px;cursor:pointer;padding:0 2px" onmouseover="this.style.color='#a080ff'" onmouseout="this.style.color='#443366'">⧉</button></div>`;
