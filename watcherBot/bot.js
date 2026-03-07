@@ -20,6 +20,7 @@
  */
 
 require('dotenv').config();
+const http = require('http');
 const {
   Connection, Keypair, PublicKey, Transaction, TransactionInstruction,
 } = require('@solana/web3.js');
@@ -32,6 +33,7 @@ const GPA_RPC_URL     = process.env.GPA_RPC_URL || 'https://rpc.ankr.com/solana'
 const PROGRAM_ID      = process.env.PROGRAM_ID  || '3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3';
 const BOT_KEYPAIR_B58 = process.env.BOT_KEYPAIR;
 const GHOST_MINT_ADDR = process.env.GHOST_MINT  || 'k4MxJAdy22Dgd2UTQ9p3etbnaSLUH1q5cEfSRi6pump';
+const FEE_KEYPAIR_B58 = process.env.FEE_WALLET_KEYPAIR; // optional — enables auto-swap of fees to SOL
 
 const POLL_INTERVAL_MS  = 30 * 1000; // 30 seconds
 const VERIFY_DELAY_MS   = 3000;           // wait 3s after confirm before verifying
@@ -69,7 +71,20 @@ const token22ProgPk = new PublicKey(TOKEN22_PROG_ADDR);
 const assocTokenPk  = new PublicKey(ASSOC_TOKEN_ADDR);
 
 // Protocol fee wallet — receives 0.5% of executed transfers (v1.9)
-const PROTOCOL_FEE_WALLET = new PublicKey('2vzr1Wpir7BmwcCetiQ4sJC48vztMdQQ7qRYkZ8udob8');
+const PROTOCOL_FEE_WALLET = new PublicKey('24AhcsPA9b17Vgcj15Gnba2K8d7LbYEgf3pfy89N1NtZ');
+const feeKp = FEE_KEYPAIR_B58 ? Keypair.fromSecretKey(bs58.decode(FEE_KEYPAIR_B58)) : null;
+if (feeKp) {
+  if (feeKp.publicKey.toBase58() !== PROTOCOL_FEE_WALLET.toBase58()) {
+    console.error('❌ FEE_WALLET_KEYPAIR does not match PROTOCOL_FEE_WALLET. Auto-swap disabled.');
+  } else {
+    console.log('   Fee wallet auto-swap: ENABLED');
+  }
+} else {
+  console.log('   Fee wallet auto-swap: DISABLED (set FEE_WALLET_KEYPAIR to enable)');
+}
+const WSOL_MINT = 'So11111111111111111111111111111111111111112';
+const JUPITER_SWAP_API = 'https://quote-api.jup.ag/v6';
+const SWEEP_MIN_USD = 0.10; // only swap tokens worth more than $0.10
 
 console.log('👻 GHOST Executor Bot v1.9 starting...');
 console.log('   Program:', PROGRAM_ID);
@@ -825,7 +840,429 @@ async function scan() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// FEE SWEEP + DASHBOARD — auto-convert execution fees to SOL, track total
+// ═══════════════════════════════════════════════════════════════════════
+
+const DASHBOARD_PORT = process.env.PORT || 3000;
+const JUPITER_PRICE_API = 'https://api.jup.ag/price/v2?ids=';
+
+// Fee state
+// ── Persistent fee tracking ─────────────────────────────────────────────
+// Tracks total SOL earned by detecting withdrawals (balance drops between scans).
+// Persisted to fee_tracker.json so it survives container restarts.
+const fs = require('fs');
+const FEE_TRACKER_FILE = './fee_tracker.json';
+
+let feeTracker = { totalWithdrawn: 0, lastKnownBalance: 0, totalSwapped: 0 };
+
+function loadFeeTracker() {
+  try {
+    if (fs.existsSync(FEE_TRACKER_FILE)) {
+      const data = JSON.parse(fs.readFileSync(FEE_TRACKER_FILE, 'utf8'));
+      feeTracker = { ...feeTracker, ...data };
+      console.log(`   Fee tracker loaded: ${feeTracker.totalWithdrawn.toFixed(6)} SOL withdrawn, ${feeTracker.totalSwapped.toFixed(6)} SOL from swaps`);
+    }
+  } catch (_) {}
+}
+
+function saveFeeTracker() {
+  try { fs.writeFileSync(FEE_TRACKER_FILE, JSON.stringify(feeTracker, null, 2)); } catch (_) {}
+}
+
+// Call on every snapshot update — detects withdrawals
+function trackFeeBalance(currentSol) {
+  const prev = feeTracker.lastKnownBalance;
+  if (prev > 0 && currentSol < prev) {
+    // Balance dropped — user withdrew the difference
+    const withdrawn = prev - currentSol;
+    feeTracker.totalWithdrawn += withdrawn;
+    console.log(`  [tracker] Withdrawal detected: ${withdrawn.toFixed(6)} SOL (lifetime withdrawn: ${feeTracker.totalWithdrawn.toFixed(6)} SOL)`);
+  }
+  feeTracker.lastKnownBalance = currentSol;
+  saveFeeTracker();
+}
+
+loadFeeTracker();
+
+let feeSnapshot = {
+  solBalance: 0,        // current native SOL in fee wallet
+  wsolBalance: 0,       // current wSOL in fee wallet
+  totalFeeSol: 0,       // current solBalance + wsolBalance
+  totalFeeUsd: 0,
+  lifetimeFeeSol: 0,    // current balance + all withdrawals = true lifetime total
+  lifetimeFeeUsd: 0,
+  totalWithdrawn: 0,    // total SOL withdrawn from fee wallet
+  solPrice: 0,
+  pendingTokens: [],    // SPL tokens not yet swapped
+  pendingUsd: 0,
+  lastSwept: null,
+  lastUpdated: null,
+  botBalance: 0,
+  ghostCount: 0,
+  swapLog: [],          // recent swap history
+};
+
+// ── Get all SPL tokens in fee wallet ────────────────────────────────────
+async function getFeeWalletTokens() {
+  const tokens = [];
+  for (const progAddr of [TOKEN_PROG_ADDR, TOKEN22_PROG_ADDR]) {
+    try {
+      const progPk = new PublicKey(progAddr);
+      const accts = await connection.getTokenAccountsByOwner(PROTOCOL_FEE_WALLET, { programId: progPk });
+      for (const { pubkey, account } of accts.value) {
+        try {
+          const data = account.data;
+          const mint = new PublicKey(data.slice(0, 32)).toBase58();
+          const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+          const rawAmount = Number(view.getBigUint64(64, true));
+          if (rawAmount > 0) {
+            let decimals = 6;
+            try {
+              const mintInfo = await connection.getAccountInfo(new PublicKey(mint));
+              if (mintInfo && mintInfo.data.length >= 45) decimals = mintInfo.data[44];
+            } catch (_) {}
+            const uiAmount = rawAmount / Math.pow(10, decimals);
+            tokens.push({ mint, rawAmount, decimals, uiAmount, pubkey, tokenProg: progPk });
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+  return tokens;
+}
+
+// ── Swap a single token to SOL via Jupiter ──────────────────────────────
+async function swapTokenToSol(token) {
+  if (!feeKp || feeKp.publicKey.toBase58() !== PROTOCOL_FEE_WALLET.toBase58()) return null;
+  const { mint, rawAmount } = token;
+  if (mint === WSOL_MINT) return null; // wSOL handled separately
+
+  try {
+    // 1. Get quote
+    const quoteUrl = `${JUPITER_SWAP_API}/quote?inputMint=${mint}&outputMint=${WSOL_MINT}&amount=${rawAmount}&slippageBps=100`;
+    const quoteRes = await fetch(quoteUrl);
+    const quote = await quoteRes.json();
+    if (quote.error || !quote.outAmount) {
+      console.log(`    [sweep] No route for ${mint.slice(0,8)}... — skipping`);
+      return null;
+    }
+
+    // 2. Get swap transaction
+    const swapRes = await fetch(`${JUPITER_SWAP_API}/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quoteResponse: quote,
+        userPublicKey: PROTOCOL_FEE_WALLET.toBase58(),
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: 'auto',
+      }),
+    });
+    const swapData = await swapRes.json();
+    if (swapData.error || !swapData.swapTransaction) {
+      console.log(`    [sweep] Swap build failed for ${mint.slice(0,8)}...: ${swapData.error || 'unknown'}`);
+      return null;
+    }
+
+    // 3. Deserialize, sign, send
+    const txBuf = Buffer.from(swapData.swapTransaction, 'base64');
+    const tx = require('@solana/web3.js').VersionedTransaction.deserialize(txBuf);
+    tx.sign([feeKp]);
+    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true, maxRetries: 3 });
+    await connection.confirmTransaction(sig, 'confirmed');
+
+    const outSol = Number(quote.outAmount) / 1e9;
+    console.log(`    [sweep] ✅ Swapped ${token.uiAmount.toPrecision(4)} ${mint.slice(0,6)}... → ${outSol.toFixed(6)} SOL (${sig.slice(0,8)}...)`);
+    return { mint, amountIn: token.uiAmount, solOut: outSol, sig, timestamp: new Date().toISOString() };
+  } catch (err) {
+    console.warn(`    [sweep] Swap failed for ${mint.slice(0,8)}...: ${err.message}`);
+    return null;
+  }
+}
+
+// ── Sweep all non-SOL tokens to SOL ─────────────────────────────────────
+async function sweepFeesToSol() {
+  if (!feeKp || feeKp.publicKey.toBase58() !== PROTOCOL_FEE_WALLET.toBase58()) return;
+  console.log('  [sweep] Checking fee wallet for tokens to convert...');
+
+  const tokens = await getFeeWalletTokens();
+
+  // ── Step 1: Unwrap any wSOL → native SOL (bot pays tx fee) ──────────
+  const wsolToken = tokens.find(t => t.mint === WSOL_MINT);
+  if (wsolToken) {
+    try {
+      console.log(`    [sweep] Unwrapping ${wsolToken.uiAmount.toFixed(6)} wSOL → native SOL`);
+      // closeAccount instruction: opcode 9, closes wSOL token account → lamports go to fee wallet
+      const closeData = Buffer.alloc(1);
+      closeData[0] = 9; // CloseAccount instruction
+      const closeIx = new TransactionInstruction({
+        programId: new PublicKey(TOKEN_PROG_ADDR),
+        keys: [
+          { pubkey: wsolToken.pubkey, isSigner: false, isWritable: true  }, // wSOL token account
+          { pubkey: PROTOCOL_FEE_WALLET, isSigner: false, isWritable: true  }, // destination (fee wallet gets lamports)
+          { pubkey: PROTOCOL_FEE_WALLET, isSigner: true,  isWritable: false }, // owner/authority
+        ],
+        data: closeData,
+      });
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: botKp.publicKey }); // bot pays fee
+      tx.add(closeIx);
+      tx.sign(botKp, feeKp); // bot pays, fee wallet signs as token account owner
+      const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true, maxRetries: 3 });
+      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+      console.log(`    [sweep] ✅ Unwrapped wSOL → ${wsolToken.uiAmount.toFixed(6)} SOL (${sig.slice(0,8)}...)`);
+      feeSnapshot.swapLog.unshift({ mint: WSOL_MINT, amountIn: wsolToken.uiAmount, solOut: wsolToken.uiAmount, sig, timestamp: new Date().toISOString() });
+      if (feeSnapshot.swapLog.length > 50) feeSnapshot.swapLog.pop();
+      await sleep(2000);
+    } catch (err) {
+      console.warn(`    [sweep] wSOL unwrap failed: ${err.message}`);
+    }
+  }
+
+  // ── Step 2: Swap remaining SPL tokens → SOL via Jupiter ─────────────
+  const nonSol = tokens.filter(t => t.mint !== WSOL_MINT);
+
+  if (nonSol.length === 0 && !wsolToken) {
+    console.log('  [sweep] No tokens to convert');
+    return;
+  }
+
+  if (nonSol.length > 0) {
+    // Get prices to filter dust
+    let prices = {};
+    try {
+      const ids = nonSol.map(t => t.mint).join(',');
+      const res = await fetch(JUPITER_PRICE_API + ids);
+      const json = await res.json();
+      prices = json.data || {};
+    } catch (_) {}
+
+    for (const t of nonSol) {
+      const price = prices[t.mint]?.price ? parseFloat(prices[t.mint].price) : 0;
+      const usdValue = t.uiAmount * price;
+      if (usdValue < SWEEP_MIN_USD && price > 0) {
+        console.log(`    [sweep] ${t.mint.slice(0,8)}... worth $${usdValue.toFixed(4)} — below $${SWEEP_MIN_USD} threshold, skipping`);
+        continue;
+      }
+      const result = await swapTokenToSol(t);
+      if (result) {
+        feeSnapshot.swapLog.unshift(result);
+        if (feeSnapshot.swapLog.length > 50) feeSnapshot.swapLog.pop();
+        feeTracker.totalSwapped += result.solOut;
+        saveFeeTracker();
+      }
+      await sleep(3000); // rate limit between swaps
+    }
+  }
+
+  feeSnapshot.lastSwept = new Date().toISOString();
+  console.log('  [sweep] Done');
+}
+
+// ── Update fee snapshot (SOL-focused) ───────────────────────────────────
+async function updateFeeSnapshot() {
+  try {
+    // Native SOL balance in fee wallet
+    let solBal = 0;
+    try { solBal = await connection.getBalance(PROTOCOL_FEE_WALLET) / 1e9; } catch (_) {}
+
+    // Check for wSOL
+    let wsolBal = 0;
+    const tokens = await getFeeWalletTokens();
+    const wsolToken = tokens.find(t => t.mint === WSOL_MINT);
+    if (wsolToken) wsolBal = wsolToken.uiAmount;
+
+    // Pending (unswapped) tokens
+    const pending = tokens.filter(t => t.mint !== WSOL_MINT);
+    let pendingUsd = 0;
+    if (pending.length > 0) {
+      try {
+        const ids = pending.map(t => t.mint).join(',');
+        const res = await fetch(JUPITER_PRICE_API + ids);
+        const json = await res.json();
+        for (const t of pending) {
+          const p = json.data?.[t.mint]?.price;
+          if (p) { t.usdValue = t.uiAmount * parseFloat(p); pendingUsd += t.usdValue; }
+          t.symbol = json.data?.[t.mint]?.mintSymbol || (t.mint.slice(0,4) + '...' + t.mint.slice(-4));
+        }
+      } catch (_) {}
+    }
+
+    // SOL price
+    let solPrice = 0;
+    try {
+      const res = await fetch(JUPITER_PRICE_API + WSOL_MINT);
+      const json = await res.json();
+      solPrice = parseFloat(json.data?.[WSOL_MINT]?.price || '0');
+    } catch (_) {}
+
+    const totalSol = solBal + wsolBal;
+
+    // Track withdrawals — detect balance drops
+    trackFeeBalance(totalSol);
+    const lifetimeFeeSol = totalSol + feeTracker.totalWithdrawn;
+
+    // Bot ops balance
+    let botBal = 0;
+    try { botBal = await connection.getBalance(botKp.publicKey) / 1e9; } catch (_) {}
+
+    // Ghost count
+    let ghostCount = 0;
+    try {
+      const accounts = await gpaConn.getProgramAccounts(programIdPk, {
+        filters: [{ memcmp: { offset: 0, bytes: bs58.encode(GHOST_ACCOUNT_DISC) } }],
+        dataSlice: { offset: 0, length: 0 },
+      });
+      ghostCount = accounts.length;
+    } catch (_) {}
+
+    feeSnapshot = {
+      ...feeSnapshot,
+      solBalance: solBal,
+      wsolBalance: wsolBal,
+      totalFeeSol: totalSol,
+      totalFeeUsd: totalSol * solPrice,
+      lifetimeFeeSol,
+      lifetimeFeeUsd: lifetimeFeeSol * solPrice,
+      totalWithdrawn: feeTracker.totalWithdrawn,
+      solPrice,
+      pendingTokens: pending,
+      pendingUsd,
+      lastUpdated: new Date().toISOString(),
+      botBalance: botBal,
+      ghostCount,
+    };
+
+    console.log(`  [dashboard] Current: ${totalSol.toFixed(6)} SOL | Lifetime: ${lifetimeFeeSol.toFixed(6)} SOL ($${(lifetimeFeeSol * solPrice).toFixed(2)}) | Withdrawn: ${feeTracker.totalWithdrawn.toFixed(6)} | Pending: ${pending.length} tokens`);
+  } catch (err) {
+    console.warn('  [dashboard] Snapshot error:', err.message);
+  }
+}
+
+// ── Dashboard HTML ──────────────────────────────────────────────────────
+function renderDashboard() {
+  const s = feeSnapshot;
+
+  const pendingRows = s.pendingTokens.map(t => `
+    <tr>
+      <td style="color:#c0a0ff">${t.symbol || t.mint.slice(0,8)}</td>
+      <td style="text-align:right">${t.uiAmount >= 1000 ? t.uiAmount.toLocaleString(undefined,{maximumFractionDigits:2}) : Number(t.uiAmount.toPrecision(5))}</td>
+      <td style="text-align:right;color:#ffaa33">$${(t.usdValue||0) < 0.01 ? '<0.01' : (t.usdValue||0).toFixed(2)}</td>
+    </tr>`).join('');
+
+  const swapRows = s.swapLog.slice(0, 20).map(l => `
+    <tr>
+      <td style="color:#5a5a7a">${l.timestamp?.slice(5,16) || '—'}</td>
+      <td>${Number(l.amountIn.toPrecision(4))} ${l.mint.slice(0,6)}...</td>
+      <td style="color:#33ff99;text-align:right">${l.solOut.toFixed(6)} SOL</td>
+    </tr>`).join('');
+
+  return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GHOST — Fee Dashboard</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#07070f;color:#e0dcf8;font-family:'Courier New',monospace;padding:24px}
+  h1{font-size:18px;letter-spacing:0.2em;color:#c0a0ff;margin-bottom:8px;text-transform:uppercase}
+  .sub{font-size:11px;color:#5a5a7a;letter-spacing:0.15em;margin-bottom:32px}
+  .stat-row{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}
+  .stat{padding:16px 20px;border:1px solid rgba(102,51,255,0.2);background:rgba(102,51,255,0.04);flex:1;min-width:140px}
+  .stat-label{font-size:10px;letter-spacing:0.15em;color:#5a5a7a;text-transform:uppercase;margin-bottom:6px}
+  .stat-value{font-size:22px;font-weight:700}
+  .green{color:#33ff99} .purple{color:#c0a0ff} .yellow{color:#ffaa33}
+  .section{margin-top:28px;margin-bottom:8px;font-size:13px;letter-spacing:0.15em;color:#c0a0ff;text-transform:uppercase}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th{font-size:10px;letter-spacing:0.12em;color:#5a5a7a;text-transform:uppercase;text-align:left;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.06)}
+  td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px}
+  .footer{margin-top:32px;font-size:10px;color:#3a3a5a;letter-spacing:0.1em}
+  @media(max-width:500px){.stat-row{flex-direction:column}.stat{min-width:auto}}
+</style>
+</head><body>
+<h1>👻 Ghost Protocol</h1>
+<div class="sub">Execution Fee Dashboard · 0.5% Revenue · Auto-Sweep to SOL</div>
+
+<div class="stat-row">
+  <div class="stat">
+    <div class="stat-label">Lifetime Fees Earned</div>
+    <div class="stat-value green">${s.lifetimeFeeSol.toFixed(6)} SOL</div>
+    <div style="font-size:11px;color:#5a5a7a;margin-top:4px">≈ $${s.lifetimeFeeUsd.toFixed(2)}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Current Balance</div>
+    <div class="stat-value green">${s.totalFeeSol.toFixed(6)} SOL</div>
+    <div style="font-size:11px;color:#5a5a7a;margin-top:4px">≈ $${s.totalFeeUsd.toFixed(2)}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Total Withdrawn</div>
+    <div class="stat-value purple">${s.totalWithdrawn.toFixed(6)} SOL</div>
+  </div>
+</div>
+
+<div class="stat-row">
+  <div class="stat">
+    <div class="stat-label">Pending Conversion</div>
+    <div class="stat-value yellow">${s.pendingTokens.length} token${s.pendingTokens.length===1?'':'s'}</div>
+    <div style="font-size:11px;color:#5a5a7a;margin-top:4px">≈ $${s.pendingUsd.toFixed(2)}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Active Ghosts</div>
+    <div class="stat-value purple">${s.ghostCount}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Bot Ops Balance</div>
+    <div class="stat-value ${s.botBalance < 0.01 ? 'yellow' : 'purple'}">${s.botBalance.toFixed(4)} SOL</div>
+  </div>
+</div>
+
+<div style="font-size:11px;color:#5a5a7a;margin-bottom:24px">
+  SOL price: $${s.solPrice.toFixed(2)} · Last sweep: ${s.lastSwept || 'never'} · Auto-swap: ${feeKp ? '<span style="color:#33ff99">ON</span>' : '<span style="color:#ff6666">OFF</span>'}
+</div>
+
+${s.pendingTokens.length > 0 ? `
+<div class="section">Pending Conversion</div>
+<table>
+  <tr><th>Token</th><th style="text-align:right">Amount</th><th style="text-align:right">USD</th></tr>
+  ${pendingRows}
+</table>` : ''}
+
+${s.swapLog.length > 0 ? `
+<div class="section">Recent Swaps</div>
+<table>
+  <tr><th>Time</th><th>From</th><th style="text-align:right">Received</th></tr>
+  ${swapRows}
+</table>` : ''}
+
+<div class="footer">Updated: ${s.lastUpdated || 'never'} · Fees refresh every 5m · Sweep runs every 1h · <a href="/" style="color:#7766aa">↻ Reload</a></div>
+</body></html>`;
+}
+
+// ── HTTP Server ─────────────────────────────────────────────────────────
+const server = http.createServer((req, res) => {
+  if (req.url === '/api/fees') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(feeSnapshot));
+  } else if (req.url === '/sweep' && feeKp) {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Sweep triggered. Check logs.\n');
+    sweepFeesToSol().catch(console.error);
+  } else {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(renderDashboard());
+  }
+});
+server.listen(DASHBOARD_PORT, () => {
+  console.log(`   Dashboard: http://localhost:${DASHBOARD_PORT}`);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+
 (async () => {
+  await updateFeeSnapshot();
   await scan();
   setInterval(scan, POLL_INTERVAL_MS);
+  setInterval(updateFeeSnapshot, 5 * 60 * 1000);    // refresh dashboard every 5 min
+  setInterval(sweepFeesToSol, 60 * 60 * 1000);       // auto-sweep every 1 hour
 })();
