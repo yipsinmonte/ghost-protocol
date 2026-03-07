@@ -1143,11 +1143,11 @@
     <p>Choose your Solana wallet to register your heartbeat.</p>
     <div class="wallet-option" onclick="connectWallet('Phantom')">
       <span class="w-icon">👻</span>
-      <div><div class="w-name">Phantom</div><div class="w-desc">Most popular Solana wallet</div></div>
+      <div><div class="w-name">Phantom</div><div class="w-desc">Most popular Solana wallet</div><div class="w-desc w-mobile-hint" style="display:none;color:#9966ff;margin-top:4px;font-size:10px">Opens in Phantom app on mobile</div></div>
     </div>
     <div class="wallet-option" onclick="connectWallet('Solflare')">
       <span class="w-icon">🔆</span>
-      <div><div class="w-name">Solflare</div><div class="w-desc">Built for Solana power users</div></div>
+      <div><div class="w-name">Solflare</div><div class="w-desc">Built for Solana power users</div><div class="w-desc w-mobile-hint" style="display:none;color:#9966ff;margin-top:4px;font-size:10px">Opens in Solflare app on mobile</div></div>
     </div>
     <div class="wallet-option" onclick="connectWallet('Backpack')">
       <span class="w-icon">🎒</span>
@@ -2830,7 +2830,14 @@ function showNotif(msg, type = '', duration = 3500) {
 }
 
 // ─── Wallet Modal ───────────────────────────────────────────────
-function openModal() { document.getElementById('walletModal').classList.add('open'); }
+function openModal() {
+  document.getElementById('walletModal').classList.add('open');
+  // Show deep link hints on mobile when provider isn't available
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  document.querySelectorAll('.w-mobile-hint').forEach(el => {
+    el.style.display = (isMobile && !window.phantom?.solana) ? 'block' : 'none';
+  });
+}
 function closeModal() { document.getElementById('walletModal').classList.remove('open'); }
 
 // ─── Ghost-styled confirm dialog ─────────────────────────────────────────────
@@ -2876,6 +2883,21 @@ async function connectWallet(name) {
   } else if (name === 'OKX') {
     provider = window.okxwallet?.solana;
   }
+
+  // Mobile deep linking — if provider not found and on mobile, open in wallet's in-app browser
+  if (!provider && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+    const currentUrl = encodeURIComponent(window.location.href);
+    if (name === 'Phantom') {
+      window.location.href = 'https://phantom.app/ul/browse/' + currentUrl;
+      return;
+    } else if (name === 'Solflare') {
+      window.location.href = 'https://solflare.com/ul/v1/browse/' + currentUrl;
+      return;
+    } else if (name === 'Backpack') {
+      // Backpack doesn't have a universal browse link — fall through to demo
+    }
+  }
+
   // No silent fallthrough — if the chosen wallet isn't installed, fall back to demo mode
   if (!provider) {
     connectWalletDemo(name);
