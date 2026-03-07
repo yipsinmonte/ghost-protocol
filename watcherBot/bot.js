@@ -331,7 +331,8 @@ async function buildExecuteTransfer(ghost, bIndex, bene, recipientTokenAcct) {
   const mintPk       = new PublicKey(bene.tokenMint);
   const recipientPk  = new PublicKey(bene.recipient);
   const tokenProg    = await resolveTokenProgram(mintPk);
-  const vaultAta     = deriveATA(vaultPk, mintPk, tokenProg);
+  const vaultAta     = await findVaultTokenAccount(vaultPk, mintPk, tokenProg);
+  if (!vaultAta) return null; // vault has no token account for this mint
   const recipientAcctKey = recipientTokenAcct || deriveATA(recipientPk, mintPk, tokenProg);
 
   // Protocol fee token account — must exist before calling
@@ -363,7 +364,8 @@ async function buildExecuteBurn(ghost, bIndex, bene) {
   const [vaultPk] = deriveVaultPda(ownerPk);
   const mintPk    = new PublicKey(bene.tokenMint);
   const tokenProg = await resolveTokenProgram(mintPk);
-  const vaultAta  = deriveATA(vaultPk, mintPk, tokenProg);
+  const vaultAta  = await findVaultTokenAccount(vaultPk, mintPk, tokenProg);
+  if (!vaultAta) return null; // vault has no token account for this mint
 
   const data = Buffer.alloc(9);
   DISC.execute_burn.copy(data, 0);
@@ -646,6 +648,39 @@ async function getVaultTokenAccounts(vaultPk) {
   return results;
 }
 
+// Find the actual vault token account for a specific mint.
+// Vault token accounts may be manual keypair accounts (not standard ATAs),
+// so we must query on-chain rather than deriving the ATA address.
+// Caches results per vault+mint to avoid redundant RPC calls within a scan.
+const _vaultTokenCache = {};
+async function findVaultTokenAccount(vaultPk, mintPk, tokenProg) {
+  const cacheKey = vaultPk.toBase58() + ':' + mintPk.toBase58();
+  if (_vaultTokenCache[cacheKey]) return _vaultTokenCache[cacheKey];
+
+  // First try the standard ATA
+  const ata = deriveATA(vaultPk, mintPk, tokenProg);
+  try {
+    const info = await connection.getAccountInfo(ata);
+    if (info) {
+      _vaultTokenCache[cacheKey] = ata;
+      return ata;
+    }
+  } catch (_) {}
+
+  // ATA doesn't exist — scan all vault token accounts for this mint
+  try {
+    const accts = await connection.getTokenAccountsByOwner(vaultPk, { mint: mintPk });
+    if (accts.value.length > 0) {
+      const found = accts.value[0].pubkey;
+      _vaultTokenCache[cacheKey] = found;
+      return found;
+    }
+  } catch (_) {}
+
+  // Not found
+  return null;
+}
+
 // ─── Run beneficiaries + whole vault ─────────────────────────────────────────
 
 async function runBeneficiaries(ghost, label, now) {
@@ -670,13 +705,30 @@ async function runBeneficiaries(ghost, label, now) {
 
     if (b.action === 0) {
       const recipientPk = new PublicKey(b.recipient);
-      const recipientAcct = await ensureRecipientTokenAccount(recipientPk, mintPk, tokenProg);
+      // Check vault has token account for this mint before creating recipient accounts
+      const ownerPk_ = new PublicKey(ghost.owner);
+      const [vaultPk_] = deriveVaultPda(ownerPk_);
+      const vaultAcct = await findVaultTokenAccount(vaultPk_, mintPk, tokenProg);
+      if (!vaultAcct) { console.warn(`    [${i}] vault has no token account for mint ${b.tokenMint.slice(0,8)}... — skipping`); continue; }
+      let recipientAcct = await ensureRecipientTokenAccount(recipientPk, mintPk, tokenProg);
+      if (!recipientAcct) {
+        const fallbackAta = deriveATA(recipientPk, mintPk, tokenProg);
+        try {
+          const ataInfo = await connection.getAccountInfo(fallbackAta);
+          if (ataInfo) {
+            console.log(`    [ata] manual create failed but derived ATA exists — using ${fallbackAta.toBase58().slice(0,8)}...`);
+            recipientAcct = { pubkey: fallbackAta };
+          }
+        } catch(_) {}
+      }
       if (!recipientAcct) { console.warn(`    [${i}] could not create recipient token account — skipping`); continue; }
       const ix = await buildExecuteTransfer(ghost, i, b, recipientAcct.pubkey);
+      if (!ix) { console.warn(`    [${i}] could not build transfer ix — skipping`); continue; }
       const sig = await sendTx([ix], `execute_transfer[${i}](${label})`);
       if (sig) await verifyBeneficiaryPaid(ghost.pubkey, i);
     } else if (b.action === 1) {
       const ix = await buildExecuteBurn(ghost, i, b);
+      if (!ix) { console.warn(`    [${i}] vault has no token account for mint ${b.tokenMint.slice(0,8)}... — skipping`); continue; }
       const sig = await sendTx([ix], `execute_burn[${i}](${label})`);
       if (sig) await verifyBeneficiaryPaid(ghost.pubkey, i);
     } else {
@@ -743,6 +795,9 @@ async function runBeneficiaries(ghost, label, now) {
 
 async function scan() {
   console.log(`\n🔍 Scanning... [${new Date().toISOString()}]`);
+  // Clear per-scan caches
+  Object.keys(_feeAccountCache).forEach(k => delete _feeAccountCache[k]);
+  Object.keys(_vaultTokenCache).forEach(k => delete _vaultTokenCache[k]);
 
   try {
     const bal = await connection.getBalance(botKp.publicKey);
