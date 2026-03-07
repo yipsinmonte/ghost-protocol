@@ -79,7 +79,7 @@ pub const REGISTRATION_FEE_LAMPORTS: u64 = 20_000_000; // 0.02 SOL bot operation
 // BOT_OPS_WALLET: receives 0.02 SOL registration fee for executor bot funding
 // TODO: Replace these byte arrays with your actual wallet pubkey bytes.
 // Use: `solana-keygen pubkey --outfile` or decode base58 in JS to get the 32 bytes.
-pub const PROTOCOL_FEE_WALLET: Pubkey = Pubkey::new_from_array([28, 176, 224, 21, 248, 34, 78, 192, 133, 185, 51, 229, 201, 59, 102, 254, 168, 177, 75, 146, 239, 52, 155, 164, 9, 137, 78, 138, 119, 191, 10, 243]); // 2vzr1Wpir7BmwcCetiQ4sJC48vztMdQQ7qRYkZ8udob8
+pub const PROTOCOL_FEE_WALLET: Pubkey = Pubkey::new_from_array([15, 171, 101, 197, 8, 130, 220, 225, 136, 150, 107, 98, 103, 167, 0, 156, 84, 161, 21, 30, 175, 162, 65, 31, 63, 10, 74, 137, 244, 241, 42, 178]); // 24AhcsPA9b17Vgcj15Gnba2K8d7LbYEgf3pfy89N1NtZ
 pub const BOT_OPS_WALLET: Pubkey = Pubkey::new_from_array([181, 207, 57, 180, 202, 88, 132, 168, 31, 89, 196, 244, 9, 255, 246, 157, 112, 66, 149, 202, 217, 247, 181, 5, 203, 75, 29, 147, 135, 97, 101, 59]); // DEi4jzA8bsZDzEhhbf64kFXba7ABnzBNAWbMQKwKGPqC
 // ── Schema version constants ─────────────────────────────────────────────
 // When adding a new version: add SCHEMA_VERSION_VXX constant, update CURRENT_SCHEMA_VERSION,
