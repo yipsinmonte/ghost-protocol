@@ -947,10 +947,20 @@ async function runBeneficiaries(ghost, label, now) {
 
 // ─── Main scan loop ───────────────────────────────────────────────────────────
 
+let _scanRunning = false;
 async function scan() {
+  if (_scanRunning) { console.log('  ⏳ Previous scan still running — skipping'); return; }
+  _scanRunning = true;
+  try {
+    await _doScan();
+  } finally {
+    _scanRunning = false;
+  }
+}
+
+async function _doScan() {
   console.log(`\n🔍 Scanning... [${new Date().toISOString()}]`);
   // Clear per-scan caches (vault token cache only — fee ATAs are permanent)
-  Object.keys(_vaultTokenCache).forEach(k => delete _vaultTokenCache[k]);
   Object.keys(_vaultTokenCache).forEach(k => delete _vaultTokenCache[k]);
 
   try {
