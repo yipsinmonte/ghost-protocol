@@ -58,7 +58,7 @@ const _skipLoggedSet = new Set();
 
 const TOKEN_PROG_ADDR   = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const TOKEN22_PROG_ADDR = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
-const ASSOC_TOKEN_ADDR  = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso';
+const ASSOC_TOKEN_ADDR  = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
