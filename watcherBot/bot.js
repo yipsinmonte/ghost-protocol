@@ -499,7 +499,6 @@ async function ensureFeeTokenAccount(mintPk, tokenProg) {
         { pubkey: mintPk,              isSigner: false, isWritable: false },
         { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: false },
         { pubkey: tokenProg,           isSigner: false, isWritable: false },
-        { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
       ],
       data: Buffer.from([1]), // CreateIdempotent
     });
@@ -627,7 +626,6 @@ async function ensureRecipientTokenAccount(ownerPk, mintPk, tokenProg) {
         { pubkey: mintPk,          isSigner: false, isWritable: false },
         { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: false },
         { pubkey: tokenProg,       isSigner: false, isWritable: false },
-        { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
       ],
       data: Buffer.from([1]), // CreateIdempotent
     });
@@ -1224,7 +1222,6 @@ async function sweepFeesToSol() {
             { pubkey: new PublicKey(mint), isSigner: false, isWritable: false },
             { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: false },
             { pubkey: tokenProg, isSigner: false, isWritable: false },
-            { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
           ],
           data: Buffer.from([1]), // CreateIdempotent
         });
