@@ -3564,7 +3564,7 @@ const GHOST_DISC_LABELS = {
   '074c82ba565d4286': '\u2699\uFE0F Grace period updated + 💓 Heartbeat sent',
   // recovery wallet + migration
   '11a3589a614ea95d': '\u{1F511} Recovery wallet updated',
-  'e9c9572d0936c802': '\u{1F504} Account migrated to v1.8',
+  'e9c9572d0936c802': '\u{1F504} Account migrated to latest version',
   // bot execution instructions
   'ca3ef808ddc9e69e': '⏰ Silence detected — Ghost awakened',
   '4740f97b68dcbc90': '💀 Ghost executed (protocol)',
@@ -4245,7 +4245,7 @@ function parseGhostAccount(bytes) {
     }
 
 
-    // Show migration card if account is v1.7 (exactly 1220 bytes, not yet migrated to v1.8)
+    // Show migration card if account needs upgrade (v1.7/v1.8 → current version)
     const _migCard = document.getElementById('migrationCard');
     if (_migCard) _migCard.style.display = ghostState.ghost._needsMigration ? 'block' : 'none';
 
@@ -4418,7 +4418,7 @@ function updateDashboardUI() {
 
   // Show/hide overview migration banner
   // isMigration = true for pre-v1.7 accounts (status=needs-migration, <1220 bytes — these can't parse normally)
-  // _needsMigration = true for v1.7 accounts (1220 bytes — parsed fine but need migrate_ghost on-chain call for v1.8)
+  // _needsMigration = true for older accounts that need migrate_ghost on-chain call
   const _migBanner = document.getElementById('overviewMigrationBanner');
   if (_migBanner) _migBanner.style.display = (isMigration || g._needsMigration) ? 'block' : 'none';
 
@@ -5305,10 +5305,10 @@ async function initializeGhost() {
     ghostState.ghost._isMigration = false;
 
     const _wasMigration = _isMigrationReg2 || _isMigrationReg;
-    showNotif(_wasMigration ? '✅ Ghost re-registered on-chain!' : '✅ Ghost initialized! Upgrading to v1.8...', 'green');
+    showNotif(_wasMigration ? '✅ Ghost re-registered on-chain!' : '✅ Ghost initialized!', 'green');
     addActivityRow(_wasMigration ? '🔄 Ghost re-registered (v1.7)' : '👻 Ghost initialized', sig.slice(0,4)+'...'+sig.slice(-4));
 
-    // Auto-migrate to v1.8 immediately after init — no confirm needed for fresh accounts
+    // Auto-migrate to latest version immediately after init — no confirm needed for fresh accounts
     try {
       const { SystemProgram: _SP } = solanaWeb3;
       const _migDisc = new Uint8Array([233, 201, 87, 45, 9, 54, 200, 2]);
@@ -5330,8 +5330,8 @@ async function initializeGhost() {
       if (!_migConf.value?.err) {
         ghostState.ghost._schemaVersion = 18;
         ghostState.ghost._needsMigration = false;
-        addActivityRow('🔄 Ghost upgraded to v1.8', _migSig.slice(0,4)+'...'+_migSig.slice(-4));
-        showNotif('✅ Ghost initialized and upgraded to v1.8!', 'green');
+        addActivityRow('🔄 Ghost upgraded to v1.9', _migSig.slice(0,4)+'...'+_migSig.slice(-4));
+        showNotif('✅ Ghost initialized and upgraded to v1.9!', 'green');
       }
     } catch(_migErr) {
       console.warn('[Ghost] Auto-migrate after init failed:', _migErr.message);
