@@ -24,7 +24,7 @@
 //
 // GHOST Protocol v1.8 — 2026-03-02
 // Changes from v1.7b:
-//   - MIN_INTERVAL reduced from 7 days to 1 hour (for testing flexibility)
+//   - MIN_INTERVAL set to 0 (instant expiry for testing, production users choose their own)
 //   - MIN_GRACE_PERIOD reduced from 24h to 0 (allow instant execution / zero grace)
 //   - Added migrate_ghost instruction: on-chain account layout upgrade (v1.7 → v1.8)
 //   - abandon_ghost is now callable from frontend (was stub)
@@ -65,7 +65,7 @@ declare_id!("3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3");
 pub const GHOST_SEED: &[u8] = b"ghost";
 pub const VAULT_SEED: &[u8] = b"vault";
 pub const MIN_STAKE: u64 = 10_000 * 1_000_000;
-pub const MIN_INTERVAL: i64 = 60 * 60;          // 1 hour minimum (was 7 days)
+pub const MIN_INTERVAL: i64 = 0;                 // 0 = instant expiry allowed (for testing)
 pub const MIN_GRACE_PERIOD: i64 = 0;             // 0 = instant execution allowed (was 24h)
 pub const MAX_BENEFICIARIES: usize = 10;
 pub const MAX_RECOVERY_WALLETS: usize = 3;
@@ -1004,7 +1004,7 @@ pub struct MigrateGhost<'info> {
 #[error_code]
 pub enum GhostError {
     #[msg("Insufficient $GHOST staked. Minimum 10,000 $GHOST required.")] InsufficientStake,
-    #[msg("Heartbeat interval too short. Minimum 1 hour.")] IntervalTooShort,
+    #[msg("Heartbeat interval too short.")] IntervalTooShort,
     #[msg("Grace period invalid.")] GracePeriodTooShort,
     #[msg("This ghost has already awakened.")] GhostAlreadyAwakened,
     #[msg("This ghost has not yet awakened.")] GhostNotAwakened,
