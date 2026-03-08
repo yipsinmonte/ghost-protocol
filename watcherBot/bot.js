@@ -478,16 +478,16 @@ async function ensureFeeTokenAccount(mintPk, tokenProg) {
 
   const ata = deriveATA(PROTOCOL_FEE_WALLET, mintPk, tokenProg);
 
-  // Check if ATA already exists
+  // Check if ATA already exists on-chain
   try {
-    const info = await connection.getAccountInfo(ata);
+    const info = await connection.getAccountInfo(ata, 'confirmed');
     if (info) {
       _feeAccountCache[mintStr] = ata;
       return ata;
     }
   } catch (_) {}
 
-  // Create ATA using Associated Token Program — bot pays, idempotent
+  // Create ATA using Associated Token Program — bot pays
   try {
     console.log(`    [fee-ata] Creating ATA for fee wallet · mint ${mintStr.slice(0,8)}...`);
     const createAtaIx = new TransactionInstruction({
@@ -508,28 +508,100 @@ async function ensureFeeTokenAccount(mintPk, tokenProg) {
     tx.sign(botKp);
     const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true, maxRetries: 3 });
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-    console.log(`    [fee-ata] ✅ ATA created: ${ata.toBase58().slice(0,8)}... (${sig.slice(0,8)}...)`);
 
-    // Wait for RPC consistency — poll until the account is visible to simulation
-    for (let attempt = 0; attempt < 10; attempt++) {
-      await sleep(1500);
-      try {
-        const info = await connection.getAccountInfo(ata, 'confirmed');
-        if (info) { break; }
-      } catch (_) {}
-      if (attempt === 9) console.warn(`    [fee-ata] ⚠️  ATA ${ata.toBase58().slice(0,8)}... not yet visible after 15s — proceeding anyway`);
+    // Verify the ATA actually exists — confirmTransaction doesn't mean the ix succeeded
+    await sleep(2000);
+    const verifyInfo = await connection.getAccountInfo(ata, 'confirmed');
+    if (verifyInfo) {
+      console.log(`    [fee-ata] ✅ ATA verified: ${ata.toBase58().slice(0,8)}... (${sig.slice(0,8)}...)`);
+      _feeAccountCache[mintStr] = ata;
+      return ata;
     }
 
-    _feeAccountCache[mintStr] = ata;
-    return ata;
+    // ATA creation tx confirmed but account doesn't exist — likely failed on-chain
+    // Fall through to manual keypair creation below
+    console.warn(`    [fee-ata] ATA program tx confirmed but account not found — falling back to manual creation`);
   } catch (err) {
     // ATA might already exist (race condition) — check again
     try {
-      const info = await connection.getAccountInfo(ata);
+      const info = await connection.getAccountInfo(ata, 'confirmed');
       if (info) { _feeAccountCache[mintStr] = ata; return ata; }
     } catch(_) {}
-    console.warn(`    [fee-ata] Failed to create ATA for ${mintStr.slice(0,8)}...: ${err.message}`);
-    _feeAccountCache[mintStr] = ata; // return derived ATA anyway — program will create if needed
+    console.warn(`    [fee-ata] ATA program failed: ${err.message} — falling back to manual creation`);
+  }
+
+  // Fallback: manual keypair token account (same approach as ensureRecipientTokenAccount)
+  // This works reliably on Helius for Token-2022 mints with extensions
+  try {
+    const { Keypair } = require('@solana/web3.js');
+    const kp = Keypair.generate();
+    const isToken2022 = tokenProg.toBase58() === TOKEN22_PROG_ADDR;
+    let space = 165;
+    if (isToken2022) {
+      try {
+        const mintInfo = await connection.getAccountInfo(mintPk);
+        if (mintInfo && mintInfo.data.length > 82) {
+          const extBytes = mintInfo.data.length - 82;
+          space = 165 + 2 + extBytes;
+          console.log(`    [fee-ata] Token-2022 manual — mint data: ${mintInfo.data.length} bytes, account space: ${space}`);
+        } else {
+          space = 165 + 2;
+        }
+      } catch (_) { space = 165 + 2; }
+    }
+    const lamports = await connection.getMinimumBalanceForRentExemption(space);
+
+    // SystemProgram.createAccount
+    const createIx = {
+      programId: new PublicKey('11111111111111111111111111111111'),
+      keys: [
+        { pubkey: botKp.publicKey, isSigner: true, isWritable: true },
+        { pubkey: kp.publicKey,    isSigner: true, isWritable: true },
+      ],
+      data: (() => {
+        const buf = Buffer.alloc(52);
+        buf.writeUInt32LE(0, 0); // CreateAccount instruction
+        const lam = BigInt(lamports);
+        buf.writeBigUInt64LE(lam, 4);
+        buf.writeBigUInt64LE(BigInt(space), 12);
+        tokenProg.toBuffer().copy(buf, 20);
+        return buf;
+      })(),
+    };
+
+    // InitializeAccount3 (discriminator 18) — sets owner to PROTOCOL_FEE_WALLET
+    const initData = Buffer.alloc(33);
+    initData.writeUInt8(18, 0);
+    PROTOCOL_FEE_WALLET.toBuffer().copy(initData, 1);
+    const initIx = {
+      programId: tokenProg,
+      keys: [
+        { pubkey: kp.publicKey, isSigner: false, isWritable: true },
+        { pubkey: mintPk,       isSigner: false, isWritable: false },
+      ],
+      data: initData,
+    };
+
+    const { blockhash: bh2, lastValidBlockHeight: lvbh2 } = await connection.getLatestBlockhash('confirmed');
+    const tx2 = new Transaction({ recentBlockhash: bh2, feePayer: botKp.publicKey });
+    tx2.add(createIx, initIx);
+    tx2.sign(botKp, kp);
+    const sig2 = await connection.sendRawTransaction(tx2.serialize(), { skipPreflight: true, maxRetries: 3 });
+    await connection.confirmTransaction({ signature: sig2, blockhash: bh2, lastValidBlockHeight: lvbh2 }, 'confirmed');
+
+    // Verify
+    await sleep(2000);
+    const verifyInfo2 = await connection.getAccountInfo(kp.publicKey, 'confirmed');
+    if (verifyInfo2) {
+      console.log(`    [fee-ata] ✅ Manual fee account created: ${kp.publicKey.toBase58().slice(0,8)}... (${sig2.slice(0,8)}...)`);
+      _feeAccountCache[mintStr] = kp.publicKey;
+      return kp.publicKey;
+    }
+
+    console.error(`    [fee-ata] ❌ Manual creation also failed for ${mintStr.slice(0,8)}...`);
+    return ata; // last resort — return derived ATA, will fail on-chain
+  } catch (err2) {
+    console.error(`    [fee-ata] ❌ Manual fallback failed for ${mintStr.slice(0,8)}...: ${err2.message}`);
     return ata;
   }
 }
