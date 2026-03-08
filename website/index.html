@@ -1699,7 +1699,6 @@
                 <input type="text" inputmode="numeric" id="dbNewInterval" placeholder="365" style="flex:1;background:transparent;border:none;color:#f0f0f8;font-family:'Share Tech Mono',monospace;font-size:16px;padding:10px 14px;outline:none;min-width:0" oninput="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(toSeconds(this.value,document.getElementById('dbIntervalUnit').value),true)">
                 <div style="width:1px;background:rgba(102,51,255,0.25);flex-shrink:0"></div>
                 <select id="dbIntervalUnit" onchange="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('dbNewInterval').value,this.value),true)" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto">
-                  <option value="minutes">minutes</option>
                   <option value="hours">hours</option>
                   <option value="days" selected>days</option>
                 </select>
@@ -1765,7 +1764,7 @@
 <div class="unit-input-row" style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.25);overflow:hidden;background:#07070f">
                   <input type="text" inputmode="numeric" id="initInterval" value="365" style="width:70px;background:transparent;border:none;color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center" oninput="document.getElementById('initPreview').textContent=formatIntervalPreview(toSeconds(this.value,document.getElementById('initIntervalUnit').value),true)">
                   <div style="width:1px;background:rgba(102,51,255,0.2);flex-shrink:0"></div>
-                  <select id="initIntervalUnit" onchange="document.getElementById('initPreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('initInterval').value,this.value),true)" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto"><option value="minutes">minutes</option><option value="hours">hours</option><option value="days" selected>days</option></select>
+                  <select id="initIntervalUnit" onchange="document.getElementById('initPreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('initInterval').value,this.value),true)" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto"><option value="hours">hours</option><option value="days" selected>days</option></select>
                 </div>
               </div>
             </div>
@@ -4047,7 +4046,7 @@ function parseGhostAccount(bytes) {
     offset += 1;
 
     // ── Sanity guards: detect legacy/garbage layout ────────────────
-    const _validInterval = interval >= 0 && interval <= 315360000;
+    const _validInterval = interval >= 3600 && interval <= 315360000;
     const _validRegistered = registeredAt >= 1600000000 && registeredAt <= 2000000000;
     const _validPingCount = pingCount <= 1000000;
     let _validBenefCount = benefCount <= 10;
@@ -4060,7 +4059,7 @@ function parseGhostAccount(bytes) {
     let _staked = staked, _registeredAt = registeredAt;
     let _pingCount = pingCount, _benefCount = benefCount;
 
-    const _vInterval   = _interval >= 0 && _interval <= 315360000;
+    const _vInterval   = _interval >= 3600 && _interval <= 315360000;
     const _vRegistered = _registeredAt >= 1600000000 && _registeredAt <= 2000000000;
     const _vPingCount  = _pingCount <= 1000000;
 
@@ -5089,13 +5088,13 @@ async function initializeGhost() {
   const _initIntervalUnit = document.getElementById('initIntervalUnit')?.value || 'days';
   const _initGraceVal = parseFloat(document.getElementById('initGrace')?.value ?? '0');
   const _initGraceUnit = document.getElementById('initGraceUnit')?.value || 'days';
-  const intervalHours = _initIntervalUnit === 'days' ? _initIntervalVal * 24 : (_initIntervalUnit === 'minutes' ? _initIntervalVal / 60 : _initIntervalVal);
-  const intervalSeconds = toSeconds(_initIntervalVal, _initIntervalUnit);
+  const intervalHours = _initIntervalUnit === 'days' ? _initIntervalVal * 24 : _initIntervalVal;
+  const intervalSeconds = Math.round(intervalHours * 3600);
   const graceSeconds = toSeconds(_initGraceVal, _initGraceUnit);
   const _isMigrationReg2 = ghostState.ghost._isMigration === true;
   const stakeAmt = _isMigrationReg2 ? 0 : (parseInt(document.getElementById('initStake')?.value) || 10000);
 
-  if (intervalSeconds < 0) { showNotif('⚠️ Interval cannot be negative', 'error'); return; }
+  if (intervalSeconds < 3600) { showNotif('⚠️ Minimum interval is 1 hour', 'error'); return; }
   if (graceSeconds < 0) { showNotif('⚠️ Grace period cannot be negative', 'error'); return; }
   if (!_isMigrationReg2 && stakeAmt < 10000) {
     showNotif('⚠️ Minimum 10,000 $GHOST required to summon', 'error');
@@ -5660,10 +5659,6 @@ function dbShowPage(pageId, navEl) {
 // ─── Countdown ─────────────────────────────────────────────────
 // Format interval seconds into a human-readable label (used in overview / settings display)
 function formatIntervalLabel(seconds) {
-  if (seconds === 0) return 'instant';
-  if (seconds < 60) return seconds + (seconds === 1 ? ' second' : ' seconds');
-  const m = Math.round(seconds / 60);
-  if (m < 60) return m + (m === 1 ? ' minute' : ' minutes');
   const h = Math.round(seconds / 3600);
   if (h < 24) return h + (h === 1 ? ' hour' : ' hours');
   const d = Math.round(h / 24);
@@ -5673,22 +5668,17 @@ function formatIntervalLabel(seconds) {
 }
 
 // Convert a value + unit string to seconds
-// unit: 'minutes' | 'hours' | 'days'
+// unit: 'hours' | 'days'
 function toSeconds(value, unit) {
   const v = parseFloat(value) || 0;
-  if (unit === 'days') return Math.round(v * 86400);
-  if (unit === 'minutes') return Math.round(v * 60);
-  return Math.round(v * 3600); // hours
+  return unit === 'days' ? Math.round(v * 86400) : Math.round(v * 3600);
 }
 
 // Format a seconds value into a preview string (for both interval and grace)
 function formatIntervalPreview(hoursOrSeconds, alreadySeconds) {
   const totalSeconds = alreadySeconds ? hoursOrSeconds : (parseInt(hoursOrSeconds) || 0) * 3600;
-  if (totalSeconds === 0) return '0 seconds (instant expiry)';
-  if (totalSeconds < 60) return totalSeconds + (totalSeconds === 1 ? ' second' : ' seconds');
-  const m = Math.round(totalSeconds / 60);
-  if (m < 60) return m + (m === 1 ? ' minute' : ' minutes');
   const h = Math.round(totalSeconds / 3600);
+  if (h === 0) return '0 hours (instant)';
   if (h < 24) return h + (h === 1 ? ' hour' : ' hours');
   const d = Math.round(h / 24);
   if (d < 7) return d + (d === 1 ? ' day' : ' days');
@@ -10448,7 +10438,7 @@ async function buildManualTokenAccountIxs(walletPk, mintPk, ownerPk, tokenProgPk
 function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk, tokenProgId) {
   const { PublicKey, TransactionInstruction, SystemProgram } = solanaWeb3;
   const tokenProg = tokenProgId || new PublicKey(TOKEN_PROGRAM_STR);
-  // Idempotent create [1]: 6 accounts only — no rent sysvar
+  // Idempotent create [1]: 7 accounts — rent sysvar required
   return new TransactionInstruction({
     programId: new PublicKey(ASSOC_TOKEN_PROG_STR),
     keys: [
@@ -10458,6 +10448,7 @@ function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk, tokenProgId) {
       { pubkey: mintPk,                  isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: tokenProg,               isSigner: false, isWritable: false },
+      { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
     ],
     data: new Uint8Array([1]) // CreateIdempotent
   });
@@ -10988,19 +10979,38 @@ async function dbWithdrawAsset(mintKey) {
     // Use manual SystemProgram.createAccount + InitializeAccount3 instead — always works.
     let receiveAcct = ownerAta;
     if (!ownerAtaInfo) {
-      console.log('[Ghost] Owner ATA missing — creating manual receive account');
+      console.log('[Ghost] Owner ATA missing — creating via CreateIdempotent');
       showNotif('Creating token account...', '');
-      const { createIx, initIx, kp: receiveKp } = await buildManualTokenAccountIxs(walletPk, withdrawMintPk, walletPk, rawTokenProgPk, connection);
-      receiveAcct = receiveKp.publicKey;
-      const { blockhash: bh0 } = await connection.getLatestBlockhash();
-      const createTx = new Transaction({ recentBlockhash: bh0, feePayer: walletPk });
-      createTx.add(createIx, initIx);
-      const createSigned = await ghostState.provider.signTransaction(createTx);
-      createSigned.partialSign(receiveKp);
-      const createSig = await connection.sendRawTransaction(createSigned.serialize(), { skipPreflight: true });
-      const createConf = await connection.confirmTransaction(createSig, 'confirmed');
-      if (createConf.value?.err) throw new Error('Token account creation failed: ' + JSON.stringify(createConf.value.err));
-      console.log('[Ghost] Receive account created:', receiveAcct.toBase58());
+      try {
+        const ataIx = buildCreateATAIx(walletPk, ownerAta, walletPk, withdrawMintPk, rawTokenProgPk);
+        const { blockhash: bh0 } = await connection.getLatestBlockhash();
+        const createTx = new Transaction({ recentBlockhash: bh0, feePayer: walletPk });
+        createTx.add(ataIx);
+        const createSigned = await ghostState.provider.signTransaction(createTx);
+        const createSig = await connection.sendRawTransaction(createSigned.serialize(), { skipPreflight: false });
+        await connection.confirmTransaction(createSig, 'confirmed');
+        // Verify
+        const verifyInfo = await connection.getAccountInfo(ownerAta, 'confirmed');
+        if (verifyInfo) {
+          console.log('[Ghost] ATA created:', ownerAta.toBase58());
+          receiveAcct = ownerAta;
+        } else {
+          throw new Error('ATA confirmed but not found');
+        }
+      } catch (ataErr) {
+        console.warn('[Ghost] ATA creation failed, falling back to manual:', ataErr.message);
+        const { createIx, initIx, kp: receiveKp } = await buildManualTokenAccountIxs(walletPk, withdrawMintPk, walletPk, rawTokenProgPk, connection);
+        receiveAcct = receiveKp.publicKey;
+        const { blockhash: bh0 } = await connection.getLatestBlockhash();
+        const createTx = new Transaction({ recentBlockhash: bh0, feePayer: walletPk });
+        createTx.add(createIx, initIx);
+        const createSigned = await ghostState.provider.signTransaction(createTx);
+        createSigned.partialSign(receiveKp);
+        const createSig = await connection.sendRawTransaction(createSigned.serialize(), { skipPreflight: true });
+        const createConf = await connection.confirmTransaction(createSig, 'confirmed');
+        if (createConf.value?.err) throw new Error('Token account creation failed: ' + JSON.stringify(createConf.value.err));
+        console.log('[Ghost] Receive account created:', receiveAcct.toBase58());
+      }
     }
 
     // Fetch blockhash last — minimises time between fetch and send
@@ -11066,7 +11076,7 @@ async function dbUpdateInterval() {
   const _iUnit = document.getElementById('dbIntervalUnit')?.value || 'hours';
   const seconds = toSeconds(_iVal, _iUnit);
   const hours = Math.round(seconds / 3600);
-  if (_iVal === undefined || _iVal === null || _iVal === '' || seconds < 0) { showNotif('⚠️ Enter a valid interval', 'error'); return; }
+  if (!_iVal || seconds < 3600) { showNotif('⚠️ Minimum 1 hour required', 'error'); return; }
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.intervalSeconds = seconds;
