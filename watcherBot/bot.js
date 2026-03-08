@@ -184,7 +184,7 @@ function parseGhost(pubkeyStr, data) {
     const wholeVaultAction = data[o]; o += 1;
 
     // Sanity guards
-    const MIN_IV = 0, MAX_IV = 365 * 24 * 3600;
+    const MIN_IV = 3600, MAX_IV = 365 * 24 * 3600;
     const MIN_HB = 1_600_000_000, MAX_HB = 2_000_000_000;
     if (intervalSeconds < MIN_IV || intervalSeconds > MAX_IV) {
       if (!_skipLoggedSet.has(pubkeyStr)) {
@@ -500,13 +500,13 @@ async function ensureFeeTokenAccount(mintPk, tokenProg) {
         { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: false },
         { pubkey: tokenProg,           isSigner: false, isWritable: false },
       ],
-      data: Buffer.from([1]), // CreateIdempotent — works for Token + Token-2022
+      data: Buffer.from([1]), // CreateIdempotent
     });
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: botKp.publicKey });
     tx.add(createAtaIx);
     tx.sign(botKp);
-    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true, maxRetries: 3 });
+    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
 
     // Verify the ATA actually exists — confirmTransaction doesn't mean the ix succeeded
@@ -527,7 +527,8 @@ async function ensureFeeTokenAccount(mintPk, tokenProg) {
       const info = await connection.getAccountInfo(ata, 'confirmed');
       if (info) { _feeAccountCache[mintStr] = ata; return ata; }
     } catch(_) {}
-    console.warn(`    [fee-ata] ATA program failed: ${err.message} — falling back to manual creation`);
+    const feeErrLogs = err?.logs ? '\n      ' + err.logs.join('\n      ') : '';
+    console.warn(`    [fee-ata] ATA program failed: ${err.message}${feeErrLogs} — falling back to manual creation`);
   }
 
   // Fallback: manual keypair token account (same approach as ensureRecipientTokenAccount)
@@ -615,8 +616,7 @@ async function ensureRecipientTokenAccount(ownerPk, mintPk, tokenProg) {
   } catch (_) {}
 
   // ── Attempt 1: Create ATA via Associated Token Program (CreateIdempotent) ──
-  // Works for standard SPL Token AND Token-2022. Tokens land at the standard ATA
-  // address so Jupiter, Raydium, and all dApps can find them immediately.
+  // Uses skipPreflight:false so we get actual error diagnostics if it fails
   try {
     console.log(`    [ata] creating ATA via Associated Token Program (CreateIdempotent)`);
     const createAtaIx = new TransactionInstruction({
@@ -629,17 +629,17 @@ async function ensureRecipientTokenAccount(ownerPk, mintPk, tokenProg) {
         { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: false },
         { pubkey: tokenProg,       isSigner: false, isWritable: false },
       ],
-      data: Buffer.from([1]), // CreateIdempotent — works for Token + Token-2022
+      data: Buffer.from([1]), // CreateIdempotent
     });
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: botKp.publicKey });
     tx.add(createAtaIx);
     tx.sign(botKp);
-    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true, maxRetries: 3 });
+    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
     await sleep(2000);
 
-    // Verify ATA actually exists — confirmTransaction only means tx was included, not that it succeeded
+    // Verify
     const verifyInfo = await connection.getAccountInfo(ata, 'confirmed');
     if (verifyInfo) {
       console.log(`    [ata] ✅ ATA created: ${ata.toBase58().slice(0,8)}... sig=${sig.slice(0,8)}...`);
@@ -647,18 +647,19 @@ async function ensureRecipientTokenAccount(ownerPk, mintPk, tokenProg) {
     }
     console.warn(`    [ata] ATA tx confirmed but account not found — falling back to manual`);
   } catch (e) {
-    // Check if ATA was created despite the error (race / idempotent)
+    // Log the ACTUAL error from preflight/on-chain so we can diagnose
+    const logs = e?.logs ? '\n      ' + e.logs.join('\n      ') : '';
+    console.warn(`    [ata] ATA CreateIdempotent failed: ${e.message}${logs}`);
+    // Check if ATA was created despite the error
     try {
       const info = await connection.getAccountInfo(ata, 'confirmed');
       if (info) { console.log(`    [ata] ATA exists (created concurrently)`); return { pubkey: ata }; }
     } catch(_) {}
-    console.warn(`    [ata] ATA program failed: ${e.message} — falling back to manual`);
+    console.warn(`    [ata] falling back to manual`);
   }
 
   // ── Attempt 2: Manual keypair token account (last resort) ──
-  // Tokens deposited here WON'T be visible to Jupiter/Raydium at the ATA address.
-  // Recipient will need to consolidate to ATA manually (send-to-self in Phantom).
-  console.log(`    [ata] creating manual token account (fallback — recipient may need to consolidate for Jupiter)`);
+  console.log(`    [ata] creating manual token account (fallback)`);
   const { Keypair } = require('@solana/web3.js');
   const kp = Keypair.generate();
 
@@ -689,7 +690,7 @@ async function ensureRecipientTokenAccount(ownerPk, mintPk, tokenProg) {
     ],
     data: (() => {
       const buf = Buffer.alloc(52);
-      buf.writeUInt32LE(0, 0); // CreateAccount
+      buf.writeUInt32LE(0, 0);
       buf.writeBigUInt64LE(BigInt(lamports), 4);
       buf.writeBigUInt64LE(BigInt(space), 12);
       Buffer.from(tokenProg.toBytes()).copy(buf, 20);
@@ -1238,22 +1239,21 @@ async function sweepFeesToSol() {
             { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: false },
             { pubkey: tokenProg, isSigner: false, isWritable: false },
           ],
-          data: Buffer.from([1]), // CreateIdempotent — works for Token + Token-2022
+          data: Buffer.from([1]), // CreateIdempotent
         });
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: botKp.publicKey });
         tx.add(createAtaIx);
         tx.sign(botKp);
-        const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+        const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
         await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
         await sleep(2000);
-        // Verify ATA actually exists — tx confirm doesn't guarantee success
         const verifyInfo = await connection.getAccountInfo(ata, 'confirmed');
         if (verifyInfo) {
           console.log(`    [consolidate] ✅ Created ATA for ${mint.slice(0,8)}...`);
           ataExists = true;
         } else {
-          console.warn(`    [consolidate] ATA creation confirmed but not found for ${mint.slice(0,8)}... — skipping consolidation`);
+          console.warn(`    [consolidate] ATA confirmed but not found for ${mint.slice(0,8)}... — skipping`);
           continue;
         }
       } catch (e) {
@@ -1262,10 +1262,6 @@ async function sweepFeesToSol() {
           const info = await connection.getAccountInfo(ata);
           if (info) ataExists = true;
         } catch(_) {}
-        if (!ataExists) {
-          console.warn(`    [consolidate] ATA creation failed for ${mint.slice(0,8)}...: ${e.message} — skipping`);
-          continue;
-        }
       }
     }
 
