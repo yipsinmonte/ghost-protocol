@@ -888,7 +888,7 @@ async function scan() {
 // ═══════════════════════════════════════════════════════════════════════
 
 const DASHBOARD_PORT = process.env.PORT || 3000;
-const JUPITER_PRICE_API = 'https://api.jup.ag/price/v2?ids=';
+const JUPITER_PRICE_API = 'https://api.jup.ag/price/v3?ids=';
 
 // Fee state
 // ── Persistent fee tracking ─────────────────────────────────────────────
@@ -1184,14 +1184,14 @@ async function sweepFeesToSol() {
       const ids = uniqueMints.join(',');
       const res = await fetch(JUPITER_PRICE_API + ids, { headers: jupHeaders });
       const json = await res.json();
-      prices = json.data || {};
+      prices = json || {};
       console.log(`    [sweep] Price data received for ${Object.keys(prices).length}/${uniqueMints.length} mints`);
     } catch (e) {
       console.warn(`    [sweep] Price fetch failed: ${e.message}`);
     }
 
     for (const t of dedupedTokens) {
-      const price = prices[t.mint]?.price ? parseFloat(prices[t.mint].price) : 0;
+      const price = prices[t.mint]?.usdPrice ? parseFloat(prices[t.mint].usdPrice) : 0;
       const usdValue = t.uiAmount * price;
       if (usdValue < SWEEP_MIN_USD) {
         if (price > 0) {
@@ -1238,9 +1238,9 @@ async function updateFeeSnapshot() {
         const res = await fetch(JUPITER_PRICE_API + ids, { headers: jupHeaders });
         const json = await res.json();
         for (const t of pending) {
-          const p = json.data?.[t.mint]?.price;
+          const p = json[t.mint]?.usdPrice;
           if (p) { t.usdValue = t.uiAmount * parseFloat(p); pendingUsd += t.usdValue; }
-          t.symbol = json.data?.[t.mint]?.mintSymbol || (t.mint.slice(0,4) + '...' + t.mint.slice(-4));
+          t.symbol = t.mint.slice(0,4) + '...' + t.mint.slice(-4);
         }
       } catch (_) {}
     }
@@ -1250,7 +1250,7 @@ async function updateFeeSnapshot() {
     try {
       const res = await fetch(JUPITER_PRICE_API + WSOL_MINT, { headers: jupHeaders });
       const json = await res.json();
-      solPrice = parseFloat(json.data?.[WSOL_MINT]?.price || '0');
+      solPrice = parseFloat(json[WSOL_MINT]?.usdPrice || '0');
     } catch (_) {}
 
     const totalSol = solBal + wsolBal;
