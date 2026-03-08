@@ -5184,7 +5184,7 @@ async function initializeGhost() {
     const TOKEN_2022_PROGRAM_ID = new PublicKey(new Uint8Array([0, 30, 79, 74, 132, 28, 130, 123, 0, 122, 27, 201, 146, 247, 249, 161, 194, 146, 167, 199, 9, 168, 186, 224, 224, 5, 203, 112, 13, 226, 62, 58])); // TokenzQdBNbequo8zbWFStSoL4jCxhBTXpfLV5YBRB
 
     // Derive signer's $GHOST ATA (Associated Token Account)
-    const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso');
+    const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
     const ghostMint = new PublicKey(GHOST_MINT);
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 
@@ -7851,18 +7851,15 @@ async function guardianWithdrawAll(ownerAddress) {
           const tx = new Transaction({ recentBlockhash: blockhash, feePayer: recoveryWalletPk });
           let extraKp = null; // keypair for manual token account creation
 
-          // If recipient doesn't have a token account for this mint, create one manually
-          // Using buildManualTokenAccountIxs instead of createATAInstruction — the ATA program's
-          // CreateIdempotent fails with ProgramAccountNotFound for Token-2022 mints in guardian context
+          // If recipient doesn't have a token account for this mint, create one via ATA
+          // CreateIdempotent is bundled into the same tx for atomicity
           let receiveAcct = item.recipientAta;
           if (item.needsAta) {
-            const { createIx, initIx, kp } = await buildManualTokenAccountIxs(
-              recoveryWalletPk, item.mintPk, recoveryWalletPk, item.tokenProgPk, connection
-            );
-            tx.add(createIx, initIx);
-            receiveAcct = kp.publicKey;
-            extraKp = kp;
-            console.log('[Ghost] Guardian: manual token account for', item.mintPk.toBase58().slice(0,8), '→', receiveAcct.toBase58().slice(0,8));
+            // Try ATA — CreateIdempotent in same tx (correct program address now)
+            const ataIx = buildCreateATAIx(recoveryWalletPk, item.recipientAta, recoveryWalletPk, item.mintPk, item.tokenProgPk);
+            tx.add(ataIx);
+            receiveAcct = item.recipientAta;
+            console.log('[Ghost] Guardian: ATA CreateIdempotent for', item.mintPk.toBase58().slice(0,8), '→', receiveAcct.toBase58().slice(0,8));
           }
 
           let adjAmount = item.rawAmount;
@@ -7890,7 +7887,6 @@ async function guardianWithdrawAll(ownerAddress) {
           const symLabel = item.info.symbol || item.info.mint?.slice(0,6);
           showNotif('Sign to withdraw ' + symLabel + '...', '');
           const signed = await ghostState.provider.signTransaction(tx);
-          if (extraKp) signed.partialSign(extraKp);
           let sig;
           try {
             sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' });
@@ -8276,7 +8272,7 @@ document.addEventListener('click', e => {
 
 const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 const TOKEN_PROGRAM_ID_PK = () => new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-const ASSOC_TOKEN_PROGRAM_ID_PK = () => new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso');
+const ASSOC_TOKEN_PROGRAM_ID_PK = () => new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 const SYSTEM_PROGRAM_ID_PK = () => solanaWeb3.SystemProgram.programId;
 
 async function deriveATA(ownerPubkey, mintPubkey) {
@@ -9699,7 +9695,7 @@ for (const item of validSpl.filter(m => !m.skip)) {
   splGroups[prog].push(item);
 }
 
-const BATCH_SIZE = 1;
+const BATCH_SIZE = 3; // batch deposits to reduce signing prompts
 for (const [progStr, items] of Object.entries(splGroups)) {
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE);
@@ -9972,7 +9968,7 @@ let ownerAta;
 const ownerAtaInfo = await connection.getAccountInfo(ownerAta);
 return { vt, withdrawMintPk, rawTokenProgPk, vaultAta, ownerAta, ownerAtaMissing: !ownerAtaInfo, feeBps };
 }));
-const BATCH_SIZE = 1;
+const BATCH_SIZE = 3;
 for (let i = 0; i < splMeta.length; i += BATCH_SIZE) {
 const batch = splMeta.slice(i, i + BATCH_SIZE);
 try {
@@ -10151,7 +10147,7 @@ for (const item of splMeta2) {
 }
 
 // SPL withdrawals — sign each batch individually
-const BATCH_SIZE = 1;
+const BATCH_SIZE = 3;
 for (const [, groupItems] of Object.entries(splGroups)) {
   for (let i = 0; i < groupItems.length; i += BATCH_SIZE) {
     const batch = groupItems.slice(i, i + BATCH_SIZE);
@@ -10318,7 +10314,7 @@ const TOKEN_2022_STR       = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'; // r
 
 // No normalization needed — TokenzQdBNbLqP5... IS the real Token-2022 program
 function normalizeTokenProg(addr) { return addr; }
-const ASSOC_TOKEN_PROG_STR = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso';
+const ASSOC_TOKEN_PROG_STR = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 
 // Resolve effective mint: native SOL → wSOL mint string
 function effectiveMint(mint) {
@@ -10368,7 +10364,7 @@ function formatFeePct(bps) { return (bps / 100) + '%'; }
 // Derive ATA — synchronous using pre-fetched PDA
 async function findATAWithProg(owner, mint, tokenProg) {
   const { PublicKey } = solanaWeb3;
-  const ASSOC = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bso');
+  const ASSOC = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
   const [ata] = await PublicKey.findProgramAddress(
     [owner.toBytes(), tokenProg.toBytes(), mint.toBytes()], ASSOC
   );
@@ -10458,7 +10454,6 @@ function buildCreateATAIx(payerPk, ataPk, ownerPk, mintPk, tokenProgId) {
       { pubkey: mintPk,                  isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: tokenProg,               isSigner: false, isWritable: false },
-      { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
     ],
     data: new Uint8Array([1]) // CreateIdempotent
   });
