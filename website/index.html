@@ -1699,6 +1699,7 @@
                 <input type="text" inputmode="numeric" id="dbNewInterval" placeholder="365" style="flex:1;background:transparent;border:none;color:#f0f0f8;font-family:'Share Tech Mono',monospace;font-size:16px;padding:10px 14px;outline:none;min-width:0" oninput="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(toSeconds(this.value,document.getElementById('dbIntervalUnit').value),true)">
                 <div style="width:1px;background:rgba(102,51,255,0.25);flex-shrink:0"></div>
                 <select id="dbIntervalUnit" onchange="document.getElementById('dbIntervalPreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('dbNewInterval').value,this.value),true)" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:10px 12px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto">
+                  <option value="minutes">minutes</option>
                   <option value="hours">hours</option>
                   <option value="days" selected>days</option>
                 </select>
@@ -1764,7 +1765,7 @@
 <div class="unit-input-row" style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.25);overflow:hidden;background:#07070f">
                   <input type="text" inputmode="numeric" id="initInterval" value="365" style="width:70px;background:transparent;border:none;color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center" oninput="document.getElementById('initPreview').textContent=formatIntervalPreview(toSeconds(this.value,document.getElementById('initIntervalUnit').value),true)">
                   <div style="width:1px;background:rgba(102,51,255,0.2);flex-shrink:0"></div>
-                  <select id="initIntervalUnit" onchange="document.getElementById('initPreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('initInterval').value,this.value),true)" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto"><option value="hours">hours</option><option value="days" selected>days</option></select>
+                  <select id="initIntervalUnit" onchange="document.getElementById('initPreview').textContent=formatIntervalPreview(toSeconds(document.getElementById('initInterval').value,this.value),true)" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto"><option value="minutes">minutes</option><option value="hours">hours</option><option value="days" selected>days</option></select>
                 </div>
               </div>
             </div>
@@ -4046,7 +4047,7 @@ function parseGhostAccount(bytes) {
     offset += 1;
 
     // ── Sanity guards: detect legacy/garbage layout ────────────────
-    const _validInterval = interval >= 3600 && interval <= 315360000;
+    const _validInterval = interval >= 0 && interval <= 315360000;
     const _validRegistered = registeredAt >= 1600000000 && registeredAt <= 2000000000;
     const _validPingCount = pingCount <= 1000000;
     let _validBenefCount = benefCount <= 10;
@@ -4059,7 +4060,7 @@ function parseGhostAccount(bytes) {
     let _staked = staked, _registeredAt = registeredAt;
     let _pingCount = pingCount, _benefCount = benefCount;
 
-    const _vInterval   = _interval >= 3600 && _interval <= 315360000;
+    const _vInterval   = _interval >= 0 && _interval <= 315360000;
     const _vRegistered = _registeredAt >= 1600000000 && _registeredAt <= 2000000000;
     const _vPingCount  = _pingCount <= 1000000;
 
@@ -5088,13 +5089,13 @@ async function initializeGhost() {
   const _initIntervalUnit = document.getElementById('initIntervalUnit')?.value || 'days';
   const _initGraceVal = parseFloat(document.getElementById('initGrace')?.value ?? '0');
   const _initGraceUnit = document.getElementById('initGraceUnit')?.value || 'days';
-  const intervalHours = _initIntervalUnit === 'days' ? _initIntervalVal * 24 : _initIntervalVal;
-  const intervalSeconds = Math.round(intervalHours * 3600);
+  const intervalHours = _initIntervalUnit === 'days' ? _initIntervalVal * 24 : (_initIntervalUnit === 'minutes' ? _initIntervalVal / 60 : _initIntervalVal);
+  const intervalSeconds = toSeconds(_initIntervalVal, _initIntervalUnit);
   const graceSeconds = toSeconds(_initGraceVal, _initGraceUnit);
   const _isMigrationReg2 = ghostState.ghost._isMigration === true;
   const stakeAmt = _isMigrationReg2 ? 0 : (parseInt(document.getElementById('initStake')?.value) || 10000);
 
-  if (intervalSeconds < 3600) { showNotif('⚠️ Minimum interval is 1 hour', 'error'); return; }
+  if (intervalSeconds < 0) { showNotif('⚠️ Interval cannot be negative', 'error'); return; }
   if (graceSeconds < 0) { showNotif('⚠️ Grace period cannot be negative', 'error'); return; }
   if (!_isMigrationReg2 && stakeAmt < 10000) {
     showNotif('⚠️ Minimum 10,000 $GHOST required to summon', 'error');
@@ -5659,6 +5660,10 @@ function dbShowPage(pageId, navEl) {
 // ─── Countdown ─────────────────────────────────────────────────
 // Format interval seconds into a human-readable label (used in overview / settings display)
 function formatIntervalLabel(seconds) {
+  if (seconds === 0) return 'instant';
+  if (seconds < 60) return seconds + (seconds === 1 ? ' second' : ' seconds');
+  const m = Math.round(seconds / 60);
+  if (m < 60) return m + (m === 1 ? ' minute' : ' minutes');
   const h = Math.round(seconds / 3600);
   if (h < 24) return h + (h === 1 ? ' hour' : ' hours');
   const d = Math.round(h / 24);
@@ -5668,17 +5673,22 @@ function formatIntervalLabel(seconds) {
 }
 
 // Convert a value + unit string to seconds
-// unit: 'hours' | 'days'
+// unit: 'minutes' | 'hours' | 'days'
 function toSeconds(value, unit) {
   const v = parseFloat(value) || 0;
-  return unit === 'days' ? Math.round(v * 86400) : Math.round(v * 3600);
+  if (unit === 'days') return Math.round(v * 86400);
+  if (unit === 'minutes') return Math.round(v * 60);
+  return Math.round(v * 3600); // hours
 }
 
 // Format a seconds value into a preview string (for both interval and grace)
 function formatIntervalPreview(hoursOrSeconds, alreadySeconds) {
   const totalSeconds = alreadySeconds ? hoursOrSeconds : (parseInt(hoursOrSeconds) || 0) * 3600;
+  if (totalSeconds === 0) return '0 seconds (instant expiry)';
+  if (totalSeconds < 60) return totalSeconds + (totalSeconds === 1 ? ' second' : ' seconds');
+  const m = Math.round(totalSeconds / 60);
+  if (m < 60) return m + (m === 1 ? ' minute' : ' minutes');
   const h = Math.round(totalSeconds / 3600);
-  if (h === 0) return '0 hours (instant)';
   if (h < 24) return h + (h === 1 ? ' hour' : ' hours');
   const d = Math.round(h / 24);
   if (d < 7) return d + (d === 1 ? ' day' : ' days');
@@ -6024,28 +6034,6 @@ async function renderExecutionDetail() {
   delete mintMap[GHOST_MINT];
   delete mintMap[DBD_MINT];
 
-  // ── Build vault balance lookup for status verification ──
-  // If a token is still in the vault, the transfer hasn't succeeded (regardless of activity log)
-  const _vaultBalanceMap = {};
-  try {
-    const _ownerPk = new solanaWeb3.PublicKey(ghostState.publicKey);
-    const _conn = new solanaWeb3.Connection(RPC_URL, 'confirmed');
-    const [_vaultPda] = await solanaWeb3.PublicKey.findProgramAddress(
-      [new TextEncoder().encode('vault'), _ownerPk.toBytes()],
-      new solanaWeb3.PublicKey(PROGRAM_ID)
-    );
-    // Fetch all token accounts owned by the vault PDA
-    const _vaultAccts = await _conn.getTokenAccountsByOwner(_vaultPda, { programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') });
-    const _vault22Accts = await _conn.getTokenAccountsByOwner(_vaultPda, { programId: new solanaWeb3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb') }).catch(() => ({ value: [] }));
-    for (const a of [..._vaultAccts.value, ..._vault22Accts.value]) {
-      const data = a.account.data;
-      const mintBytes = data.slice(0, 32);
-      const mint = new solanaWeb3.PublicKey(mintBytes).toBase58();
-      const amount = Number(data.readBigUInt64LE(64));
-      _vaultBalanceMap[mint] = amount;
-    }
-  } catch (e) { console.warn('[Ghost] Could not fetch vault balances for status check:', e.message); }
-
   // ── Build distribution lines ──
   const lines = [];
 
@@ -6061,13 +6049,10 @@ async function renderExecutionDetail() {
         return 0;
       });
       for (const [mint, t] of mintEntries) {
-        // Check if token is still in vault — if so, transfer hasn't completed
-        const vaultBal = _vaultBalanceMap[mint] || 0;
-        const tokenStatus = vaultBal > 0 ? 'pending' : 'complete';
-        lines.push({ action, token: t.symbol || mint.slice(0,4)+'…'+mint.slice(-4), amount: t.amount, recipient: shortR, recipientFull: wholeRecipient, logoUrl: t.logoUrl, status: tokenStatus, mint });
+        lines.push({ action, token: t.symbol || mint.slice(0,4)+'…'+mint.slice(-4), amount: t.amount, recipient: shortR, recipientFull: wholeRecipient, logoUrl: t.logoUrl, status: 'complete', mint });
       }
     } else {
-      lines.push({ action, token: 'All tokens', amount: null, recipient: shortR, recipientFull: wholeRecipient, status: 'pending' });
+      lines.push({ action, token: 'All tokens', amount: null, recipient: shortR, recipientFull: wholeRecipient, status: 'complete' });
     }
   }
 
@@ -6108,13 +6093,9 @@ async function renderExecutionDetail() {
     const isLast = gi === entries.length - 1;
     const borderB = isLast ? '' : 'border-bottom:1px solid rgba(255,255,255,0.05);';
 
-    const allDone = grp.tokens.every(t => t.status === 'complete');
-    const allPending = grp.tokens.every(t => t.status === 'pending');
-    const statusChip = allDone
+    const statusChip = grp.allDone
       ? '<span style="font-family:monospace;font-size:9px;padding:2px 8px;letter-spacing:0.14em;background:rgba(51,255,153,0.06);border:1px solid rgba(51,255,153,0.18);color:#33ff99">' + (isBurn ? 'BURNED' : 'SENT') + '</span>'
-      : allPending
-        ? '<span style="font-family:monospace;font-size:9px;padding:2px 8px;letter-spacing:0.14em;background:rgba(255,170,51,0.06);border:1px solid rgba(255,170,51,0.18);color:#ffaa33">PENDING</span>'
-        : '<span style="font-family:monospace;font-size:9px;padding:2px 8px;letter-spacing:0.14em;background:rgba(255,170,51,0.06);border:1px solid rgba(255,170,51,0.18);color:#ffaa33">PARTIAL</span>';
+      : '<span style="font-family:monospace;font-size:9px;padding:2px 8px;letter-spacing:0.14em;background:rgba(255,170,51,0.06);border:1px solid rgba(255,170,51,0.18);color:#ffaa33">PENDING</span>';
 
     // Find a tx sig for this group from activity log
     const _grpTx = (() => {
@@ -6146,10 +6127,10 @@ async function renderExecutionDetail() {
       const logoHtml = tokenLogoEl(_tkSym, 22, tk.logoUrl || null);
       const tokenCol = isBurn ? '#ff8866' : (typeof tokenColor === 'function' ? tokenColor(tk.token) : '#c0bce0');
       const pendingBadge = tk.status === 'pending'
-        ? '<span style="font-size:9px;color:#ffaa33;margin-left:auto;font-family:monospace;background:rgba(255,170,51,0.06);border:1px solid rgba(255,170,51,0.18);padding:1px 6px;letter-spacing:0.1em">PENDING</span>'
+        ? '<span style="font-size:9px;color:#5a5a7a;margin-left:auto;font-family:monospace">PENDING</span>'
         : '';
-      // Only look up tx sig for completed transfers — pending ones have no valid tx
-      const _tkTx = tk.status === 'complete' ? (() => {
+      // Find per-token tx sig from activity log
+      const _tkTx = (() => {
         for (const e of (ghostState.activityLog||[])) {
           if (!e.tx || e.tx.length < 20) continue;
           // Match by _tokens array containing this mint
@@ -6162,7 +6143,7 @@ async function renderExecutionDetail() {
           if (e.msg && tk.token && e.msg.includes(tk.token) && (isBurn ? e.msg.toLowerCase().includes('burn') : true)) return e.tx;
         }
         return _grpTx; // fallback to group tx
-      })() : null;
+      })();
       const _tkSolscan = _tkTx
         ? '<a href="https://solscan.io/tx/' + _tkTx + '" target="_blank" rel="noopener" style="font-family:monospace;font-size:8px;color:#7766aa;text-decoration:none;border:1px solid rgba(102,51,255,0.2);padding:1px 4px;margin-left:auto;flex-shrink:0" onmouseover="this.style.color=\'#aa88ff\'" onmouseout="this.style.color=\'#7766aa\'">↗</a>'
         : '';
@@ -11085,7 +11066,7 @@ async function dbUpdateInterval() {
   const _iUnit = document.getElementById('dbIntervalUnit')?.value || 'hours';
   const seconds = toSeconds(_iVal, _iUnit);
   const hours = Math.round(seconds / 3600);
-  if (!_iVal || seconds < 3600) { showNotif('⚠️ Minimum 1 hour required', 'error'); return; }
+  if (_iVal === undefined || _iVal === null || _iVal === '' || seconds < 0) { showNotif('⚠️ Enter a valid interval', 'error'); return; }
 
   if (!ghostState.provider || ghostState.walletName?.includes('demo')) {
     ghostState.ghost.intervalSeconds = seconds;
