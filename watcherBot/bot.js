@@ -1168,16 +1168,29 @@ async function sweepFeesToSol() {
   }
 
   if (nonSol.length > 0) {
+    // Deduplicate by mint — after consolidation there may be empty manual accounts + ATA
+    const uniqueMints = [...new Set(nonSol.map(t => t.mint))];
+    const mintToToken = {};
+    for (const t of nonSol) {
+      if (!mintToToken[t.mint] || t.rawAmount > (mintToToken[t.mint].rawAmount || 0)) {
+        mintToToken[t.mint] = t; // keep the one with highest balance (the ATA)
+      }
+    }
+    const dedupedTokens = uniqueMints.map(m => mintToToken[m]).filter(t => t.rawAmount > 0);
+
     // Get prices to filter dust
     let prices = {};
     try {
-      const ids = nonSol.map(t => t.mint).join(',');
+      const ids = uniqueMints.join(',');
       const res = await fetch(JUPITER_PRICE_API + ids, { headers: jupHeaders });
       const json = await res.json();
       prices = json.data || {};
-    } catch (_) {}
+      console.log(`    [sweep] Price data received for ${Object.keys(prices).length}/${uniqueMints.length} mints`);
+    } catch (e) {
+      console.warn(`    [sweep] Price fetch failed: ${e.message}`);
+    }
 
-    for (const t of nonSol) {
+    for (const t of dedupedTokens) {
       const price = prices[t.mint]?.price ? parseFloat(prices[t.mint].price) : 0;
       const usdValue = t.uiAmount * price;
       if (usdValue < SWEEP_MIN_USD) {
