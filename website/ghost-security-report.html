@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GHOST Protocol — Security Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #07070f; color: #d0cce8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; font-size: 15px; line-height: 1.6; }
+
+.page { max-width: 820px; margin: 0 auto; padding: 48px 24px 80px; }
+
+/* Header */
+.header { text-align: center; margin-bottom: 56px; position: relative; }
+.header::before {
+  content: '';
+  position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+  width: 160px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(51,255,153,0.4), transparent);
+}
+.shield { font-size: 48px; margin-bottom: 16px; display: block; filter: drop-shadow(0 0 20px rgba(51,255,153,0.3)); }
+.title { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.01em; color: #f0f0f8; margin-bottom: 6px; }
+.subtitle { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 0.25em; color: rgba(51,255,153,0.6); text-transform: uppercase; margin-bottom: 20px; }
+.meta { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: #8a8aaa; letter-spacing: 0.06em; line-height: 2.4; }
+.meta span { color: #c0bce0; }
+.program-row {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 4px;
+  background: rgba(102,51,255,0.04); border: 1px solid rgba(102,51,255,0.12);
+  padding: 8px 14px; font-size: 13px;
+}
+.program-addr { color: #c0a0ff; word-break: break-all; }
+.copy-btn {
+  background: rgba(102,51,255,0.12); border: 1px solid rgba(102,51,255,0.25);
+  color: #c0a0ff; font-family: 'Share Tech Mono', monospace; font-size: 11px;
+  padding: 4px 10px; cursor: pointer; letter-spacing: 0.08em;
+  transition: all 0.2s; flex-shrink: 0;
+}
+.copy-btn:hover { background: rgba(102,51,255,0.22); border-color: rgba(102,51,255,0.4); color: #e0d0ff; }
+
+/* EKG line */
+.ekg-container { margin: 32px auto 0; max-width: 400px; }
+.ekg-container svg { width: 100%; height: 24px; }
+.ekg-line { fill: none; stroke: #33ff99; stroke-width: 1.5; stroke-linecap: round; opacity: 0.5; }
+
+/* Summary cards */
+.summary-row { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
+.summary-card {
+  flex: 1; min-width: 140px; padding: 18px 16px; text-align: center;
+  border: 1px solid rgba(51,255,153,0.12); background: rgba(51,255,153,0.02);
+}
+.summary-num { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: #33ff99; }
+.summary-label { font-size: 11px; letter-spacing: 0.12em; color: #8a8aaa; text-transform: uppercase; margin-top: 4px; }
+
+/* Section */
+.section-tag {
+  display: inline-block; font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 0.2em;
+  color: rgba(192,160,255,0.6); text-transform: uppercase; margin-bottom: 10px;
+}
+.section-title {
+  font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700;
+  color: #f0f0f8; margin-bottom: 20px;
+}
+
+/* Audit table */
+.audit-table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
+.audit-table th {
+  font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 0.15em; color: #6a6a8a; text-transform: uppercase;
+  text-align: left; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.audit-table td {
+  padding: 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-size: 14px; line-height: 1.6; vertical-align: top; color: #c0bcd8;
+}
+.audit-table tr { transition: background 0.15s; }
+.audit-table tr:hover { background: rgba(51,255,153,0.015); }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; letter-spacing: 0.12em; padding: 4px 12px;
+}
+.status-pass { background: rgba(51,255,153,0.08); border: 1px solid rgba(51,255,153,0.25); color: #33ff99; }
+.status-note { background: rgba(255,170,51,0.08); border: 1px solid rgba(255,170,51,0.2); color: #ffaa33; }
+.status-na { background: rgba(90,90,122,0.1); border: 1px solid rgba(90,90,122,0.2); color: #7a7a9a; }
+
+.vuln-name { color: #d0b0ff; font-weight: 600; font-size: 14px; }
+.vuln-detail { color: #8a8aaa; font-size: 13px; margin-top: 4px; }
+
+/* Design principles */
+.principles { margin-bottom: 40px; }
+.principle {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 18px 0; border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+.principle-icon {
+  width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 18px; border: 1px solid rgba(51,255,153,0.15); background: rgba(51,255,153,0.03);
+}
+.principle-title { font-size: 15px; color: #e8e4f8; margin-bottom: 4px; font-weight: 600; }
+.principle-desc { font-size: 14px; color: #9a9aba; line-height: 1.7; }
+
+/* Trust section */
+.trust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 40px; }
+.trust-card {
+  padding: 20px; border: 1px solid rgba(102,51,255,0.12); background: rgba(102,51,255,0.02);
+}
+.trust-card .num { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: #c0a0ff; }
+.trust-card .label { font-size: 11px; letter-spacing: 0.12em; color: #8a8aaa; text-transform: uppercase; margin-top: 4px; }
+
+/* Footer */
+.footer {
+  text-align: center; padding-top: 40px; border-top: 1px solid rgba(255,255,255,0.04);
+  font-size: 12px; color: #6a6a8a; letter-spacing: 0.06em; line-height: 2.4;
+}
+.footer a { color: #9988cc; text-decoration: none; }
+
+/* Stamp */
+.stamp {
+  display: inline-block; margin-top: 32px; padding: 12px 28px;
+  border: 2px solid rgba(51,255,153,0.3); color: #33ff99;
+  font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 800;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  transform: rotate(-2deg);
+  position: relative;
+}
+.stamp::after {
+  content: ''; position: absolute; inset: 3px;
+  border: 1px solid rgba(51,255,153,0.15);
+}
+
+@media (max-width: 600px) {
+  .summary-row { flex-direction: column; }
+  .trust-grid { grid-template-columns: 1fr; }
+  .title { font-size: 22px; }
+  .audit-table td { padding: 10px 8px; font-size: 11px; }
+}
+
+/* Stagger animation */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.audit-table tr { animation: fadeUp 0.4s ease both; }
+.audit-table tr:nth-child(1) { animation-delay: 0.05s; }
+.audit-table tr:nth-child(2) { animation-delay: 0.1s; }
+.audit-table tr:nth-child(3) { animation-delay: 0.15s; }
+.audit-table tr:nth-child(4) { animation-delay: 0.2s; }
+.audit-table tr:nth-child(5) { animation-delay: 0.25s; }
+.audit-table tr:nth-child(6) { animation-delay: 0.3s; }
+.audit-table tr:nth-child(7) { animation-delay: 0.35s; }
+.audit-table tr:nth-child(8) { animation-delay: 0.4s; }
+.audit-table tr:nth-child(9) { animation-delay: 0.45s; }
+.audit-table tr:nth-child(10) { animation-delay: 0.5s; }
+.audit-table tr:nth-child(11) { animation-delay: 0.55s; }
+.audit-table tr:nth-child(12) { animation-delay: 0.6s; }
+.audit-table tr:nth-child(13) { animation-delay: 0.65s; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <span class="shield">🛡️</span>
+    <div class="title">Security Audit Report</div>
+    <div class="subtitle">Ghost Protocol v1.9 · On-Chain Program Review</div>
+    <div class="meta">
+      <div style="font-size:11px;letter-spacing:0.15em;color:#6a6a8a;text-transform:uppercase;margin-bottom:6px">Program ID</div>
+      <div class="program-row">
+        <span class="program-addr" id="programId">3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3</span>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('programId').textContent);this.textContent='COPIED';setTimeout(()=>this.textContent='COPY',1500)">COPY</button>
+      </div>
+      <div style="margin-top: 12px">
+        Date: <span>March 2026</span> · Framework: <span>Anchor (Rust)</span> · Network: <span>Solana Mainnet</span>
+      </div>
+    </div>
+    <div class="ekg-container">
+      <svg viewBox="0 0 400 24">
+        <polyline class="ekg-line" points="0,12 100,12 120,12 130,3 140,21 148,6 156,18 164,12 260,12 280,12 290,3 300,21 308,6 316,18 324,12 400,12"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="summary-row">
+    <div class="summary-card">
+      <div class="summary-num">13</div>
+      <div class="summary-label">Vectors Tested</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num">0</div>
+      <div class="summary-label">Critical Issues</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num">0</div>
+      <div class="summary-label">Exploits Found</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num">13</div>
+      <div class="summary-label">Passed</div>
+    </div>
+  </div>
+
+  <!-- AUDIT TABLE -->
+  <span class="section-tag">🔍 Vulnerability Assessment</span>
+  <div class="section-title">Solana Attack Vector Analysis</div>
+
+  <table class="audit-table">
+    <tr>
+      <th style="width:35%">Attack Vector</th>
+      <th>Protection</th>
+      <th style="width:80px;text-align:center">Status</th>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Account Data Matching</span><div class="vuln-detail">Substituting fake accounts to bypass checks</div></td>
+      <td>All accounts validated via Anchor constraints — seeds, bump, token::mint, token::authority. No raw unchecked deserialization.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Arbitrary CPI</span><div class="vuln-detail">Calling malicious programs via user-supplied IDs</div></td>
+      <td>All CPIs target token_program validated by Anchor's Interface&lt;TokenInterface&gt;. No user-supplied program IDs.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Authority Transfer</span><div class="vuln-detail">Inability to rotate admin/owner keys</div></td>
+      <td>Two-step transfer_ownership + accept_ownership pattern with pending_owner. Prevents accidental or malicious transfers.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Bump Seed Canonicalization</span><div class="vuln-detail">Using non-canonical bumps to create rogue PDAs</div></td>
+      <td>All PDAs use Anchor seeds + bump constraints which enforce canonical bumps automatically.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Closing Accounts</span><div class="vuln-detail">Improperly closed accounts being reinitialized</div></td>
+      <td>abandon_ghost uses Anchor's close = signer — handles lamport transfer, data zeroing, and closed discriminator automatically.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Duplicate Mutable Accounts</span><div class="vuln-detail">Passing same account twice to mutate unexpectedly</div></td>
+      <td>No instructions accept two mutable accounts of the same type where duplication could cause harm.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Insecure Initialization</span><div class="vuln-detail">Frontrunning program setup to seize control</div></td>
+      <td>initialize_ghost uses PDA seeds tied to signer.key() — one ghost per wallet, deterministic, cannot be frontrun.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Missing Signer Check</span><div class="vuln-detail">Executing privileged operations without authorization</div></td>
+      <td>All privileged operations require Signer&lt;'info&gt;. Owner operations validated via constraint = ghost.owner == signer.key().</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Missing Ownership Check</span><div class="vuln-detail">Accepting accounts owned by wrong program</div></td>
+      <td>All accounts use Anchor's Account&lt;'info, T&gt; or InterfaceAccount&lt;'info, T&gt; which validate program ownership automatically.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Overflow / Underflow</span><div class="vuln-detail">Integer arithmetic exceeding type bounds</div></td>
+      <td>All arithmetic uses checked_mul, checked_div, checked_sub, saturating_sub. Fee calculation uses unwrap_or(0) as safe fallback.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">PDA Sharing</span><div class="vuln-detail">Same PDA used across different authority domains</div></td>
+      <td>Distinct PDA seeds: ghost ["ghost", owner], vault ["vault", owner], stake ["stake_vault", owner]. No overlap.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Type Cosplay</span><div class="vuln-detail">Misrepresenting one account type as another</div></td>
+      <td>Anchor's 8-byte discriminator on Account&lt;'info, GhostAccount&gt; prevents type confusion during deserialization.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+    <tr>
+      <td><span class="vuln-name">Unsafe Rust</span><div class="vuln-detail">Memory-unsafe code bypassing Rust's guarantees</div></td>
+      <td>Zero unsafe blocks in the entire program. No raw pointer dereferences or mutable statics.</td>
+      <td style="text-align:center"><span class="status-badge status-pass">PASS</span></td>
+    </tr>
+  </table>
+
+  <!-- TRUST METRICS -->
+  <span class="section-tag">📊 Protocol Stats</span>
+  <div class="section-title">Trust Metrics</div>
+
+  <div class="trust-grid">
+    <div class="trust-card">
+      <div class="num">1,030</div>
+      <div class="label">Lines of Rust (on-chain)</div>
+    </div>
+    <div class="trust-card">
+      <div class="num">18</div>
+      <div class="label">On-Chain Instructions</div>
+    </div>
+    <div class="trust-card">
+      <div class="num">0</div>
+      <div class="label">Unsafe Code Blocks</div>
+    </div>
+    <div class="trust-card">
+      <div class="num">3</div>
+      <div class="label">Distinct PDA Domains</div>
+    </div>
+  </div>
+
+  <!-- DISASTER RECOVERY -->
+  <span class="section-tag">🚨 Disaster Recovery</span>
+  <div class="section-title">What If Everything Goes Offline?</div>
+
+  <div style="font-size:15px;color:#c0bcd8;line-height:1.8;margin-bottom:28px">
+    Ghost Protocol is fully on-chain. If the website, bot, and all frontends disappear tomorrow — <strong style="color:#33ff99">your assets are safe</strong>. Here's what you need to know.
+  </div>
+
+  <!-- Simple version for everyone -->
+  <div style="margin-bottom:32px">
+    <div style="font-size:11px;letter-spacing:0.15em;color:rgba(51,255,153,0.6);text-transform:uppercase;margin-bottom:14px;font-family:'Share Tech Mono',monospace">The Short Version</div>
+
+    <div class="principles">
+      <div class="principle">
+        <div class="principle-icon">💰</div>
+        <div>
+          <div class="principle-title">Your assets never leave Solana</div>
+          <div class="principle-desc">Everything you deposit sits in a vault controlled by the Solana blockchain — not our servers, not our wallets, not anyone's wallet. As long as you have your Solana wallet, you can always recover your assets. No password resets, no support tickets, no dependence on us.</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="principle-icon">🌐</div>
+        <div>
+          <div class="principle-title">The website is just a window</div>
+          <div class="principle-desc">Our website is a convenient interface, but it's not where your assets live. If ghost-protocol.rip goes down, your assets don't go with it. Anyone can build a new frontend that talks to the same on-chain program.</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="principle-icon">🤖</div>
+        <div>
+          <div class="principle-title">The executor bot is replaceable</div>
+          <div class="principle-desc">Our bot monitors heartbeats and triggers execution automatically. If it goes offline, your ghost simply waits. Anyone can run their own executor bot — or trigger execution manually. The 5% bounty incentivizes this.</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="principle-icon">👥</div>
+        <div>
+          <div class="principle-title">Your guardians can help</div>
+          <div class="principle-desc">If you set up recovery wallets (guardians), they can withdraw your vault assets at any time without needing the website. They just need their wallet and access to the Solana network.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key takeaway box -->
+  <div style="padding:20px 22px;border:1px solid rgba(51,255,153,0.15);background:rgba(51,255,153,0.03);margin-bottom:36px;font-size:15px;color:#c0bcd8;line-height:1.8">
+    <strong style="color:#33ff99">Bottom line:</strong> Ghost Protocol has no single point of failure. No server to hack, no database to corrupt, no company to shut down. Your assets are on Solana, controlled by math, recoverable with your wallet.
+  </div>
+
+  <!-- Recovery options summary -->
+  <div style="margin-bottom:36px">
+    <div style="font-size:11px;letter-spacing:0.15em;color:rgba(51,255,153,0.6);text-transform:uppercase;margin-bottom:14px;font-family:'Share Tech Mono',monospace">How to Recover — By Scenario</div>
+    
+    <table class="audit-table">
+      <tr>
+        <th style="width:35%">Scenario</th>
+        <th>What Happens</th>
+        <th style="width:100px;text-align:center">Assets Safe?</th>
+      </tr>
+      <tr>
+        <td><span class="vuln-name">Website goes down</span></td>
+        <td>Use any Solana wallet + CLI tool to interact with the program directly. Your vault, ghost, and beneficiaries are all on-chain and unchanged.</td>
+        <td style="text-align:center"><span class="status-badge status-pass">YES</span></td>
+      </tr>
+      <tr>
+        <td><span class="vuln-name">Executor bot goes offline</span></td>
+        <td>Your ghost stays in its current state (alive/awakened). No assets move. Anyone can run an executor or trigger execution manually when they come back online.</td>
+        <td style="text-align:center"><span class="status-badge status-pass">YES</span></td>
+      </tr>
+      <tr>
+        <td><span class="vuln-name">Ghost Protocol team disappears</span></td>
+        <td>The on-chain program continues to run indefinitely. All functions remain callable by anyone. The program is deployed and immutable unless the upgrade authority acts.</td>
+        <td style="text-align:center"><span class="status-badge status-pass">YES</span></td>
+      </tr>
+      <tr>
+        <td><span class="vuln-name">You lose access to your wallet</span></td>
+        <td>If you set up guardian wallets, they can withdraw your vault assets. Without guardians, assets remain locked in the vault — same as losing any crypto wallet.</td>
+        <td style="text-align:center"><span class="status-badge status-note">DEPENDS</span></td>
+      </tr>
+      <tr>
+        <td><span class="vuln-name">Solana network goes down</span></td>
+        <td>No transactions can be processed on any Solana dApp. Once the network resumes, your ghost, vault, and all on-chain state are exactly as you left them. Nothing is lost.</td>
+        <td style="text-align:center"><span class="status-badge status-pass">YES</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Technical section — collapsible -->
+  <div style="margin-bottom:40px">
+    <details>
+      <summary style="cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:13px;letter-spacing:0.12em;color:#c0a0ff;text-transform:uppercase;padding:16px 20px;border:1px solid rgba(102,51,255,0.25);background:rgba(102,51,255,0.06);user-select:none;transition:all 0.2s;display:flex;align-items:center;gap:8px" onmouseover="this.style.background='rgba(102,51,255,0.12)';this.style.borderColor='rgba(102,51,255,0.4)'" onmouseout="this.style.background='rgba(102,51,255,0.06)';this.style.borderColor='rgba(102,51,255,0.25)'">
+        <span style="font-size:16px">🔧</span> Technical Recovery Guide — For Developers
+      </summary>
+      <div style="padding-top:20px">
+
+        <div style="font-size:14px;color:#9a9aba;line-height:1.8;margin-bottom:20px">
+          If you need to interact with the program without any frontend, here's the technical reference.
+        </div>
+
+        <div style="margin-bottom:24px">
+          <div style="font-size:11px;letter-spacing:0.12em;color:rgba(51,255,153,0.6);text-transform:uppercase;margin-bottom:10px;font-family:'Share Tech Mono',monospace">Prerequisites</div>
+          <div style="font-size:14px;color:#9a9aba;line-height:1.8;padding:14px 16px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.01)">
+            1. Install the <a href="https://docs.solanalabs.com/cli/install" target="_blank" style="color:#c0a0ff;text-decoration:none">Solana CLI</a><br>
+            2. Have access to your wallet keypair file (export private key from Phantom)<br>
+            3. Set your RPC: <code style="color:#33ff99;background:rgba(51,255,153,0.06);padding:2px 6px;font-family:'Share Tech Mono',monospace;font-size:13px">solana config set --url https://api.mainnet-beta.solana.com</code>
+          </div>
+        </div>
+
+        <div style="margin-bottom:24px">
+          <div style="font-size:11px;letter-spacing:0.12em;color:rgba(51,255,153,0.6);text-transform:uppercase;margin-bottom:10px;font-family:'Share Tech Mono',monospace">1 — Find Your Vault Addresses</div>
+          <pre style="background:#0a0a16;border:1px solid rgba(102,51,255,0.15);padding:14px 16px;overflow-x:auto;font-family:'Share Tech Mono',monospace;font-size:12px;color:#c0bce0;line-height:1.7"><code>const { PublicKey } = require("@solana/web3.js");
+const PROGRAM = new PublicKey("3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3");
+const WALLET  = new PublicKey("YOUR_WALLET_ADDRESS");
+
+const [ghostPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from("ghost"), WALLET.toBytes()], PROGRAM
+);
+const [vaultPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from("vault"), WALLET.toBytes()], PROGRAM
+);
+console.log("Ghost:", ghostPda.toBase58());
+console.log("Vault:", vaultPda.toBase58());</code></pre>
+        </div>
+
+        <div style="margin-bottom:24px">
+          <div style="font-size:11px;letter-spacing:0.12em;color:rgba(51,255,153,0.6);text-transform:uppercase;margin-bottom:10px;font-family:'Share Tech Mono',monospace">2 — Check Vault Balances</div>
+          <pre style="background:#0a0a16;border:1px solid rgba(102,51,255,0.15);padding:14px 16px;overflow-x:auto;font-family:'Share Tech Mono',monospace;font-size:12px;color:#c0bce0;line-height:1.7"><code>spl-token accounts --owner VAULT_PDA_ADDRESS</code></pre>
+        </div>
+
+        <div style="margin-bottom:24px">
+          <div style="font-size:11px;letter-spacing:0.12em;color:rgba(51,255,153,0.6);text-transform:uppercase;margin-bottom:10px;font-family:'Share Tech Mono',monospace">3 — Key Instructions</div>
+          <pre style="background:#0a0a16;border:1px solid rgba(102,51,255,0.15);padding:14px 16px;overflow-x:auto;font-family:'Share Tech Mono',monospace;font-size:12px;color:#c0bce0;line-height:1.7"><code>withdraw_from_vault  — pull assets from vault (owner only, ghost must be alive)
+abandon_ghost        — close ghost, burn 50% stake, return 50% + vault assets
+check_silence        — awaken an overdue ghost (permissionless, earns 5% bounty)
+execute_legacy       — mark ghost as executed after grace period (permissionless)
+execute_transfer     — distribute assets to beneficiaries (permissionless)
+
+All instructions can be called via Anchor CLI, @solana/web3.js, or any
+Solana-compatible tool. The program ID and account layouts are public.</code></pre>
+        </div>
+
+        <div style="font-size:13px;color:#7a7a9a;line-height:1.7;padding:12px 16px;border:1px solid rgba(255,255,255,0.03)">
+          Full source code and IDL available on request. The program is deployed at <span style="color:#c0a0ff">3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3</span> and can be decompiled by anyone using standard Solana tools.
+        </div>
+
+      </div>
+    </details>
+  </div>
+
+  <!-- STAMP -->
+  <div style="text-align:center; margin: 40px 0;">
+    <div class="stamp">✓ No Critical Vulnerabilities</div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Verified against <a href="https://www.helius.dev/blog/a-hitchhikers-guide-to-solana-program-security" target="_blank">Helius Security Guide</a> attack vector taxonomy<br>
+    <a href="https://ghost-protocol.rip" target="_blank">ghost-protocol.rip</a> · <a href="https://x.com/onchainlegacy" target="_blank">@onchainlegacy</a><br>
+    <br>
+    <span style="color:#5a5a7a">This is an internal security review, not a third-party audit.<br>
+    Users should conduct their own due diligence before depositing assets.</span>
+  </div>
+
+</div>
+</body>
+</html>
