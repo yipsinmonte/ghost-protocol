@@ -7480,7 +7480,7 @@ async function cancelAwakening() {
     ghostState.ghost.awakenedAt = null;
     ghostState.ghost.lastHeartbeat = Date.now();
     showNotif('✅ Awakening cancelled [demo]', 'green');
-    renderDashboard();
+    openDashboard();
     return;
   }
   try {
@@ -7524,7 +7524,7 @@ async function cancelAwakening() {
     ghostState.ghost.awakenedAt = null;
     ghostState.ghost.lastHeartbeat = Date.now();
     showNotif('✅ Awakening cancelled!', 'green');
-    renderDashboard();
+    openDashboard();
     addActivityRow('🛑 Awakening cancelled', sig.slice(0,4)+'...'+sig.slice(-4));
   } catch(err) {
     showNotif('Cancel failed: ' + (err.message || err), 'error');
