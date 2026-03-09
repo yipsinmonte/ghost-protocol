@@ -7723,7 +7723,7 @@ async function guardianCancelAwakening(ownerAddress) {
 
 async function guardianWithdrawAll(ownerAddress) {
   if (!ghostState.provider) { showNotif('Connect your wallet first', 'error'); return; }
-  const _ok3 = await ghostConfirm({ icon:'🔓', title:'Guardian Withdrawal', message:'Withdraw all vault assets from ' + ownerAddress.slice(0,4) + '...' + ownerAddress.slice(-4) + ' to your recovery wallet?<br><br><span style="color:#f5a623;font-size:0.85em">⚠️ Ensure you have enough SOL on this wallet — each new token type may require ~0.002 SOL for account creation + tx fees.</span>', okLabel:'WITHDRAW ALL' }); if (!_ok3) return;
+  const _ok3 = await ghostConfirm({ icon:'🔓', title:'Guardian Withdrawal', html:'Withdraw all vault assets from ' + ownerAddress.slice(0,4) + '...' + ownerAddress.slice(-4) + ' to your recovery wallet?<br><br><span style="color:#f5a623;font-size:0.85em">⚠️ Ensure you have enough SOL on this wallet — each new token type may require ~0.002 SOL for account creation + tx fees.</span>', okLabel:'WITHDRAW ALL' }); if (!_ok3) return;
 
   try {
     showNotif('Preparing guardian withdrawal...', '');
