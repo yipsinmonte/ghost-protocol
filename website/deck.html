@@ -1,0 +1,1594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ghost Protocol — Solana Frontier 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=Fraunces:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #09090C;
+    --bg-2: #111116;
+    --fog: #1C1C24;
+    --bone: #F0F0F8;
+    --bone-dim: #B8B8C4;
+    --mute: #6A6A78;
+    --accent: #8F70FF;          /* brand violet (matches logo) */
+    --accent-dim: rgba(143, 112, 255, 0.18);
+    --accent-glow: rgba(143, 112, 255, 0.35);
+    --heartbeat: #FF6B9D;       /* heartbeat pink (matches logo) */
+    --violet: #7B5BFF;
+    --violet-deep: #5B38E8;
+    --danger: #FF6B6B;
+    --rule: rgba(240, 240, 248, 0.12);
+    --serif: 'Fraunces', 'Syne', Georgia, serif;
+    --display: 'Syne', 'Fraunces', Georgia, serif;
+    --body: 'Inter', -apple-system, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    --slide-w: 1440px;
+    --slide-h: 810px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--bone); font-family: var(--body); -webkit-font-smoothing: antialiased; }
+  img { max-width: 100%; display: block; }
+
+  /* SCREEN: horizontal scroll with snap */
+  @media screen {
+    body {
+      display: flex;
+      flex-direction: row;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      height: 100vh;
+    }
+    .slide {
+      width: var(--slide-w);
+      height: var(--slide-h);
+      flex-shrink: 0;
+      scroll-snap-align: start;
+      position: relative;
+      overflow: hidden;
+      padding: 76px 96px 92px;
+      display: flex;
+      flex-direction: column;
+    }
+    body::-webkit-scrollbar { height: 4px; }
+    body::-webkit-scrollbar-track { background: var(--bg-2); }
+    body::-webkit-scrollbar-thumb { background: var(--accent-dim); }
+    .counter {
+      position: fixed;
+      bottom: 26px;
+      right: 36px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--mute);
+      letter-spacing: 0.14em;
+      z-index: 100;
+      background: rgba(9,9,12,0.75);
+      backdrop-filter: blur(8px);
+      padding: 7px 13px;
+      border: 1px solid var(--rule);
+    }
+    .nav-hint {
+      position: fixed;
+      bottom: 30px;
+      left: 36px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--mute);
+      opacity: 0.7;
+      letter-spacing: 0.2em;
+      z-index: 100;
+      text-transform: uppercase;
+    }
+  }
+
+  /* PRINT: one slide per page, landscape, no scroll */
+  @page {
+    size: 1440px 810px;
+    margin: 0;
+  }
+  @media print {
+    html, body {
+      background: var(--bg);
+      height: auto;
+      overflow: visible;
+    }
+    body {
+      display: block;
+    }
+    .slide {
+      width: 1440px;
+      height: 810px;
+      page-break-after: always;
+      break-after: page;
+      padding: 76px 96px 92px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      transform: none;
+      margin: 0;
+    }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
+    .counter, .nav-hint { display: none !important; }
+  }
+
+  /* Ambient grain / fog backdrop (shared) */
+  .slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(900px 500px at 10% 20%, rgba(127, 229, 229, 0.06), transparent 70%),
+      radial-gradient(700px 400px at 90% 80%, rgba(184, 160, 255, 0.05), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .slide > * { position: relative; z-index: 1; }
+
+  /* Corner marks */
+  .corner {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--mute);
+    text-transform: uppercase;
+    z-index: 2;
+  }
+  .corner.tl { top: 36px; left: 48px; display: flex; align-items: center; gap: 12px; }
+  .corner.tr { top: 36px; right: 48px; max-width: 40%; text-align: right; }
+  .corner.br { bottom: 74px; right: 48px; max-width: 60%; text-align: right; }
+  .brand-mark {
+    width: 28px; height: 28px;
+    filter: drop-shadow(0 0 8px rgba(143, 112, 255, 0.4));
+  }
+  /* Small brand mark stamped in the top-left of every slide */
+  .corner.tl::before {
+    content: '';
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    background: url('./Media/logo_no_bg.png') center/contain no-repeat;
+    filter: drop-shadow(0 0 6px rgba(143, 112, 255, 0.45));
+    vertical-align: middle;
+    margin-right: 2px;
+  }
+
+  /* Typography */
+  h1, h2, h3, h4 { font-family: var(--display); font-weight: 700; letter-spacing: -0.02em; }
+  .serif { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+
+  .mega {
+    font-family: var(--display);
+    font-size: 200px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    padding: 0.08em 0;
+    background: linear-gradient(180deg, var(--bone) 0%, var(--accent) 150%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .super { font-size: 108px; font-weight: 700; line-height: 0.95; }
+  .big { font-size: 64px; font-weight: 700; line-height: 1.05; }
+  .mid { font-size: 42px; font-weight: 600; line-height: 1.15; }
+  .sub { font-size: 22px; font-weight: 400; line-height: 1.5; color: var(--bone-dim); }
+  .tag { font-size: 18px; color: var(--bone-dim); font-family: var(--serif); font-style: italic; }
+  .label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
+  .muted { color: var(--mute); }
+
+  .accent { color: var(--accent); }
+  .violet-c { color: var(--violet); }
+
+  .rule { height: 1px; background: var(--rule); border: 0; margin: 24px 0; }
+
+  /* === SLIDE 1: TITLE === */
+  .title-slide {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 0 88px;
+  }
+  /* Suppress the small stamped logo on the title slide — the hero already carries it */
+  .title-slide .corner.tl::before { display: none; }
+  .title-slide .corner.tl { color: transparent; } /* hide redundant wordmark too */
+  .title-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    max-width: 1160px;
+  }
+  .title-slide .hero-logo {
+    width: 120px; height: 120px;
+    filter: drop-shadow(0 0 48px rgba(143, 112, 255, 0.55));
+    margin: 0;
+  }
+  .title-slide .eyebrow {
+    margin: 0;
+  }
+  .title-slide .mega {
+    font-size: 164px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    padding: 0.08em 0.02em;
+    margin: 0;
+  }
+  .title-slide .tagline {
+    font-family: var(--serif);
+    font-size: 30px;
+    color: var(--bone);
+    font-weight: 300;
+    line-height: 1.3;
+    max-width: 820px;
+    margin: 0;
+  }
+  .title-slide .secondary {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 20px;
+    color: var(--bone-dim);
+    margin: 0;
+    max-width: 720px;
+  }
+  .title-slide .footer-line {
+    position: absolute;
+    left: 0; right: 0; bottom: 54px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 28px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--mute);
+    text-transform: uppercase;
+  }
+  .title-slide .footer-line .dot {
+    width: 3px; height: 3px; border-radius: 50%;
+    background: var(--mute);
+    opacity: 0.7;
+  }
+
+  /* === SLIDE 2: PROBLEM (X thread-style) === */
+  .problem-slide { justify-content: center; align-items: center; }
+  .problem-card {
+    max-width: 860px;
+    width: 100%;
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    padding: 48px 56px;
+    font-family: var(--serif);
+    font-size: 26px;
+    line-height: 1.45;
+    color: var(--bone);
+    position: relative;
+  }
+  .problem-card::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px;
+    width: 4px; height: 40px;
+    background: var(--accent);
+  }
+  .problem-handle {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 24px;
+    font-family: var(--body);
+    font-size: 15px;
+  }
+  .problem-handle .avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-dim), var(--violet));
+  }
+  .problem-handle .name { color: var(--bone); font-weight: 600; }
+  .problem-handle .handle { color: var(--mute); }
+  .problem-caption {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--bone-dim);
+    text-align: center;
+    margin-top: 36px;
+    max-width: 620px;
+  }
+
+  /* === SLIDE 3: STAT === */
+  .stat-slide { justify-content: center; align-items: center; text-align: center; position: relative; }
+  .stat-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    max-width: 920px;
+  }
+  .stat-prefix {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0;
+  }
+  .stat-huge {
+    font-family: var(--display);
+    font-size: 260px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    padding: 0.04em 0;
+    background: linear-gradient(180deg, var(--bone) 20%, var(--accent) 140%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-flex;
+    align-items: baseline;
+  }
+  .stat-huge .stat-pct {
+    font-size: 0.55em;
+    font-weight: 700;
+    margin-left: 0.04em;
+    letter-spacing: -0.03em;
+  }
+  .stat-sub {
+    font-family: var(--serif);
+    font-size: 28px;
+    color: var(--bone);
+    margin: 0;
+    max-width: 780px;
+    line-height: 1.3;
+  }
+  .stat-caption {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 19px;
+    color: var(--bone-dim);
+    margin: 24px 0 0 0;
+    max-width: 640px;
+    line-height: 1.4;
+  }
+  .stat-source {
+    position: absolute;
+    bottom: 72px;
+    left: 0; right: 0;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  /* === SLIDE 4: VIDEO === */
+  .video-slide { justify-content: center; align-items: center; }
+  .video-frame {
+    width: 1080px;
+    height: 608px;
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    box-shadow: 0 0 80px rgba(143, 112, 255, 0.15);
+  }
+  .video-frame video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    position: relative;
+    z-index: 2;
+  }
+  .video-fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    background:
+      radial-gradient(600px 400px at 50% 45%, rgba(143,112,255,0.18), transparent 70%),
+      var(--bg-2);
+    z-index: 1;
+  }
+  .video-fallback img {
+    width: 180px;
+    height: 180px;
+    filter: drop-shadow(0 0 36px rgba(143, 112, 255, 0.55));
+    opacity: 0.95;
+  }
+  .video-fallback .fb-line {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 22px;
+    color: var(--bone-dim);
+    text-align: center;
+  }
+  .video-fallback .fb-mono {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .video-caption {
+    margin-top: 20px;
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    color: var(--bone-dim);
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  /* === SLIDE 5: WHAT IT IS (4 steps) === */
+  .steps-slide { justify-content: space-between; }
+  .steps-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-top: 48px;
+  }
+  .step {
+    border-top: 1px solid var(--rule);
+    padding-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .step.active { border-top-color: var(--accent); }
+  .step-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+  }
+  .step-title {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .step-body {
+    font-size: 15px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+  }
+  .secondary-use {
+    margin-top: 32px;
+    padding: 20px 24px;
+    border-left: 2px solid var(--accent);
+    font-family: var(--serif);
+    font-size: 17px;
+    font-style: italic;
+    color: var(--bone-dim);
+    line-height: 1.55;
+    max-width: 1080px;
+  }
+
+  /* === SLIDE 6: WHY SOLANA === */
+  .why-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px;
+    margin-top: 40px;
+  }
+  .why-card {
+    border-top: 1px solid var(--accent);
+    padding-top: 28px;
+  }
+  .why-card h3 {
+    font-size: 28px;
+    margin-bottom: 14px;
+    line-height: 1.15;
+  }
+  .why-card p {
+    font-size: 15px;
+    color: var(--bone-dim);
+    line-height: 1.55;
+  }
+  .gas-bars {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: 140px 1fr auto;
+    gap: 14px 20px;
+    align-items: center;
+    padding: 22px 26px;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+  }
+  .gas-bars .gas-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .gas-bars .gas-track {
+    height: 14px;
+    background: rgba(240,240,248,0.04);
+    position: relative;
+    overflow: hidden;
+  }
+  .gas-bars .gas-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, var(--accent), var(--heartbeat));
+  }
+  .gas-bars .gas-fill.muted {
+    background: linear-gradient(90deg, rgba(255,107,107,0.75), rgba(255,107,107,0.45));
+  }
+  .gas-bars .gas-value {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--bone);
+    letter-spacing: -0.01em;
+    min-width: 88px;
+    text-align: right;
+  }
+  .gas-bars .gas-value.dim {
+    color: var(--danger);
+  }
+  .gas-caption {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--mute);
+    text-align: right;
+  }
+
+  /* === SLIDE 7: TRUST MODEL === */
+  .trust-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 48px;
+    border: 1px solid var(--rule);
+  }
+  .trust-col {
+    padding: 36px 40px;
+    background: var(--bg-2);
+  }
+  .trust-col.danger {
+    background: linear-gradient(180deg, rgba(255, 107, 107, 0.04), var(--bg-2));
+  }
+  .trust-col.safe {
+    background: linear-gradient(180deg, rgba(127, 229, 229, 0.04), var(--bg-2));
+  }
+  .trust-col h3 {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    color: var(--mute);
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+  .trust-col.danger h3 { color: var(--danger); }
+  .trust-col.safe h3 { color: var(--accent); }
+  .trust-col ul { list-style: none; }
+  .trust-col li {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 17px;
+    color: var(--bone);
+    line-height: 1.4;
+  }
+  .trust-col li:last-child { border-bottom: 0; }
+  .trust-footer {
+    margin-top: 28px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--bone-dim);
+    text-align: center;
+  }
+
+  /* === SLIDE 8: ARCHITECTURE === */
+  .arch-slide { justify-content: flex-start; }
+  .arch-flow {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: 48px;
+    align-items: center;
+  }
+  .arch-flow-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .arch-box {
+    position: relative;
+    padding: 18px 26px;
+    background: linear-gradient(180deg, var(--bg-2) 0%, #0B0B10 100%);
+    border: 1px solid var(--accent-dim);
+    width: 520px;
+    box-shadow: 0 0 32px rgba(143, 112, 255, 0.08);
+  }
+  .arch-box.core { border-color: var(--accent); }
+  .arch-box.core::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border: 1px solid var(--accent);
+    opacity: 0.25;
+    filter: blur(6px);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .arch-row-pair {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+    justify-content: center;
+  }
+  .arch-row-pair .arch-box {
+    width: auto;
+    flex: 1;
+    max-width: 320px;
+    min-width: 0;
+  }
+  .arch-pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    padding: 3px 10px;
+    background: var(--accent-dim);
+  }
+  .arch-pill.pink { color: var(--heartbeat); background: rgba(255, 107, 157, 0.14); }
+  .arch-tag {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .arch-sub {
+    font-size: 12px;
+    color: var(--bone-dim);
+    margin-top: 6px;
+    line-height: 1.5;
+    font-family: var(--mono);
+  }
+  .arch-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .arch-arrow-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .arch-arrow-bar {
+    width: 2px;
+    height: 18px;
+    background: linear-gradient(180deg, var(--accent), transparent);
+    position: relative;
+  }
+  .arch-arrow-bar::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--accent);
+  }
+  .arch-aside {
+    padding: 14px 18px;
+    border-left: 1px solid rgba(255, 107, 157, 0.35);
+    background: transparent;
+    opacity: 0.92;
+  }
+  .arch-aside-title {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    color: var(--heartbeat);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.85;
+  }
+  .arch-aside-body {
+    font-size: 12px;
+    color: var(--mute);
+    line-height: 1.6;
+  }
+  .arch-aside-body code {
+    font-family: var(--mono);
+    color: var(--heartbeat);
+    font-size: 11px;
+  }
+  .arch-aside-body strong {
+    color: var(--bone-dim);
+    font-weight: 600;
+  }
+
+  /* === SLIDE 9: LIVE ON MAINNET === */
+  .mainnet-slide { justify-content: center; }
+  .mainnet-body {
+    margin-top: 0;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 72px;
+    align-items: center;
+  }
+  .mainnet-left h2 { margin-bottom: 20px; line-height: 1.08; }
+  .mainnet-left p { font-size: 18px; color: var(--bone-dim); line-height: 1.55; margin-bottom: 18px; }
+  .program-chip {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 14px 20px;
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+  .mainnet-stats {
+    display: grid;
+    grid-template-rows: repeat(4, auto);
+    gap: 20px;
+  }
+  .stat-block {
+    border-left: 2px solid var(--accent);
+    padding: 4px 0 4px 18px;
+  }
+  .stat-block .n {
+    font-family: var(--display);
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .stat-block .k {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--bone-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .honesty-note {
+    margin: 28px 0 8px 0;
+    padding: 16px 22px;
+    border: 1px dashed var(--rule);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+    max-width: 1200px;
+  }
+
+  /* === SLIDE 10: TOKEN / INCENTIVE LOOP === */
+  .token-body {
+    margin-top: 36px;
+    display: grid;
+    grid-template-columns: 1fr 1.1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .loop {
+    border: 1px solid var(--rule);
+    padding: 20px 22px;
+    background: var(--bg-2);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .loop-step {
+    padding: 11px 16px;
+    background: var(--bg);
+    border-left: 2px solid var(--accent);
+    color: var(--bone);
+  }
+  .loop-arrow {
+    font-family: var(--mono);
+    color: var(--accent);
+    text-align: center;
+    font-size: 14px;
+    line-height: 1;
+    margin: 2px 0;
+  }
+  .token-facts ul { list-style: none; }
+  .token-facts li {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 15px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+  }
+  .token-facts li:last-child { border-bottom: 0; }
+  .token-facts li strong { color: var(--bone); display: block; margin-bottom: 3px; font-family: var(--display); font-size: 17px; }
+
+  /* === SLIDE 11: ROADMAP === */
+  .roadmap-slide { justify-content: flex-start; }
+  .phases {
+    margin-top: 56px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .phase {
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    padding: 26px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .phase.done { border-color: var(--accent); }
+  .phase.live {
+    border-color: var(--heartbeat);
+    background:
+      linear-gradient(180deg, rgba(255,107,157,0.06), transparent 60%),
+      var(--bg-2);
+  }
+  .phase.live::before {
+    content: '';
+    position: absolute;
+    top: 26px;
+    right: 24px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--heartbeat);
+    box-shadow: 0 0 0 0 rgba(255, 107, 157, 0.7);
+    animation: pulse-live 1.8s ease-out infinite;
+  }
+  .phase { position: relative; }
+  @keyframes pulse-live {
+    0%   { box-shadow: 0 0 0 0 rgba(255, 107, 157, 0.6); }
+    70%  { box-shadow: 0 0 0 14px rgba(255, 107, 157, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 107, 157, 0); }
+  }
+  .phase-when {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--mute);
+    text-transform: uppercase;
+  }
+  .phase.done .phase-when { color: var(--accent); }
+  .phase.live .phase-when { color: var(--heartbeat); }
+  .phase-name {
+    font-family: var(--display);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .phase ul { list-style: none; margin-top: 4px; }
+  .phase li {
+    padding: 7px 0;
+    font-size: 13px;
+    color: var(--bone-dim);
+    line-height: 1.45;
+    border-bottom: 1px solid rgba(240, 240, 248, 0.05);
+  }
+  .phase li:last-child { border-bottom: 0; }
+  .phase li::before { content: "— "; color: var(--accent); }
+
+  /* === SLIDE 13: CLOSING === */
+  .closing-slide {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    position: relative;
+  }
+  .closing-slide::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(800px 500px at 50% 55%, rgba(143, 112, 255, 0.12), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .closing-slide .corner.tl::before { display: none; }
+  .closing-slide .corner.tl { color: transparent; }
+  .closing-stack {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    max-width: 1100px;
+  }
+  .closing-seal {
+    width: 104px;
+    height: 104px;
+    filter: drop-shadow(0 0 48px rgba(143, 112, 255, 0.6));
+  }
+  .closing-eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .closing-question {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 92px;
+    font-weight: 300;
+    line-height: 1.02;
+    letter-spacing: -0.025em;
+    color: var(--bone);
+    margin: 0;
+    padding: 0.04em 0;
+    background: linear-gradient(180deg, var(--bone) 30%, var(--accent) 140%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .closing-sub {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-style: italic;
+    color: var(--bone-dim);
+    max-width: 640px;
+    margin: 0;
+    line-height: 1.4;
+  }
+  .closing-divider {
+    width: 60px;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0.4;
+    margin: 8px 0;
+  }
+  .closing-thanks {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .closing-contacts {
+    display: flex;
+    gap: 40px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-top: 4px;
+  }
+  .closing-contacts .dot {
+    width: 3px; height: 3px; border-radius: 50%;
+    background: var(--mute);
+    align-self: center;
+    opacity: 0.7;
+  }
+
+  /* === SLIDE 12: THE ASK === */
+  .ask-slide { justify-content: space-between; }
+  .ask-list {
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .ask-item {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 28px;
+    padding: 14px 0;
+    border-top: 1px solid var(--rule);
+    align-items: center;
+  }
+  .ask-item .n {
+    font-family: var(--display);
+    font-size: 44px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .ask-item .t { font-family: var(--display); font-size: 20px; font-weight: 600; margin-bottom: 2px; }
+  .ask-item .d { font-size: 13px; color: var(--bone-dim); line-height: 1.5; }
+  .cta-panel {
+    margin-top: 24px;
+    padding: 24px 28px;
+    border: 1px solid var(--accent);
+    background:
+      radial-gradient(400px 200px at 0% 50%, rgba(143,112,255,0.12), transparent 70%),
+      var(--bg-2);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 24px;
+    align-items: center;
+  }
+  .cta-panel .cta-seal {
+    width: 48px;
+    height: 48px;
+    filter: drop-shadow(0 0 14px rgba(143, 112, 255, 0.5));
+  }
+  .cta-panel .cta-text {
+    font-family: var(--serif);
+    font-size: 22px;
+    color: var(--bone);
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+  .cta-panel .cta-text .cta-sub {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-style: normal;
+    letter-spacing: 0.2em;
+    color: var(--bone-dim);
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .cta-panel .cta-action {
+    font-family: var(--display);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+    padding: 12px 22px;
+    border: 1px solid var(--accent);
+    background: rgba(143, 112, 255, 0.08);
+    white-space: nowrap;
+  }
+  .final-question {
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 40px;
+    text-align: center;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+  }
+  .final-question .seal {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 14px rgba(143, 112, 255, 0.5));
+  }
+  .contact-row {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================== SLIDE 1 : TITLE ================== -->
+<section class="slide title-slide">
+  <span class="corner tl">Ghost Protocol</span>
+  <span class="corner tr">Solana Frontier 2026</span>
+  <div class="title-stack">
+    <img src="./Media/logo_no_bg.png" alt="Ghost Protocol" class="hero-logo">
+    <div class="eyebrow">01 — The Pitch</div>
+    <h1 class="mega">GHOST</h1>
+    <p class="tagline">Your digital afterlife on Solana.</p>
+    <p class="secondary">A smart vault that doesn't forget your family or friends.</p>
+  </div>
+  <div class="footer-line">
+    <span>ghost-protocol.rip</span>
+    <span class="dot"></span>
+    <span>@onchainlegacy</span>
+    <span class="dot"></span>
+    <span>Program · 3Es13GXc…T3sZ3</span>
+  </div>
+</section>
+
+<!-- ================== SLIDE 2 : PROBLEM ================== -->
+<section class="slide problem-slide">
+  <span class="corner tl">02 — The Problem</span>
+  <span class="corner br">Not a one-time story.</span>
+  <div class="problem-card">
+    <div class="problem-handle">
+      <div class="avatar"></div>
+      <div>
+        <div class="name">Anonymous</div>
+        <div class="handle">a recurring thread on crypto X · every month</div>
+      </div>
+    </div>
+    <p>"My dad passed away last week. He kept most of his savings in SOL on a Ledger. None of us know the seed phrase. Is there <em>anything</em> we can do?"</p>
+    <p style="margin-top: 18px; color: var(--bone-dim); font-size: 22px;">— replies: <span class="accent">1.2k</span>. None of them have a good answer.</p>
+  </div>
+  <p class="problem-caption" style="align-self: center; margin-top: 40px;">
+    This thread appears every month. There is no process that can help them.<br>
+    Centralized exchanges have support lines. Banks have probate.<br>
+    <span class="accent">Self-custody has neither.</span>
+  </p>
+</section>
+
+<!-- ================== SLIDE 3 : STAT ================== -->
+<section class="slide stat-slide">
+  <span class="corner tl">03 — Scale</span>
+  <span class="corner tr">This is not niche.</span>
+  <div class="stat-center">
+    <div class="stat-prefix">up to</div>
+    <div class="stat-huge">20<span class="stat-pct">%</span></div>
+    <p class="stat-sub">of all crypto is estimated <span class="accent">permanently lost</span><br>to death, forgotten keys, and hardware failure.</p>
+    <p class="stat-caption">
+      You cannot solve this with better onboarding or a recovery wizard.<br>
+      You solve it with a program.
+    </p>
+  </div>
+  <div class="stat-source">We build on Solana — and support wrapped BTC, wrapped ETH, and every SPL token alongside native SOL.</div>
+</section>
+
+<!-- ================== SLIDE 4 : VIDEO ================== -->
+<section class="slide video-slide">
+  <span class="corner tl">04 — See it</span>
+  <span class="corner tr">60 seconds</span>
+  <div style="display:flex; flex-direction:column; align-items:center;">
+    <div class="video-frame">
+      <div class="video-fallback" aria-hidden="true">
+        <img src="./Media/logo_no_bg.png" alt="">
+        <p class="fb-line">Ghost Protocol — the full lifecycle, told without a pitch.</p>
+        <p class="fb-mono">Press play · 60 seconds</p>
+      </div>
+      <video src="./Media/ghost-protocol.mp4" controls preload="metadata" poster="./Media/logo.png" playsinline></video>
+    </div>
+    <div class="video-caption">Ghost Protocol — the full lifecycle, told without a pitch</div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 5 : WHAT IT IS ================== -->
+<section class="slide steps-slide">
+  <span class="corner tl">05 — The Protocol</span>
+  <span class="corner tr">Four actions. That's the whole thing.</span>
+  <div>
+    <div class="eyebrow">How it works</div>
+    <h2 class="big">A trustless, on-chain<br>dead-man's switch for<br>any SOL or SPL token.</h2>
+  </div>
+  <div class="steps-grid">
+    <div class="step active">
+      <div class="step-num">01 — REGISTER</div>
+      <div class="step-title">Ghost PDA + Vault PDA</div>
+      <div class="step-body">Create your Ghost on-chain. A unique vault PDA is derived; only program logic can move its funds — no private key exists.</div>
+    </div>
+    <div class="step active">
+      <div class="step-num">02 — FUND</div>
+      <div class="step-title">Deposit &amp; configure</div>
+      <div class="step-body">Deposit SOL and any SPL tokens. Set up to 10 beneficiaries: who gets what, or who gets everything left.</div>
+    </div>
+    <div class="step active">
+      <div class="step-num">03 — STAY ALIVE</div>
+      <div class="step-title">Ping before you expire</div>
+      <div class="step-body">Send a heartbeat before your interval runs out. Costs less than a cent. Miss it, and the grace period begins automatically.</div>
+    </div>
+    <div class="step active">
+      <div class="step-num">04 — EXECUTE</div>
+      <div class="step-title">Anyone can trigger</div>
+      <div class="step-body">After grace expires, anyone can call execute_legacy. The vault PDA signs CPIs to each beneficiary. No operator, no gatekeeper.</div>
+    </div>
+  </div>
+  <div class="secondary-use">
+    Digital legacy first — but also travel, hospitalization, seed-phrase loss, or a contingency slice for family.
+    Most Ghosts are pinged, cancelled, or executed long before anyone actually dies.
+  </div>
+</section>
+
+<!-- ================== SLIDE 6 : WHY SOLANA ================== -->
+<section class="slide">
+  <span class="corner tl">06 — Why Solana</span>
+  <span class="corner tr">Not ethical decoration. Real reason.</span>
+  <div>
+    <div class="eyebrow">This product does not work on another chain</div>
+    <h2 class="big">Solana is the one chain<br>where this is actually <span class="accent">shippable.</span></h2>
+  </div>
+  <div class="why-grid">
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">PDA-owned vaults</div>
+      <h3>Keys that don't exist.</h3>
+      <p>Vaults are owned by program-derived addresses. Their private keys cannot be generated by anyone — not the user, not the operator, not an attacker. Only program logic can move funds.</p>
+    </div>
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">Permissionless execution</div>
+      <h3>Anyone is the executor.</h3>
+      <p>check_silence and execute_legacy can be called by any Solana address. If our bot disappears, beneficiaries (or any bounty hunter) can still trigger the afterlife. There is no gatekeeper.</p>
+    </div>
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">Sub-cent heartbeats</div>
+      <h3>Cheap enough for everyone.</h3>
+      <p>A weekly ping costs less than $0.01. On a chain with $5 gas, this becomes a product for whales only. On Solana, anyone with a wallet can afford to stay alive.</p>
+    </div>
+  </div>
+  <div class="gas-bars">
+    <div class="gas-label">Solana</div>
+    <div class="gas-track"><div class="gas-fill" style="width: 2%;"></div></div>
+    <div class="gas-value">$0.01</div>
+
+    <div class="gas-label">Ethereum L1</div>
+    <div class="gas-track"><div class="gas-fill muted" style="width: 100%;"></div></div>
+    <div class="gas-value dim">~$5.00</div>
+
+    <p class="gas-caption">One weekly heartbeat, for 52 weeks, across 10,000 users · $5,200 vs $2,600,000 in network fees.</p>
+  </div>
+</section>
+
+<!-- ================== SLIDE 7 : TRUST MODEL ================== -->
+<section class="slide">
+  <span class="corner tl">07 — Trust Model</span>
+  <span class="corner tr">The slide that closes the objection.</span>
+  <div>
+    <div class="eyebrow">Who has authority over your vault</div>
+    <h2 class="big">Nobody can move your funds<br>outside the rules <span class="accent">you</span> configured.</h2>
+  </div>
+  <div class="trust-cols">
+    <div class="trust-col danger">
+      <h3>What nobody — including us — can do</h3>
+      <ul>
+        <li>Move funds out of your vault unilaterally</li>
+        <li>Awaken you while you're still pinging</li>
+        <li>Change who your beneficiaries are</li>
+        <li>Prevent beneficiaries from receiving funds</li>
+        <li>Push a malicious upgrade before a 7-day timelock</li>
+      </ul>
+    </div>
+    <div class="trust-col safe">
+      <h3>What you (and only you) can do</h3>
+      <ul>
+        <li>Ping, deposit, withdraw, reconfigure, pause</li>
+        <li>Designate up to 3 recovery wallets as emergency trustees</li>
+        <li>Cancel an awakening during the grace period</li>
+        <li>Transfer Ghost ownership to a new wallet</li>
+        <li>Decide — specifically — who inherits what, and when</li>
+      </ul>
+    </div>
+  </div>
+  <p class="trust-footer">The vault PDA's private key does not exist. The only way to move funds is through program logic you configured.</p>
+</section>
+
+<!-- ================== SLIDE 8 : ARCHITECTURE ================== -->
+<section class="slide arch-slide">
+  <span class="corner tl">08 — Architecture</span>
+  <span class="corner tr">Two PDAs. Every asset move is a CPI.</span>
+  <div>
+    <div class="eyebrow">How state and assets are separated</div>
+    <h2 class="big">State in one PDA.<br>Assets in another. <span class="accent">Program</span> signs.</h2>
+  </div>
+  <div class="arch-flow">
+    <div class="arch-flow-main">
+      <div class="arch-box">
+        <div class="arch-pill">Actor</div>
+        <div class="arch-tag">Owner Wallet</div>
+        <div class="arch-sub">Phantom · Backpack · Solflare · Ledger</div>
+      </div>
+
+      <div class="arch-arrow">
+        <span class="arch-arrow-label">ping · configure · deposit</span>
+        <div class="arch-arrow-bar"></div>
+      </div>
+
+      <div class="arch-row-pair">
+        <div class="arch-box core">
+          <div class="arch-pill">PDA · State</div>
+          <div class="arch-tag">Ghost</div>
+          <div class="arch-sub">heartbeat · beneficiaries[10] · recovery[3] · awakened · executed</div>
+        </div>
+        <div class="arch-box core">
+          <div class="arch-pill">PDA · Assets</div>
+          <div class="arch-tag">Vault</div>
+          <div class="arch-sub">SOL + any SPL · no private key · only the program can sign</div>
+        </div>
+      </div>
+
+      <div class="arch-arrow">
+        <span class="arch-arrow-label">awakened + grace expires → execute CPI</span>
+        <div class="arch-arrow-bar"></div>
+      </div>
+
+      <div class="arch-box">
+        <div class="arch-pill">Outputs</div>
+        <div class="arch-tag">Beneficiary Wallets</div>
+        <div class="arch-sub">up to 10 recipients · transfer · burn · whole-vault sweep</div>
+      </div>
+    </div>
+
+    <aside class="arch-aside">
+      <div class="arch-aside-title">Permissionless Trigger</div>
+      <div class="arch-aside-body">
+        <strong>Anyone</strong> — not just our reference bot — can call <code>check_silence</code> when a Ghost is past its inactivity window. The caller receives a <strong>5%</strong> bounty from the staked $GHOST.
+        <br><br>
+        If our bot disappears tomorrow, the protocol still works. Execution is never load-bearing on us.
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ================== SLIDE 9 : LIVE ON MAINNET ================== -->
+<section class="slide mainnet-slide">
+  <span class="corner tl">09 — Live</span>
+  <span class="corner tr">Not a hackathon prototype.</span>
+  <div class="mainnet-body">
+    <div class="mainnet-left">
+      <div class="eyebrow">Deployed on Solana Mainnet</div>
+      <h2 class="big">1,030 lines of Anchor.<br>Shipped <span class="accent">before</span>&nbsp;the&nbsp;hackathon.</h2>
+      <p>Program deployed March 2026. Full migration path from v1.7 → v1.9 already shipped in production. Public registration opens during this hackathon — judges are among our first real users.</p>
+      <p>Upgrade authority currently held by the founder's deployer wallet — standard for pre-audit programs. Post-launch roadmap: migrate to a Squads multisig or 7-day timelock controller after the first third-party audit, funded by prize and grant capital.</p>
+      <div class="program-chip">3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3</div>
+    </div>
+    <div class="mainnet-stats">
+      <div class="stat-block">
+        <div class="n">1,030</div>
+        <div class="k">Lines of Anchor · audited-ready</div>
+      </div>
+      <div class="stat-block">
+        <div class="n">23</div>
+        <div class="k">Public instructions · one program</div>
+      </div>
+      <div class="stat-block">
+        <div class="n">2 of 2</div>
+        <div class="k">PDAs per user · state &amp; vault separated</div>
+      </div>
+      <div class="stat-block">
+        <div class="n">0</div>
+        <div class="k">Private keys custodied by the protocol</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 10 : TOKEN & LOOP ================== -->
+<section class="slide">
+  <span class="corner tl">10 — $GHOST</span>
+  <span class="corner tr">1 billion. Not one more.</span>
+  <div>
+    <div class="eyebrow">Token &amp; incentive loop</div>
+    <h2 class="big">A token that pays <span class="accent">watchers</span>.<br>Not one that extracts rent.</h2>
+  </div>
+  <div class="token-body">
+    <div class="loop">
+      <div class="loop-step">01 · Register → stake $GHOST</div>
+      <div class="loop-arrow">↓</div>
+      <div class="loop-step">02 · Ping = heartbeat · silence &gt; interval = eligible</div>
+      <div class="loop-arrow">↓</div>
+      <div class="loop-step">03 · Anyone calls check_silence → 5% stake → caller</div>
+      <div class="loop-arrow">↓</div>
+      <div class="loop-step">04 · Grace expires → execute → beneficiaries paid</div>
+    </div>
+    <div class="token-facts">
+      <ul>
+        <li><strong>Fixed supply.</strong> 1,000,000,000. Minted once at genesis. No team cliff.</li>
+        <li><strong>Fair launch.</strong> Pump.fun. No presale, no private round, no allocations.</li>
+        <li><strong>Skin in the game.</strong> Each Ghost requires a minimum stake at registration.</li>
+        <li><strong>Bounty reserve.</strong> 5% of staked $GHOST funds whoever triggers check_silence.</li>
+        <li><strong>Future governance.</strong> Parameter votes (minimums, fees, grace floors) to holders.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 11 : ROADMAP ================== -->
+<section class="slide roadmap-slide">
+  <span class="corner tl">11 — Roadmap</span>
+  <span class="corner tr">The path into the dark.</span>
+  <div>
+    <div class="eyebrow">Four phases, each named after the myth</div>
+    <h2 class="big">Summon. Awaken. Possess.<br><span class="accent">Eternal.</span></h2>
+  </div>
+  <div class="phases">
+    <div class="phase done">
+      <div class="phase-when">Q1 2026 · shipped</div>
+      <div class="phase-name">Summon</div>
+      <ul>
+        <li>Mainnet deploy</li>
+        <li>Dashboard (vault, beneficiaries, heartbeat)</li>
+        <li>SOL + SPL support</li>
+        <li>Recovery wallets</li>
+        <li>Fair $GHOST launch</li>
+      </ul>
+    </div>
+    <div class="phase live">
+      <div class="phase-when">Q2 2026 · in progress</div>
+      <div class="phase-name">Awaken</div>
+      <ul>
+        <li>NFT (Metaplex) vaults</li>
+        <li>Time-locked transfers</li>
+        <li>Jupiter auto-swap to SOL</li>
+        <li>Off-chain executors (X post, email, TG)</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="phase-when">Q3 2026</div>
+      <div class="phase-name">Possess</div>
+      <ul>
+        <li>Close DeFi positions (Jupiter, Marginfi, Drift)</li>
+        <li>Cross-chain bridges (Ethereum, Base)</li>
+        <li>Enterprise SMA / OTC tier</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="phase-when">Q4 2026</div>
+      <div class="phase-name">Eternal</div>
+      <ul>
+        <li>Memorial layer</li>
+        <li>Optional AI-self integration</li>
+        <li>100k souls registered</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 12 : THE ASK ================== -->
+<section class="slide ask-slide">
+  <span class="corner tl">12 — The Ask</span>
+  <span class="corner tr">Solana Frontier 2026</span>
+  <div>
+    <div class="eyebrow">What winning does for this project</div>
+    <h2 class="big">Three specific things.<br>All of them are <span class="accent">tangible.</span></h2>
+  </div>
+  <div class="ask-list">
+    <div class="ask-item">
+      <div class="n">01</div>
+      <div>
+        <div class="t">Fund the first third-party audit</div>
+        <div class="d">OtterSec or Neodyme. Directly converts prize capital into user trust and unlocks the upgrade-authority migration to Squads or timelock.</div>
+      </div>
+    </div>
+    <div class="ask-item">
+      <div class="n">02</div>
+      <div>
+        <div class="t">90 days of focused distribution</div>
+        <div class="d">Not memecoin marketing. Reaching crypto OPSEC voices, hardware wallet communities, and family-office channels where the pain is already felt.</div>
+      </div>
+    </div>
+    <div class="ask-item">
+      <div class="n">03</div>
+      <div>
+        <div class="t">Upgrade-authority migration to Squads + 7-day timelock</div>
+        <div class="d">Prize capital accelerates removing the last trust assumption on the program: founder deployer wallet → Squads multisig governed by a 7-day timelock, wired immediately after audit sign-off.</div>
+      </div>
+    </div>
+  </div>
+  <div class="cta-panel">
+    <img src="./Media/logo_no_bg.png" alt="" class="cta-seal">
+    <div class="cta-text">
+      Every judge gets a free registered Ghost during the hackathon.
+      <span class="cta-sub">Register with a 1-hour interval · see the full lifecycle in real time</span>
+    </div>
+    <div class="cta-action">ghost-protocol.rip →</div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 13 : CLOSING ================== -->
+<section class="slide closing-slide">
+  <span class="corner tl">Ghost Protocol</span>
+  <span class="corner tr">Fin.</span>
+  <div class="closing-stack">
+    <img src="./Media/logo_no_bg.png" alt="Ghost Protocol" class="closing-seal">
+    <div class="closing-eyebrow">One last question</div>
+    <h2 class="closing-question">Are you still alive?</h2>
+    <p class="closing-sub">If you are — thank you for watching. If you're not — someone you trust just inherited your SOL.</p>
+    <div class="closing-divider"></div>
+    <div class="closing-thanks">Thank you, judges</div>
+    <div class="closing-contacts">
+      <span>ghost-protocol.rip</span>
+      <span class="dot"></span>
+      <span>@onchainlegacy</span>
+      <span class="dot"></span>
+      <span>3Es13GXc…T3sZ3</span>
+    </div>
+  </div>
+</section>
+
+<!-- Overlays -->
+<div class="counter" id="counter">01 / 13</div>
+<div class="nav-hint">← → arrows · F to fullscreen · P to print/PDF</div>
+
+<script>
+  // Arrow-key navigation + slide counter
+  const slides = document.querySelectorAll('.slide');
+  const counter = document.getElementById('counter');
+  const total = slides.length;
+  let current = 0;
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function updateCounter() {
+    counter.textContent = pad(current + 1) + ' / ' + pad(total);
+  }
+
+  function scrollTo(i) {
+    if (i < 0 || i >= total) return;
+    current = i;
+    slides[i].scrollIntoView({ behavior: 'smooth', inline: 'start' });
+    updateCounter();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { scrollTo(current + 1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { scrollTo(current - 1); e.preventDefault(); }
+    else if (e.key === 'Home') { scrollTo(0); e.preventDefault(); }
+    else if (e.key === 'End') { scrollTo(total - 1); e.preventDefault(); }
+    else if (e.key.toLowerCase() === 'f') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+    else if (e.key.toLowerCase() === 'p') { window.print(); e.preventDefault(); }
+  });
+
+  // Track scroll position → counter
+  let scrollTimeout;
+  document.body.addEventListener('scroll', () => {
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+      const x = document.body.scrollLeft;
+      const w = slides[0].getBoundingClientRect().width;
+      const i = Math.round(x / w);
+      if (i !== current) { current = Math.max(0, Math.min(total - 1, i)); updateCounter(); }
+    }, 80);
+  }, { passive: true });
+
+  updateCounter();
+
+  // Auto-fit to viewport on screen (non-print). Uses CSS zoom for layout-accurate scaling.
+  function fitToViewport() {
+    if (window.matchMedia('print').matches) { document.body.style.zoom = ''; return; }
+    const targetW = 1440, targetH = 810;
+    const scale = Math.min(window.innerWidth / targetW, window.innerHeight / targetH);
+    document.body.style.zoom = scale.toFixed(4);
+  }
+  fitToViewport();
+  window.addEventListener('resize', fitToViewport);
+  window.addEventListener('beforeprint', () => { document.body.style.zoom = ''; });
+  window.addEventListener('afterprint', fitToViewport);
+</script>
+
+</body>
+</html>
