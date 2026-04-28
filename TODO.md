@@ -4,6 +4,62 @@ Captured 2026-04-28. Things to action after the Colosseum submission.
 
 ---
 
+## 🟢 TOMORROW (2026-04-30) — pre-submission polish
+
+Do NOT start the Tier A retention work below — that's post-Frontier. Tomorrow
+is purely polish + decide-the-token + submit. Order matters:
+
+### Block 1 (~90 min) — content alignment pass
+1. **Strip "5 ghosts on chain" / fake-traction language** — grep across:
+   - `website/deck.html` and `website/deck_v2.html`
+   - `website/ghost-security-report.html`
+   - `website/ghost-whitepaper.html`
+   - `docs/pitch/SUBMISSION_DECK*.md`
+   - `docs/pitch/colosseum-submission.html`
+   Replace with the verifiable framing already in README.
+
+2. **Update roadmap** consistently across all surfaces. Source of truth =
+   README. Then sync:
+   - `website/index.html` (marketing roadmap section §03)
+   - `website/deck_v2.html` slide 14 (Roadmap)
+   - `website/ghost-whitepaper.html` (Path Into the Dark section)
+   - `website/ghost-security-report.html` (only mention if applicable)
+   Ensure they all say: Summon ✅ (Q1 done) → Awaken (Q2: NFT mint pipeline,
+   Telegram bot, real audit) → Possess (Q3: DeFi closing, bridges) → Eternal
+   (Q4: memorial, multisig upgrade authority).
+
+### Block 2 (~60 min) — $GHOST token decision
+3. Pick one path and stick to it across all artifacts:
+   - **Path A: keep the $GHOST stake.** Then tonight/tomorrow: justify it
+     somewhere visible (deck slide 13 + whitepaper $GHOST section). Real
+     answer = "skin-in-the-game stake funds the executor bounty pool +
+     future governance." Acknowledge the token isn't liquid yet, frame
+     fair-launch.
+   - **Path B: drop the stake requirement.** Bigger change — requires a
+     program v1.11 that removes the GHOST mint constraint from
+     `initialize_ghost`. Consider for post-Frontier, NOT for this submission.
+   - **Recommended: Path A for the submission**, sketch Path B as a v2
+     option in the roast follow-ups for the post-Frontier stretch.
+
+### Block 3 (~60 min) — final polish + submit
+4. Whitepaper update — read it through once with fresh eyes. Anything that
+   contradicts v1.10 reality? (transfer_ownership removed, IDL on-chain,
+   recipient ATA authority enforced.) Patch.
+5. Pitch deck final pass — open `deck_v2.html` and `deck.html` in browser,
+   scroll through every slide. Anything off? Roadmap stale? Stats stale?
+6. Demo video — upload to Loom/YouTube unlisted. Paste URL into
+   `docs/pitch/colosseum-submission.html` section 3.
+7. **Submit** to Frontier · Consumer Apps track.
+
+### What we are NOT doing tomorrow
+- ❌ Telegram bot (post-Frontier)
+- ❌ Beneficiary-side dashboard (post-Frontier)
+- ❌ Removing $GHOST stake from program (post-Frontier, requires v1.11)
+- ❌ Third-party audit (funded by accelerator if won)
+- ❌ Reframing positioning (B2C emotional is locked)
+
+---
+
 ## 🔥 Roast follow-ups (priority queue 2026-04-29+)
 
 Post-roast work. Most of these don't need to ship before submission — but they
