@@ -1,3 +1,50 @@
+// GHOST Protocol v1.10 — 2026-04-28 — SECURITY HARDENING
+// Changes from v1.9 (NO GhostAccount struct changes — same byte layout, no migration):
+//   1. CRITICAL FIX: ExecuteTransfer + ExecuteWholeVaultTransfer recipient_token_account
+//      now constrained by `token::authority = recipient`. Previously any caller could
+//      pass an attacker-owned ATA of the same mint and divert beneficiary funds.
+//      Devnet repro confirmed exploitable. (lib.rs:842, 863)
+//   2. CRITICAL FIX: `transfer_ownership` and `accept_ownership` REMOVED. Ghosts
+//      are now soulbound — owner is set at init and cannot change. Reason: PDA
+//      address is permanently fixed at [GHOST_SEED, original_owner] at init, so
+//      mutating ghost.owner could not be reflected in the PDA address — the new
+//      owner was locked out of every owner-derived instruction. Restoring transfer
+//      would require an `original_owner` struct field + schema migration; deferred.
+//      Defense-in-depth: owner-mutating instructions also now derive PDA from
+//      `ghost.owner.as_ref()` instead of `signer.key().as_ref()` — identical
+//      behavior since ghost.owner can never change, but documents intent and
+//      protects against future regressions if a transfer feature is reintroduced.
+//      Struct field `pending_owner`, events `OwnershipTransfer*`, and error variant
+//      `NoPendingOwnerTransfer` are KEPT to preserve byte layout and error codes.
+//   3. HIGH FIX: WithdrawFromVault.owner_token_account and AbandonGhost.owner_token_account
+//      now require `token::authority = signer`. A malicious frontend can no longer
+//      silently swap the destination ATA on a withdraw/abandon tx the user signs.
+//   4. HIGH FIX: All vault token accounts now constrained by `token::authority = vault`
+//      (or `token::authority = ghost` for ghost_stake_vault). Defense-in-depth — token
+//      program already enforces source-side auth, but explicit constraint surfaces
+//      intent and blocks non-canonical token accounts.
+//   5. HIGH FIX: `update_recovery_wallet` now blocked when awakened or executed.
+//      Prevents post-awaken recovery wallet rotation as a phishing vector.
+//   6. MEDIUM FIX: `add_beneficiary` and `update_beneficiary` now require
+//      `token_mint.is_some()` and `action <= 1`. Prevents creation of permanently
+//      unclaimable beneficiary slots.
+//   7. MEDIUM FIX: `set_whole_vault_recipient` and `guardian_set_whole_vault_recipient`
+//      now require `action <= 1`.
+//   8. New error variant `InvalidBeneficiaryAction` appended to GhostError (preserves
+//      existing error codes — Anchor numbers them positionally).
+//
+// CLIENT IMPACT:
+//   - bot.js: no changes needed (already passes correct recipient ATA + vault ATA).
+//   - frontend: no changes needed (already passes correct ATAs). Recovery page will
+//     surface a new error if user tries to update recovery wallet during awakening —
+//     existing showNotif wraps tx errors so this just shows up as an error toast.
+//
+// DEPLOYMENT (v1.10):
+//   1. anchor build && anchor deploy (program upgrade — same program ID)
+//   2. No struct migration required (GhostAccount unchanged)
+//   3. Existing 5 v1.9 ghosts continue to work — fixes are constraint-only
+//   4. Re-test full lifecycle on devnet before mainnet upgrade
+//
 // GHOST Protocol v1.9 — 2026-03-07
 // Changes from v1.8:
 //   - Added 0.5% protocol fee on execute_transfer and execute_whole_vault_transfer
@@ -207,6 +254,9 @@ pub mod ghost_protocol {
         require!(!ghost.awakened, GhostError::GhostAlreadyAwakened);
         require!(!ghost.paused, GhostError::GhostPausedError);
         require!((ghost.beneficiary_count as usize) < MAX_BENEFICIARIES, GhostError::TooManyBeneficiaries);
+        // v1.10: validate inputs to prevent unclaimable slots
+        require!(token_mint.is_some(), GhostError::WrongMint);
+        require!(action <= 1, GhostError::InvalidBeneficiaryAction);
         let idx = ghost.beneficiary_count as usize;
         ghost.beneficiaries[idx] = Beneficiary { recipient, amount, token_mint, action, executed: false };
         ghost.beneficiary_count += 1;
@@ -230,6 +280,9 @@ pub mod ghost_protocol {
         let ghost = &mut ctx.accounts.ghost;
         require!(!ghost.awakened, GhostError::GhostAlreadyAwakened);
         require!(!ghost.paused, GhostError::GhostPausedError);
+        // v1.10: validate inputs to prevent unclaimable slots
+        require!(token_mint.is_some(), GhostError::WrongMint);
+        require!(action <= 1, GhostError::InvalidBeneficiaryAction);
         require!((index as usize) < ghost.beneficiary_count as usize, GhostError::InvalidBeneficiary);
         let slot = &mut ghost.beneficiaries[index as usize];
         let old_recipient = slot.recipient;
@@ -268,6 +321,8 @@ pub mod ghost_protocol {
         let ghost = &mut ctx.accounts.ghost;
         require!(is_recovery_wallet(&ghost.recovery_wallets, ctx.accounts.recovery_wallet.key()), GhostError::Unauthorized);
         require!(!ghost.executed, GhostError::GhostAlreadyExecuted);
+        // v1.10: validate action — only 0 (Transfer) or 1 (Burn) are executable
+        require!(action <= 1, GhostError::InvalidBeneficiaryAction);
         let previous = ghost.whole_vault_recipient;
         ghost.whole_vault_recipient = recipient;
         ghost.whole_vault_action = if recipient.is_some() { action } else { 0 };
@@ -280,6 +335,8 @@ pub mod ghost_protocol {
         let ghost = &mut ctx.accounts.ghost;
         require!(!ghost.awakened, GhostError::GhostAlreadyAwakened);
         require!(!ghost.executed, GhostError::GhostAlreadyExecuted);
+        // v1.10: validate action — only 0 (Transfer) or 1 (Burn) are executable
+        require!(action <= 1, GhostError::InvalidBeneficiaryAction);
         let previous = ghost.whole_vault_recipient;
         ghost.whole_vault_recipient = recipient;
         ghost.whole_vault_action = if recipient.is_some() { action } else { 0 };
@@ -317,28 +374,21 @@ pub mod ghost_protocol {
         Ok(())
     }
 
-    pub fn transfer_ownership(ctx: Context<UpdateSettings>, new_owner: Pubkey) -> Result<()> {
-        let ghost = &mut ctx.accounts.ghost;
-        require!(!ghost.executed, GhostError::GhostAlreadyExecuted);
-        require!(new_owner != ghost.owner, GhostError::Unauthorized);
-        ghost.pending_owner = Some(new_owner);
-        let clock = Clock::get()?;
-        emit!(OwnershipTransferInitiated { soul: ghost.owner, pending_owner: new_owner, timestamp: clock.unix_timestamp });
-        msg!("Ownership transfer initiated to {}", new_owner);
-        Ok(())
-    }
-
-    pub fn accept_ownership(ctx: Context<AcceptOwnership>) -> Result<()> {
-        let ghost = &mut ctx.accounts.ghost;
-        require!(ghost.pending_owner.map_or(false, |p| p == ctx.accounts.new_owner.key()), GhostError::NoPendingOwnerTransfer);
-        let old_owner = ghost.owner;
-        ghost.owner = ctx.accounts.new_owner.key();
-        ghost.pending_owner = None;
-        let clock = Clock::get()?;
-        emit!(OwnershipTransferAccepted { old_owner, new_owner: ghost.owner, timestamp: clock.unix_timestamp });
-        msg!("Ownership transferred from {} to {}", old_owner, ghost.owner);
-        Ok(())
-    }
+    // v1.10: transfer_ownership and accept_ownership REMOVED. Ghosts are soulbound.
+    // Reason: PDA address is permanently fixed at [GHOST_SEED, original_owner.key()] at
+    // init time. Any change to ghost.owner could not be reflected in the PDA address,
+    // which permanently bricked all signer-derived owner-mutating instructions
+    // (Ping, ManageBeneficiaries, Deposit/Withdraw, UpdateSettings, AbandonGhost,
+    // MigrateGhost) — the new owner couldn't pass the seed check, the old owner
+    // couldn't pass the constraint check, ghost was stuck.
+    //
+    // Restoring this feature would require adding `original_owner: Pubkey` as a stable
+    // PDA-seed field separate from `ghost.owner` — a struct change requiring v1.10
+    // schema migration. Defer to a future version if the feature is actually needed.
+    //
+    // The struct field `pending_owner` and events `OwnershipTransferInitiated` /
+    // `OwnershipTransferAccepted` are KEPT to preserve byte layout. The error variant
+    // `NoPendingOwnerTransfer` is also kept to preserve error code numbering.
 
     pub fn update_interval_and_grace(ctx: Context<UpdateSettings>, interval_seconds: i64, grace_period_seconds: i64) -> Result<()> {
         require!(interval_seconds >= MIN_INTERVAL, GhostError::IntervalTooShort);
@@ -364,6 +414,12 @@ pub mod ghost_protocol {
     }
 
     pub fn update_recovery_wallet(ctx: Context<UpdateSettings>, index: u8, wallet: Option<Pubkey>) -> Result<()> {
+        // v1.10: block recovery wallet rotation while awakened or after execute.
+        // Prevents a phished owner from swapping in attacker-controlled recovery
+        // wallets during the grace period (which then could `recovery_withdraw` or
+        // act as guardian via cancel_awakening).
+        require!(!ctx.accounts.ghost.awakened, GhostError::GhostAlreadyAwakened);
+        require!(!ctx.accounts.ghost.executed, GhostError::GhostAlreadyExecuted);
         require!((index as usize) < MAX_RECOVERY_WALLETS, GhostError::InvalidRecoveryWalletIndex);
         ctx.accounts.ghost.recovery_wallets[index as usize] = wallet;
         msg!("Recovery wallet slot {} updated", index);
@@ -772,14 +828,17 @@ pub struct InitializeGhost<'info> {
 
 #[derive(Accounts)]
 pub struct Ping<'info> {
-    #[account(mut, seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    // v1.10: seeds use ghost.owner.as_ref() so PDA derivation tracks current owner
+    // after transfer_ownership. Constraint preserves owner-only auth.
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
     pub ghost: Box<Account<'info, GhostAccount>>,
     #[account(mut)] pub signer: Signer<'info>,
 }
 
 #[derive(Accounts)]
 pub struct ManageBeneficiaries<'info> {
-    #[account(mut, seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    // v1.10: seed via ghost.owner so post-transfer_ownership the new owner can manage
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
     pub ghost: Box<Account<'info, GhostAccount>>,
     #[account(mut)] pub signer: Signer<'info>,
 }
@@ -793,12 +852,9 @@ pub struct GuardianManageBeneficiaries<'info> {
     #[account(mut)] pub recovery_wallet: Signer<'info>,
 }
 
-#[derive(Accounts)]
-pub struct AcceptOwnership<'info> {
-    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump)]
-    pub ghost: Box<Account<'info, GhostAccount>>,
-    #[account(mut)] pub new_owner: Signer<'info>,
-}
+// v1.10: AcceptOwnership Accounts struct removed (instruction deleted — see comment
+// above transfer_ownership). Struct definitions for `Accounts` aren't part of any
+// runtime state, so removing this is safe and does not affect existing accounts.
 
 #[derive(Accounts)]
 pub struct CheckSilence<'info> {
@@ -834,17 +890,22 @@ pub struct ExecuteTransfer<'info> {
     /// CHECK: Vault PDA authority
     #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
     pub vault: UncheckedAccount<'info>,
-    #[account(mut)] pub token_mint: InterfaceAccount<'info, Mint>,
-    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
-    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
-    /// CHECK: validated in instruction
+    // v1.10: Box<> all InterfaceAccounts to move them off the stack —
+    // the v1.10 constraint additions pushed this struct over Solana's 4KB stack frame.
+    #[account(mut)] pub token_mint: Box<InterfaceAccount<'info, Mint>>,
+    // v1.10: vault_token_account must be authorized by the vault PDA (defense-in-depth)
+    #[account(mut, token::mint = token_mint, token::authority = vault, token::token_program = token_program)]
+    pub vault_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// CHECK: validated in instruction (pubkey must match stored beneficiary.recipient)
     pub recipient: UncheckedAccount<'info>,
-    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
-    pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    // v1.10 CRITICAL FIX: token::authority = recipient prevents the ATA-hijack exploit
+    // where a caller could pass an attacker-owned ATA of the same mint and divert funds.
+    #[account(mut, token::mint = token_mint, token::authority = recipient, token::token_program = token_program)]
+    pub recipient_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     pub token_program: Interface<'info, TokenInterface>,
     /// Protocol fee token account — must match mint and be owned by PROTOCOL_FEE_WALLET
     #[account(mut, token::mint = token_mint, token::authority = PROTOCOL_FEE_WALLET, token::token_program = token_program)]
-    pub fee_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub fee_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     pub caller: Signer<'info>,
 }
 
@@ -855,17 +916,21 @@ pub struct ExecuteWholeVaultTransfer<'info> {
     /// CHECK: Vault PDA authority
     #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
     pub vault: UncheckedAccount<'info>,
-    #[account(mut)] pub token_mint: InterfaceAccount<'info, Mint>,
-    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
-    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
-    /// CHECK: validated in instruction
+    // v1.10: Box<> all InterfaceAccounts — required to fit Solana's 4KB stack frame
+    // after adding token::authority constraints (build error otherwise).
+    #[account(mut)] pub token_mint: Box<InterfaceAccount<'info, Mint>>,
+    // v1.10: vault_token_account must be authorized by the vault PDA
+    #[account(mut, token::mint = token_mint, token::authority = vault, token::token_program = token_program)]
+    pub vault_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// CHECK: validated in instruction (pubkey must match stored whole_vault_recipient)
     pub recipient: UncheckedAccount<'info>,
-    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
-    pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    // v1.10 CRITICAL FIX: token::authority = recipient prevents ATA-hijack
+    #[account(mut, token::mint = token_mint, token::authority = recipient, token::token_program = token_program)]
+    pub recipient_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     pub token_program: Interface<'info, TokenInterface>,
     /// Protocol fee token account — must match mint and be owned by PROTOCOL_FEE_WALLET
     #[account(mut, token::mint = token_mint, token::authority = PROTOCOL_FEE_WALLET, token::token_program = token_program)]
-    pub fee_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub fee_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     pub caller: Signer<'info>,
 }
 
@@ -877,7 +942,8 @@ pub struct ExecuteWholeVaultBurn<'info> {
     #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
     pub vault: UncheckedAccount<'info>,
     #[account(mut)] pub token_mint: InterfaceAccount<'info, Mint>,
-    #[account(mut, token::mint = token_mint, token::token_program = token_program)]
+    // v1.10: vault_token_account must be authorized by the vault PDA
+    #[account(mut, token::mint = token_mint, token::authority = vault, token::token_program = token_program)]
     pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
     pub caller: Signer<'info>,
@@ -891,7 +957,8 @@ pub struct ExecuteBurn<'info> {
     #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
     pub vault: UncheckedAccount<'info>,
     #[account(mut)] pub mint: InterfaceAccount<'info, Mint>,
-    #[account(mut, token::mint = mint, token::token_program = token_program)]
+    // v1.10: vault_token_account must be authorized by the vault PDA
+    #[account(mut, token::mint = mint, token::authority = vault, token::token_program = token_program)]
     pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
     pub caller: Signer<'info>,
@@ -899,7 +966,8 @@ pub struct ExecuteBurn<'info> {
 
 #[derive(Accounts)]
 pub struct DepositToVault<'info> {
-    #[account(seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    // v1.10: seed via ghost.owner so post-transfer_ownership the owner can deposit
+    #[account(seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
     pub ghost: Box<Account<'info, GhostAccount>>,
     #[account(mut)] pub signer: Signer<'info>,
     pub ghost_mint: InterfaceAccount<'info, Mint>,
@@ -912,16 +980,20 @@ pub struct DepositToVault<'info> {
 
 #[derive(Accounts)]
 pub struct WithdrawFromVault<'info> {
-    #[account(seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    // v1.10: seed via ghost.owner; auth still gated by constraint
+    #[account(seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
     pub ghost: Box<Account<'info, GhostAccount>>,
     /// CHECK: Vault PDA authority
-    #[account(seeds = [VAULT_SEED, signer.key().as_ref()], bump = ghost.vault_bump)]
+    #[account(seeds = [VAULT_SEED, ghost.owner.as_ref()], bump = ghost.vault_bump)]
     pub vault: UncheckedAccount<'info>,
     #[account(mut)] pub signer: Signer<'info>,
     pub ghost_mint: InterfaceAccount<'info, Mint>,
-    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    // v1.10 HIGH FIX: token::authority = signer prevents malicious frontend from
+    // silently swapping the destination ATA on a withdraw the user signs.
+    #[account(mut, token::mint = ghost_mint, token::authority = signer, token::token_program = token_program)]
     pub owner_token_account: InterfaceAccount<'info, TokenAccount>,
-    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    // v1.10: vault_token_account must be authorized by the vault PDA
+    #[account(mut, token::mint = ghost_mint, token::authority = vault, token::token_program = token_program)]
     pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
 }
@@ -937,8 +1009,11 @@ pub struct RecoveryWithdraw<'info> {
     pub vault: UncheckedAccount<'info>,
     #[account(mut)] pub recovery_wallet: Signer<'info>,
     pub ghost_mint: InterfaceAccount<'info, Mint>,
-    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    // v1.10: vault_token_account must be authorized by the vault PDA
+    #[account(mut, token::mint = ghost_mint, token::authority = vault, token::token_program = token_program)]
     pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
+    // recipient_token_account intentionally has no authority constraint — recovery
+    // wallet (a trusted guardian) is allowed to specify any destination they control.
     #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
     pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
@@ -946,20 +1021,26 @@ pub struct RecoveryWithdraw<'info> {
 
 #[derive(Accounts)]
 pub struct UpdateSettings<'info> {
-    #[account(mut, seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
+    // v1.10: seed via ghost.owner so the current owner (post-transfer) can update settings
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized)]
     pub ghost: Box<Account<'info, GhostAccount>>,
     #[account(mut)] pub signer: Signer<'info>,
 }
 
 #[derive(Accounts)]
 pub struct AbandonGhost<'info> {
-    #[account(mut, seeds = [GHOST_SEED, signer.key().as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized, close = signer)]
+    // v1.10: seed via ghost.owner; auth still gated by constraint; close-to-signer preserved
+    #[account(mut, seeds = [GHOST_SEED, ghost.owner.as_ref()], bump = ghost.bump, constraint = ghost.owner == signer.key() @ GhostError::Unauthorized, close = signer)]
     pub ghost: Box<Account<'info, GhostAccount>>,
     #[account(mut)] pub signer: Signer<'info>,
     pub ghost_mint: InterfaceAccount<'info, Mint>,
-    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    // v1.10: ghost_stake_vault must be authorized by the ghost PDA (the stake vault
+    // was init'd with token::authority = ghost in InitializeGhost)
+    #[account(mut, token::mint = ghost_mint, token::authority = ghost, token::token_program = token_program)]
     pub ghost_stake_vault: InterfaceAccount<'info, TokenAccount>,
-    #[account(mut, token::mint = ghost_mint, token::token_program = token_program)]
+    // v1.10 HIGH FIX: token::authority = signer prevents malicious frontend from
+    // silently swapping the destination ATA on an abandon the user signs.
+    #[account(mut, token::mint = ghost_mint, token::authority = signer, token::token_program = token_program)]
     pub owner_token_account: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
 }
@@ -969,9 +1050,10 @@ pub struct AbandonGhost<'info> {
 /// system_program required by Anchor for realloc rent-exempt top-up.
 #[derive(Accounts)]
 pub struct MigrateGhost<'info> {
+    // v1.10: seed via ghost.owner so the current owner can migrate post-transfer
     #[account(
         mut,
-        seeds = [GHOST_SEED, signer.key().as_ref()],
+        seeds = [GHOST_SEED, ghost.owner.as_ref()],
         bump = ghost.bump,
         constraint = ghost.owner == signer.key() @ GhostError::Unauthorized,
     )]
@@ -1028,4 +1110,6 @@ pub enum GhostError {
     #[msg("Wrong token mint — does not match beneficiary.token_mint.")] WrongMint,
     #[msg("Account size invalid for this operation. Expected v1.7 layout (1220 bytes).")] InvalidAccountSize,
     #[msg("Account is already on the latest schema version.")] AlreadyMigrated,
+    // v1.10: appended at the end to preserve existing error codes (Anchor numbers positionally)
+    #[msg("Invalid beneficiary action. Must be 0 (Transfer) or 1 (Burn).")] InvalidBeneficiaryAction,
 }
