@@ -1787,7 +1787,7 @@
 <div class="unit-input-row" style="display:flex;align-items:stretch;border:1px solid rgba(102,51,255,0.25);overflow:hidden;background:#07070f">
                   <input type="text" inputmode="numeric" id="initGrace" value="30" style="width:70px;background:transparent;border:none;color:#f0f0f8;font-family:'Syne',sans-serif;font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center">
                   <div style="width:1px;background:rgba(102,51,255,0.2);flex-shrink:0"></div>
-                  <select id="initGraceUnit" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto"><option value="hours">hours</option><option value="days" selected>days</option></select>
+                  <select id="initGraceUnit" style="background:#07070f;border:none;color:#b0a8d0;font-family:'Share Tech Mono',monospace;font-size:13px;padding:8px 10px;outline:none;cursor:pointer;-webkit-appearance:auto;appearance:auto"><option value="minutes">minutes</option><option value="hours">hours</option><option value="days" selected>days</option></select>
                 </div>
               </div>
             </div>
@@ -11736,9 +11736,48 @@ const _origFetchGhostCount = fetchGhostCount;
     });
   }
 
+  function applyDemoDefaults() {
+    // Demo-friendly init form: 5-minute heartbeat + 1-minute grace so a judge can
+    // walk the full lifecycle in ~6 minutes instead of 365 days. Also pre-fills
+    // a clearly-fake recovery wallet so judges don't paste their own real address.
+    const intvl = document.getElementById('initInterval');
+    const intvlU = document.getElementById('initIntervalUnit');
+    const grc = document.getElementById('initGrace');
+    const grcU = document.getElementById('initGraceUnit');
+    if (intvl)  intvl.value = '5';
+    if (intvlU) intvlU.value = 'minutes';
+    if (grc)    grc.value = '1';
+    if (grcU)   grcU.value = 'minutes';
+    // refresh the live preview text if the fns exist
+    try {
+      if (typeof formatIntervalPreview === 'function' && typeof toSeconds === 'function') {
+        const prev = document.getElementById('initPreview');
+        if (prev) prev.textContent = formatIntervalPreview(toSeconds(5, 'minutes'), true);
+      }
+    } catch(e) {}
+    // Pre-fill recovery wallet with a clearly-fake demo placeholder + add a hint.
+    const rec = document.getElementById('initRecoveryWallet');
+    if (rec && !rec.value) {
+      rec.placeholder = 'demo: paste anything — try Mom1Demo... (no on-chain activity)';
+      rec.value = 'Mom1DemoRecoveryDemoRecoveryDemoRecoveryDemo';
+    }
+    // Tiny note under the recovery wallet warning explaining demo behavior.
+    const warn = document.getElementById('initRecoveryWarning');
+    if (warn && !document.getElementById('demoRecoveryNote')) {
+      const note = document.createElement('div');
+      note.id = 'demoRecoveryNote';
+      note.style.cssText = 'font-family:"Share Tech Mono",monospace;font-size:10px;letter-spacing:0.05em;color:rgba(143,112,255,0.65);margin-top:6px';
+      note.textContent = '⓵ Demo mode — any 32+ character string works. Nothing is transmitted on-chain.';
+      warn.parentNode && warn.parentNode.insertBefore(note, warn.nextSibling);
+    }
+  }
+
   function start() {
     injectDemoPill();
     rerouteConnect();
+    applyDemoDefaults();
+    // Also re-apply defaults after dashboard opens (in case form is rendered then)
+    document.addEventListener('click', () => setTimeout(applyDemoDefaults, 200), { once: false, passive: true });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
