@@ -2463,6 +2463,7 @@ function saveSession() {
       recoveryMeta: ghostState.recoveryMeta || {},
       schemaVersion: ghostState.ghost._schemaVersion || 0,
       confirmedMigrated: ghostState._confirmedMigrated || false,
+      beneficiaryDisplayNames: ghostState._beneficiaryDisplayNames || {},
     };
     localStorage.setItem(key, JSON.stringify(s));
     localStorage.setItem('ghostLastWallet', ghostState.publicKey || ghostState.walletAddress || '');
@@ -2519,6 +2520,7 @@ function loadSession() {
     }
     if (s.schemaVersion) ghostState.ghost._schemaVersion = s.schemaVersion;
     if (s.confirmedMigrated) ghostState._confirmedMigrated = s.confirmedMigrated;
+    if (s.beneficiaryDisplayNames) ghostState._beneficiaryDisplayNames = s.beneficiaryDisplayNames;
     return s.lastPage || 'overview';
   } catch(e) { return false; }
 }
@@ -4167,6 +4169,17 @@ function parseGhostAccount(bytes) {
         action: isBurn ? 'burn' : 'transfer', executed: execByte === 1, _fromChain: true,
       };
       _chainBenefs.push(_benef); // chain is authoritative — no local filter
+    }
+    // Re-attach client-only displayName (kept off-chain) so chain refresh doesn't wipe it.
+    // Source of truth: side-map keyed by full address, populated when user adds the beneficiary.
+    if (!ghostState._beneficiaryDisplayNames) ghostState._beneficiaryDisplayNames = {};
+    const _dnMap = ghostState._beneficiaryDisplayNames;
+    // Seed map from existing in-memory entries (covers reload from saveSession before refresh runs)
+    for (const _b of (ghostState.ghost.beneficiaries || [])) {
+      if (_b.fullAddr && _b.displayName && !_dnMap[_b.fullAddr]) _dnMap[_b.fullAddr] = _b.displayName;
+    }
+    for (const _cb of _chainBenefs) {
+      if (_cb.fullAddr && _dnMap[_cb.fullAddr]) _cb.displayName = _dnMap[_cb.fullAddr];
     }
     // Chain is authoritative — replace all; whole-vault-share re-added below from wholeVaultRecipient
     ghostState.ghost.beneficiaries = [..._chainBenefs];
@@ -6925,6 +6938,12 @@ async function dbAddBeneficiary(action) {
       ghostState.ghost.beneficiaries.splice(wholeIdx, 1);
       mergedFromWhole = true;
     }
+  }
+
+  // Persist displayName off-chain so chain refresh can re-attach it (chain has no displayName field).
+  if (!isBurn && _displayName && recipient) {
+    if (!ghostState._beneficiaryDisplayNames) ghostState._beneficiaryDisplayNames = {};
+    ghostState._beneficiaryDisplayNames[recipient] = _displayName;
   }
 
   // Demo mode
