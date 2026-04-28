@@ -4,6 +4,69 @@ Captured 2026-04-28. Things to action after the Colosseum submission.
 
 ---
 
+## 🔥 Roast follow-ups (priority queue 2026-04-29+)
+
+Post-roast work. Most of these don't need to ship before submission — but they
+ARE the difference between "won the hackathon" and "still here in 6 months."
+
+### TIER A — Existential. Without these the product loses post-Frontier.
+
+1. **Build a real retention loop** — Telegram heartbeat bot pulled from Phase II
+   to Phase I. ~200 lines of Python. Every Friday: "still alive? click ✓ to ping."
+   Without this, DAU collapses to ~0 after onboarding. THE single biggest fix.
+2. **Beneficiary-side dashboard** — "you are named as a beneficiary in N Ghosts."
+   Turns beneficiaries into evangelists + creates the multi-side network effect
+   you currently don't have. Same urgency as #1 — they reinforce each other.
+3. **Decide $GHOST honestly** — either ship it with real liquidity + governance
+   OR drop the stake requirement from `initialize_ghost` (replace with SOL-only
+   fee). Right now it sins #2 (token-first thinking) and creates an onboarding
+   wall of "where do I get $GHOST?" Investors WILL ask about this.
+
+### TIER B — Hygiene. Pre-submission grep + edits (~30 min total).
+
+4. **Strip "5 ghosts on chain" claims** from deck, security report, marketing
+   site. Replace with verifiable framing ("solo founder dogfooding · 5 lifecycle
+   test states on mainnet · v1.10 audit shipped"). README already updated.
+   Check: `deck_v2.html` slide 14 (Live, shipped), `ghost-security-report.html`,
+   any landing-page hero stats.
+5. **Soften the disclaimer pile** in footer + README — necessary but currently
+   reads paranoid. Single-paragraph version + linked-out long form.
+6. **First-abandon grace** — don't burn 50% of stake if user abandons within
+   7 days of registration. Brutal UX for trial users. Program v1.11 change.
+
+### TIER C — Strategic. Real moat work (post-Frontier, post-audit).
+
+7. **Lock distribution before someone else does** — Phantom embed proposal,
+   Backpack plugin scoping, Solflare partnership convo. Wallet integration is
+   the only durable moat for a single-user-state product.
+8. **Add a yield-while-alive option** (Marfi/Drift) — gives users a reason to
+   keep funds in the vault that doesn't depend on death. Phase II already has
+   this; pull forward if possible.
+9. **Public streak counter / leaderboard** — gamify pings. "Top 12% longest
+   streak · 247 days." Gives the protocol a social spine + creates
+   rubbernecking traffic when a top-ranked Ghost awakens.
+10. **Real third-party audit** — OtterSec or Neodyme, ~$15k-30k. Audit reports
+    take months; they're a real moat competitors can't snap-fork. This is the
+    entire point of the $250k accelerator ask.
+11. **Death-theme accessibility** — `.rip` domain + Ghost branding is great for
+    crypto-natives but might block 50yo spouses/parents. Consider a
+    second-face site (e.g. `legacy.solana.com`-style brand) for beneficiary
+    touchpoints, leave Ghost branding for owners.
+
+### Things NOT to revisit
+
+- ❌ Don't remove MIT license — hygiene, not strategic exposure. Bytecode is
+  already public; license just makes it legitimate.
+- ❌ Don't remove IDL from chain — same logic. Anyone can decompile in 10 min.
+  IDL helps legitimate users + AI agents claim, doesn't help attackers.
+- ❌ Don't reframe to B2B/infrastructure — user already pushed back, B2C
+  emotional positioning IS the differentiator, crypto businesses can build
+  this themselves anyway.
+- ❌ Don't worry about Phantom cloning. They could clone every Solana
+  protocol. They don't, because being the wallet > being the protocol.
+
+---
+
 ## Resume here next session (2026-04-29+)
 
 Picking up from where we paused on 2026-04-28:
