@@ -1,0 +1,2743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ghost Protocol — Solana Frontier 2026 (v2)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=Fraunces:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #09090C;
+    --bg-2: #111116;
+    --fog: #1C1C24;
+    --bone: #F0F0F8;
+    --bone-dim: #B8B8C4;
+    --mute: #6A6A78;
+    --accent: #8F70FF;          /* brand violet (matches logo) */
+    --accent-dim: rgba(143, 112, 255, 0.18);
+    --accent-glow: rgba(143, 112, 255, 0.35);
+    --heartbeat: #FF6B9D;       /* heartbeat pink (matches logo) */
+    --violet: #7B5BFF;
+    --violet-deep: #5B38E8;
+    --danger: #FF6B6B;
+    --rule: rgba(240, 240, 248, 0.12);
+    --serif: 'Fraunces', 'Syne', Georgia, serif;
+    --display: 'Syne', 'Fraunces', Georgia, serif;
+    --body: 'Inter', -apple-system, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    --slide-w: 1440px;
+    --slide-h: 810px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--bone); font-family: var(--body); -webkit-font-smoothing: antialiased; }
+  img { max-width: 100%; display: block; }
+
+  /* SCREEN: horizontal scroll with snap */
+  @media screen {
+    body {
+      display: flex;
+      flex-direction: row;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      height: 100vh;
+    }
+    .slide {
+      width: var(--slide-w);
+      height: var(--slide-h);
+      flex-shrink: 0;
+      scroll-snap-align: start;
+      position: relative;
+      overflow: hidden;
+      padding: 76px 96px 92px;
+      display: flex;
+      flex-direction: column;
+    }
+    body::-webkit-scrollbar { height: 4px; }
+    body::-webkit-scrollbar-track { background: var(--bg-2); }
+    body::-webkit-scrollbar-thumb { background: var(--accent-dim); }
+    .counter {
+      position: fixed;
+      bottom: 26px;
+      right: 36px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--mute);
+      letter-spacing: 0.14em;
+      z-index: 100;
+      background: rgba(9,9,12,0.75);
+      backdrop-filter: blur(8px);
+      padding: 7px 13px;
+      border: 1px solid var(--rule);
+    }
+    .nav-hint {
+      position: fixed;
+      bottom: 30px;
+      left: 36px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--mute);
+      opacity: 0.7;
+      letter-spacing: 0.2em;
+      z-index: 100;
+      text-transform: uppercase;
+    }
+  }
+
+  /* PRINT: one slide per page, landscape, no scroll */
+  @page {
+    size: 1440px 810px;
+    margin: 0;
+  }
+  @media print {
+    html, body {
+      background: var(--bg);
+      height: auto;
+      overflow: visible;
+    }
+    body {
+      display: block;
+    }
+    .slide {
+      width: 1440px;
+      height: 810px;
+      page-break-after: always;
+      break-after: page;
+      padding: 76px 96px 92px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      transform: none;
+      margin: 0;
+    }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
+    .counter, .nav-hint { display: none !important; }
+  }
+
+  /* Ambient grain / fog backdrop (shared) */
+  .slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(900px 500px at 10% 20%, rgba(127, 229, 229, 0.06), transparent 70%),
+      radial-gradient(700px 400px at 90% 80%, rgba(184, 160, 255, 0.05), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .slide > * { position: relative; z-index: 1; }
+
+  /* Corner marks */
+  .corner {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--mute);
+    text-transform: uppercase;
+    z-index: 2;
+  }
+  .corner.tl { top: 36px; left: 48px; display: flex; align-items: center; gap: 12px; }
+  .corner.tr { top: 36px; right: 48px; max-width: 40%; text-align: right; }
+  .corner.br { bottom: 74px; right: 48px; max-width: 60%; text-align: right; }
+  .brand-mark {
+    width: 28px; height: 28px;
+    filter: drop-shadow(0 0 8px rgba(143, 112, 255, 0.4));
+  }
+  /* Small brand mark stamped in the top-left of every slide */
+  .corner.tl::before {
+    content: '';
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    background: url('../Media/logo_no_bg.png') center/contain no-repeat;
+    filter: drop-shadow(0 0 6px rgba(143, 112, 255, 0.45));
+    vertical-align: middle;
+    margin-right: 2px;
+  }
+
+  /* Typography */
+  h1, h2, h3, h4 { font-family: var(--display); font-weight: 700; letter-spacing: -0.02em; }
+  .serif { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+
+  .mega {
+    font-family: var(--display);
+    font-size: 200px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    padding: 0.08em 0;
+    background: linear-gradient(180deg, var(--bone) 0%, var(--accent) 150%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .super { font-size: 108px; font-weight: 700; line-height: 0.95; }
+  .big { font-size: 64px; font-weight: 700; line-height: 1.05; }
+  .mid { font-size: 42px; font-weight: 600; line-height: 1.15; }
+  .sub { font-size: 22px; font-weight: 400; line-height: 1.5; color: var(--bone-dim); }
+  .tag { font-size: 18px; color: var(--bone-dim); font-family: var(--serif); font-style: italic; }
+  .label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
+  .muted { color: var(--mute); }
+
+  .accent { color: var(--accent); }
+  .violet-c { color: var(--violet); }
+
+  .rule { height: 1px; background: var(--rule); border: 0; margin: 24px 0; }
+
+  /* === SLIDE 1: TITLE === */
+  .title-slide {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 0 88px;
+  }
+  /* Suppress the small stamped logo on the title slide — the hero already carries it */
+  .title-slide .corner.tl::before { display: none; }
+  .title-slide .corner.tl { color: transparent; } /* hide redundant wordmark too */
+  .title-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    max-width: 1160px;
+  }
+  .title-slide .hero-logo {
+    width: 120px; height: 120px;
+    filter: drop-shadow(0 0 48px rgba(143, 112, 255, 0.55));
+    margin: 0;
+  }
+  .title-slide .eyebrow {
+    margin: 0;
+  }
+  .title-slide .mega {
+    font-size: 164px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    padding: 0.08em 0.02em;
+    margin: 0;
+  }
+  .title-slide .tagline {
+    font-family: var(--serif);
+    font-size: 30px;
+    color: var(--bone);
+    font-weight: 300;
+    line-height: 1.3;
+    max-width: 820px;
+    margin: 0;
+  }
+  .title-slide .secondary {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 20px;
+    color: var(--bone-dim);
+    margin: 0;
+    max-width: 720px;
+  }
+  .title-slide .footer-line {
+    position: absolute;
+    left: 0; right: 0; bottom: 54px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 28px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--mute);
+    text-transform: uppercase;
+  }
+  .title-slide .footer-line .dot {
+    width: 3px; height: 3px; border-radius: 50%;
+    background: var(--mute);
+    opacity: 0.7;
+  }
+
+  /* === SLIDE 2: PROBLEM (X thread-style) === */
+  .problem-slide { justify-content: center; align-items: center; }
+  .problem-card {
+    max-width: 860px;
+    width: 100%;
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    padding: 48px 56px;
+    font-family: var(--serif);
+    font-size: 26px;
+    line-height: 1.45;
+    color: var(--bone);
+    position: relative;
+  }
+  .problem-card::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px;
+    width: 4px; height: 40px;
+    background: var(--accent);
+  }
+  .problem-handle {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 24px;
+    font-family: var(--body);
+    font-size: 15px;
+  }
+  .problem-handle .avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-dim), var(--violet));
+  }
+  .problem-handle .name { color: var(--bone); font-weight: 600; }
+  .problem-handle .handle { color: var(--mute); }
+  .problem-caption {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--bone-dim);
+    text-align: center;
+    margin-top: 36px;
+    max-width: 620px;
+  }
+
+  /* === SLIDE 3: STAT === */
+  .stat-slide { justify-content: center; align-items: center; text-align: center; position: relative; }
+  .stat-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    max-width: 920px;
+  }
+  .stat-prefix {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0;
+  }
+  .stat-huge {
+    font-family: var(--display);
+    font-size: 260px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    padding: 0.04em 0;
+    background: linear-gradient(180deg, var(--bone) 20%, var(--accent) 140%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-flex;
+    align-items: baseline;
+  }
+  .stat-huge .stat-pct {
+    font-size: 0.55em;
+    font-weight: 700;
+    margin-left: 0.04em;
+    letter-spacing: -0.03em;
+  }
+  .stat-sub {
+    font-family: var(--serif);
+    font-size: 28px;
+    color: var(--bone);
+    margin: 0;
+    max-width: 780px;
+    line-height: 1.3;
+  }
+  .stat-caption {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 19px;
+    color: var(--bone-dim);
+    margin: 24px 0 0 0;
+    max-width: 640px;
+    line-height: 1.4;
+  }
+  .stat-source {
+    position: absolute;
+    bottom: 72px;
+    left: 0; right: 0;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  /* === SLIDE 4: VIDEO === */
+  .video-slide { justify-content: center; align-items: center; }
+  .video-frame {
+    width: 1080px;
+    height: 608px;
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    box-shadow: 0 0 80px rgba(143, 112, 255, 0.15);
+  }
+  .video-frame video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    position: relative;
+    z-index: 2;
+  }
+  .video-fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    background:
+      radial-gradient(600px 400px at 50% 45%, rgba(143,112,255,0.18), transparent 70%),
+      var(--bg-2);
+    z-index: 1;
+  }
+  .video-fallback img {
+    width: 180px;
+    height: 180px;
+    filter: drop-shadow(0 0 36px rgba(143, 112, 255, 0.55));
+    opacity: 0.95;
+  }
+  .video-fallback .fb-line {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 22px;
+    color: var(--bone-dim);
+    text-align: center;
+  }
+  .video-fallback .fb-mono {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .video-caption {
+    margin-top: 20px;
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    color: var(--bone-dim);
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  /* === SLIDE 5: WHAT IT IS (4 steps) === */
+  .steps-slide { justify-content: space-between; }
+  .steps-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-top: 48px;
+  }
+  .step {
+    border-top: 1px solid var(--rule);
+    padding-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .step.active { border-top-color: var(--accent); }
+  .step-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+  }
+  .step-title {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .step-body {
+    font-size: 15px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+  }
+  .secondary-use {
+    margin-top: 32px;
+    padding: 20px 24px;
+    border-left: 2px solid var(--accent);
+    font-family: var(--serif);
+    font-size: 17px;
+    font-style: italic;
+    color: var(--bone-dim);
+    line-height: 1.55;
+    max-width: 1080px;
+  }
+
+  /* === SLIDE 6: WHY SOLANA === */
+  .why-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px;
+    margin-top: 40px;
+  }
+  .why-card {
+    border-top: 1px solid var(--accent);
+    padding-top: 28px;
+  }
+  .why-card h3 {
+    font-size: 28px;
+    margin-bottom: 14px;
+    line-height: 1.15;
+  }
+  .why-card p {
+    font-size: 15px;
+    color: var(--bone-dim);
+    line-height: 1.55;
+  }
+  .gas-bars {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: 140px 1fr auto;
+    gap: 14px 20px;
+    align-items: center;
+    padding: 22px 26px;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+  }
+  .gas-bars .gas-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .gas-bars .gas-track {
+    height: 14px;
+    background: rgba(240,240,248,0.04);
+    position: relative;
+    overflow: hidden;
+  }
+  .gas-bars .gas-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, var(--accent), var(--heartbeat));
+  }
+  .gas-bars .gas-fill.muted {
+    background: linear-gradient(90deg, rgba(255,107,107,0.75), rgba(255,107,107,0.45));
+  }
+  .gas-bars .gas-value {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--bone);
+    letter-spacing: -0.01em;
+    min-width: 88px;
+    text-align: right;
+  }
+  .gas-bars .gas-value.dim {
+    color: var(--danger);
+  }
+  .gas-caption {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--mute);
+    text-align: right;
+  }
+
+  /* === SLIDE 7: TRUST MODEL === */
+  .trust-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 48px;
+    border: 1px solid var(--rule);
+  }
+  .trust-col {
+    padding: 36px 40px;
+    background: var(--bg-2);
+  }
+  .trust-col.danger {
+    background: linear-gradient(180deg, rgba(255, 107, 107, 0.04), var(--bg-2));
+  }
+  .trust-col.safe {
+    background: linear-gradient(180deg, rgba(127, 229, 229, 0.04), var(--bg-2));
+  }
+  .trust-col h3 {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    color: var(--mute);
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+  .trust-col.danger h3 { color: var(--danger); }
+  .trust-col.safe h3 { color: var(--accent); }
+  .trust-col ul { list-style: none; }
+  .trust-col li {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 17px;
+    color: var(--bone);
+    line-height: 1.4;
+  }
+  .trust-col li:last-child { border-bottom: 0; }
+  .trust-footer {
+    margin-top: 28px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--bone-dim);
+    text-align: center;
+  }
+
+  /* === SLIDE 8: ARCHITECTURE === */
+  .arch-slide { justify-content: flex-start; }
+  .arch-flow {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: 48px;
+    align-items: center;
+  }
+  .arch-flow-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .arch-box {
+    position: relative;
+    padding: 18px 26px;
+    background: linear-gradient(180deg, var(--bg-2) 0%, #0B0B10 100%);
+    border: 1px solid var(--accent-dim);
+    width: 520px;
+    box-shadow: 0 0 32px rgba(143, 112, 255, 0.08);
+  }
+  .arch-box.core { border-color: var(--accent); }
+  .arch-box.core::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border: 1px solid var(--accent);
+    opacity: 0.25;
+    filter: blur(6px);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .arch-row-pair {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+    justify-content: center;
+  }
+  .arch-row-pair .arch-box {
+    width: auto;
+    flex: 1;
+    max-width: 320px;
+    min-width: 0;
+  }
+  .arch-pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    padding: 3px 10px;
+    background: var(--accent-dim);
+  }
+  .arch-pill.pink { color: var(--heartbeat); background: rgba(255, 107, 157, 0.14); }
+  .arch-tag {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .arch-sub {
+    font-size: 12px;
+    color: var(--bone-dim);
+    margin-top: 6px;
+    line-height: 1.5;
+    font-family: var(--mono);
+  }
+  .arch-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .arch-arrow-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .arch-arrow-bar {
+    width: 2px;
+    height: 18px;
+    background: linear-gradient(180deg, var(--accent), transparent);
+    position: relative;
+  }
+  .arch-arrow-bar::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--accent);
+  }
+  .arch-aside {
+    padding: 14px 18px;
+    border-left: 1px solid rgba(255, 107, 157, 0.35);
+    background: transparent;
+    opacity: 0.92;
+  }
+  .arch-aside-title {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    color: var(--heartbeat);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.85;
+  }
+  .arch-aside-body {
+    font-size: 12px;
+    color: var(--mute);
+    line-height: 1.6;
+  }
+  .arch-aside-body code {
+    font-family: var(--mono);
+    color: var(--heartbeat);
+    font-size: 11px;
+  }
+  .arch-aside-body strong {
+    color: var(--bone-dim);
+    font-weight: 600;
+  }
+
+  /* === SLIDE 9: LIVE ON MAINNET === */
+  .mainnet-slide { justify-content: center; }
+  .mainnet-body {
+    margin-top: 0;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 72px;
+    align-items: center;
+  }
+  .mainnet-left h2 { margin-bottom: 20px; line-height: 1.08; }
+  .mainnet-left p { font-size: 18px; color: var(--bone-dim); line-height: 1.55; margin-bottom: 18px; }
+  .program-chip {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 14px 20px;
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+  .mainnet-stats {
+    display: grid;
+    grid-template-rows: repeat(4, auto);
+    gap: 20px;
+  }
+  .stat-block {
+    border-left: 2px solid var(--accent);
+    padding: 4px 0 4px 18px;
+  }
+  .stat-block .n {
+    font-family: var(--display);
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .stat-block .k {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--bone-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .honesty-note {
+    margin: 28px 0 8px 0;
+    padding: 16px 22px;
+    border: 1px dashed var(--rule);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+    max-width: 1200px;
+  }
+
+  /* === SLIDE 10: TOKEN / INCENTIVE LOOP === */
+  .token-body {
+    margin-top: 36px;
+    display: grid;
+    grid-template-columns: 1fr 1.1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .loop {
+    border: 1px solid var(--rule);
+    padding: 20px 22px;
+    background: var(--bg-2);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .loop-step {
+    padding: 11px 16px;
+    background: var(--bg);
+    border-left: 2px solid var(--accent);
+    color: var(--bone);
+  }
+  .loop-arrow {
+    font-family: var(--mono);
+    color: var(--accent);
+    text-align: center;
+    font-size: 14px;
+    line-height: 1;
+    margin: 2px 0;
+  }
+  .token-facts ul { list-style: none; }
+  .token-facts li {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 15px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+  }
+  .token-facts li:last-child { border-bottom: 0; }
+  .token-facts li strong { color: var(--bone); display: block; margin-bottom: 3px; font-family: var(--display); font-size: 17px; }
+
+  /* === SLIDE 11: ROADMAP === */
+  .roadmap-slide { justify-content: flex-start; }
+  .phases {
+    margin-top: 56px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .phase {
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    padding: 26px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .phase.done { border-color: var(--accent); }
+  .phase.live {
+    border-color: var(--heartbeat);
+    background:
+      linear-gradient(180deg, rgba(255,107,157,0.06), transparent 60%),
+      var(--bg-2);
+  }
+  .phase.live::before {
+    content: '';
+    position: absolute;
+    top: 26px;
+    right: 24px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--heartbeat);
+    box-shadow: 0 0 0 0 rgba(255, 107, 157, 0.7);
+    animation: pulse-live 1.8s ease-out infinite;
+  }
+  .phase { position: relative; }
+  @keyframes pulse-live {
+    0%   { box-shadow: 0 0 0 0 rgba(255, 107, 157, 0.6); }
+    70%  { box-shadow: 0 0 0 14px rgba(255, 107, 157, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 107, 157, 0); }
+  }
+  .phase-when {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--mute);
+    text-transform: uppercase;
+  }
+  .phase.done .phase-when { color: var(--accent); }
+  .phase.live .phase-when { color: var(--heartbeat); }
+  .phase-name {
+    font-family: var(--display);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .phase ul { list-style: none; margin-top: 4px; }
+  .phase li {
+    padding: 7px 0;
+    font-size: 13px;
+    color: var(--bone-dim);
+    line-height: 1.45;
+    border-bottom: 1px solid rgba(240, 240, 248, 0.05);
+  }
+  .phase li:last-child { border-bottom: 0; }
+  .phase li::before { content: "— "; color: var(--accent); }
+
+  /* === SLIDE 13: CLOSING === */
+  .closing-slide {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    position: relative;
+  }
+  .closing-slide::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(800px 500px at 50% 55%, rgba(143, 112, 255, 0.12), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .closing-slide .corner.tl::before { display: none; }
+  .closing-slide .corner.tl { color: transparent; }
+  .closing-stack {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    max-width: 1100px;
+  }
+  .closing-seal {
+    width: 104px;
+    height: 104px;
+    filter: drop-shadow(0 0 48px rgba(143, 112, 255, 0.6));
+  }
+  .closing-eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .closing-question {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 92px;
+    font-weight: 300;
+    line-height: 1.02;
+    letter-spacing: -0.025em;
+    color: var(--bone);
+    margin: 0;
+    padding: 0.04em 0;
+    background: linear-gradient(180deg, var(--bone) 30%, var(--accent) 140%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .closing-sub {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-style: italic;
+    color: var(--bone-dim);
+    max-width: 640px;
+    margin: 0;
+    line-height: 1.4;
+  }
+  .closing-divider {
+    width: 60px;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0.4;
+    margin: 8px 0;
+  }
+  .closing-thanks {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .closing-contacts {
+    display: flex;
+    gap: 40px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-top: 4px;
+  }
+  .closing-contacts .dot {
+    width: 3px; height: 3px; border-radius: 50%;
+    background: var(--mute);
+    align-self: center;
+    opacity: 0.7;
+  }
+
+  /* === SLIDE 12: THE ASK === */
+  .ask-slide { justify-content: space-between; }
+  .ask-list {
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .ask-item {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 28px;
+    padding: 14px 0;
+    border-top: 1px solid var(--rule);
+    align-items: center;
+  }
+  .ask-item .n {
+    font-family: var(--display);
+    font-size: 44px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .ask-item .t { font-family: var(--display); font-size: 20px; font-weight: 600; margin-bottom: 2px; }
+  .ask-item .d { font-size: 13px; color: var(--bone-dim); line-height: 1.5; }
+  .cta-panel {
+    margin-top: 24px;
+    padding: 24px 28px;
+    border: 1px solid var(--accent);
+    background:
+      radial-gradient(400px 200px at 0% 50%, rgba(143,112,255,0.12), transparent 70%),
+      var(--bg-2);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 24px;
+    align-items: center;
+  }
+  .cta-panel .cta-seal {
+    width: 48px;
+    height: 48px;
+    filter: drop-shadow(0 0 14px rgba(143, 112, 255, 0.5));
+  }
+  .cta-panel .cta-text {
+    font-family: var(--serif);
+    font-size: 22px;
+    color: var(--bone);
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+  .cta-panel .cta-text .cta-sub {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-style: normal;
+    letter-spacing: 0.2em;
+    color: var(--bone-dim);
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .cta-panel .cta-action {
+    font-family: var(--display);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+    padding: 12px 22px;
+    border: 1px solid var(--accent);
+    background: rgba(143, 112, 255, 0.08);
+    white-space: nowrap;
+  }
+  .final-question {
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 40px;
+    text-align: center;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+  }
+  .final-question .seal {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 14px rgba(143, 112, 255, 0.5));
+  }
+  .contact-row {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  /* === V2: WHY NOW === */
+  .whynow-caption {
+    margin-top: 36px;
+    padding: 18px 24px;
+    border-left: 2px solid var(--heartbeat);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 17px;
+    color: var(--bone-dim);
+    line-height: 1.55;
+    max-width: 980px;
+  }
+
+  /* === V2: LANDSCAPE 2x2 === */
+  .landscape-grid {
+    margin-top: 36px;
+    display: grid;
+    grid-template-columns: 200px 1fr 1fr;
+    grid-template-rows: 36px 1fr 1fr;
+    gap: 0;
+    width: 100%;
+    height: 540px;
+  }
+  .landscape-axis-x {
+    grid-column: 2 / 4;
+    grid-row: 1 / 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--mute);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--rule);
+  }
+  .landscape-axis-x span { padding: 8px 14px; align-self: end; }
+  .landscape-axis-x span:last-child { text-align: right; color: var(--accent); }
+  .landscape-axis-y {
+    grid-column: 1 / 2;
+    grid-row: 2 / 4;
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    border-right: 1px solid var(--rule);
+    align-items: center;
+  }
+  .landscape-axis-y span {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: var(--mute);
+    text-transform: uppercase;
+    padding: 0 18px 0 0;
+    text-align: right;
+  }
+  .landscape-axis-y span:last-child { color: var(--accent); }
+  .landscape-cell {
+    border: 1px solid var(--rule);
+    border-top: 0;
+    border-left: 0;
+    padding: 22px 26px;
+    background: var(--bg-2);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .landscape-cell.us {
+    border-color: var(--accent);
+    background:
+      radial-gradient(400px 240px at 50% 50%, rgba(143, 112, 255, 0.18), transparent 70%),
+      var(--bg-2);
+  }
+  .landscape-cell .lc-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    color: var(--mute);
+    text-transform: uppercase;
+  }
+  .landscape-cell.us .lc-tag { color: var(--accent); }
+  .landscape-cell .lc-names {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--bone);
+  }
+  .landscape-cell.us .lc-names { color: var(--accent); }
+  .landscape-cell .lc-note {
+    font-size: 13px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+    font-family: var(--serif);
+    font-style: italic;
+  }
+  .landscape-caption {
+    margin-top: 22px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 17px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+    max-width: 1000px;
+  }
+
+  /* === V2: BUSINESS MODEL === */
+  .biz-body {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .biz-code {
+    background: var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    padding: 32px 36px;
+    font-family: var(--mono);
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--bone);
+    box-shadow: 0 0 32px rgba(143, 112, 255, 0.08);
+  }
+  .biz-code .biz-comment { color: var(--mute); }
+  .biz-code .biz-keyword { color: var(--heartbeat); }
+  .biz-code .biz-name { color: var(--accent); }
+  .biz-code .biz-num { color: var(--bone); font-weight: 500; }
+  .biz-points { list-style: none; }
+  .biz-points li {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 15px;
+    color: var(--bone-dim);
+    line-height: 1.55;
+  }
+  .biz-points li:last-child { border-bottom: 0; }
+  .biz-points li strong {
+    display: block;
+    font-family: var(--display);
+    font-size: 17px;
+    color: var(--bone);
+    margin-bottom: 4px;
+  }
+  .biz-caption {
+    grid-column: 1 / -1;
+    margin-top: 24px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--bone-dim);
+    text-align: center;
+    line-height: 1.45;
+  }
+
+  /* === V2: FOUNDER === */
+  .founder-body {
+    margin-top: 36px;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 64px;
+    align-items: center;
+  }
+  .founder-portrait {
+    width: 320px;
+    height: 380px;
+    background:
+      radial-gradient(220px 220px at 50% 35%, rgba(143, 112, 255, 0.22), transparent 70%),
+      var(--bg-2);
+    border: 1px solid var(--accent-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    position: relative;
+  }
+  .founder-portrait img {
+    width: 96px;
+    height: 96px;
+    filter: drop-shadow(0 0 28px rgba(143, 112, 255, 0.55));
+  }
+  .founder-portrait .fp-name {
+    font-family: var(--display);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--bone);
+  }
+  .founder-portrait .fp-handle {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .founder-portrait .fp-tag {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--bone-dim);
+    text-align: center;
+    padding: 0 24px;
+    line-height: 1.4;
+  }
+  .founder-points { list-style: none; display: flex; flex-direction: column; gap: 22px; }
+  .founder-points li {
+    padding-left: 22px;
+    border-left: 2px solid var(--accent);
+    font-size: 16px;
+    color: var(--bone-dim);
+    line-height: 1.55;
+  }
+  .founder-points li strong {
+    display: block;
+    font-family: var(--display);
+    font-size: 19px;
+    color: var(--bone);
+    margin-bottom: 5px;
+    font-weight: 700;
+  }
+
+  /* === V2: MARKET & REVENUE === */
+  .market-body {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 56px;
+    align-items: stretch;
+  }
+  .funnel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .funnel-tier {
+    border-left: 2px solid var(--accent);
+    padding: 16px 22px;
+    background: var(--bg-2);
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 18px;
+    align-items: center;
+  }
+  .funnel-tier.tam { opacity: 0.55; }
+  .funnel-tier.sam { opacity: 0.78; }
+  .funnel-tier.som {
+    border-color: var(--heartbeat);
+    background:
+      linear-gradient(90deg, rgba(255,107,157,0.10), transparent 60%),
+      var(--bg-2);
+  }
+  .funnel-key {
+    font-family: var(--mono);
+    font-size: 14px;
+    letter-spacing: 0.22em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .funnel-tier.som .funnel-key { color: var(--heartbeat); }
+  .funnel-num {
+    font-family: var(--display);
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--bone);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+  .funnel-desc {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-style: italic;
+    color: var(--bone-dim);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+  .revstack {
+    border: 1px solid var(--accent-dim);
+    background: var(--bg-2);
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .revstack-head {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 18px;
+  }
+  .revstack-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--rule);
+    align-items: center;
+  }
+  .revstack-row:last-child { border-bottom: 0; }
+  .revstack-row .rs-label {
+    font-size: 14px;
+    color: var(--bone);
+    font-family: var(--body);
+  }
+  .revstack-row .rs-label .rs-sub {
+    display: block;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--mute);
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+  .revstack-row .rs-val {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .revstack-total {
+    margin-top: 14px;
+    padding: 18px 0 4px 0;
+    border-top: 1px solid var(--accent);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: center;
+  }
+  .revstack-total .rs-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .revstack-total .rs-val {
+    font-family: var(--display);
+    font-size: 30px;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+  }
+  .market-foot {
+    grid-column: 1 / -1;
+    margin-top: 24px;
+    padding: 16px 22px;
+    border: 1px dashed var(--rule);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--bone-dim);
+    line-height: 1.55;
+  }
+  .market-foot strong {
+    font-family: var(--display);
+    font-style: normal;
+    color: var(--bone);
+    font-weight: 700;
+  }
+
+  /* === V2: MARKET SIZING SLIDE (refined funnel + AUM panel) === */
+  .market-v2-body {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: 1fr 1.05fr;
+    gap: 40px;
+    align-items: stretch;
+  }
+  .funnel-v2 { display: flex; flex-direction: column; gap: 8px; }
+  .funnel-v2 .frow {
+    display: grid;
+    grid-template-columns: 88px 130px 1fr;
+    gap: 16px;
+    padding: 12px 18px;
+    background: var(--bg-2);
+    border-left: 2px solid var(--accent);
+    align-items: center;
+  }
+  .funnel-v2 .frow.tam { opacity: 0.55; }
+  .funnel-v2 .frow.sam1 { opacity: 0.78; }
+  .funnel-v2 .frow.sam2 { opacity: 0.92; border-left-color: var(--accent); }
+  .funnel-v2 .frow.som {
+    border-left-color: var(--heartbeat);
+    background:
+      linear-gradient(90deg, rgba(255,107,157,0.10), transparent 70%),
+      var(--bg-2);
+    opacity: 1;
+  }
+  .funnel-v2 .fk {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .funnel-v2 .frow.som .fk { color: var(--heartbeat); }
+  .funnel-v2 .fn {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  .funnel-v2 .fd {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--bone-dim);
+    line-height: 1.4;
+  }
+  .aum-panel {
+    border: 1px solid var(--accent-dim);
+    background: var(--bg-2);
+    padding: 18px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .aum-panel .aum-head {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .aum-panel .aum-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 13px;
+  }
+  .aum-panel .aum-row:last-of-type { border-bottom: 0; }
+  .aum-panel .aum-row span:first-child { color: var(--bone-dim); }
+  .aum-panel .aum-row span.num {
+    font-family: var(--display);
+    font-weight: 700;
+    color: var(--bone);
+    text-align: right;
+    letter-spacing: -0.01em;
+  }
+  .aum-panel .aum-total {
+    margin-top: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--accent);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    align-items: center;
+  }
+  .aum-panel .aum-total .num.accent {
+    font-family: var(--display);
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--accent);
+    text-transform: none;
+    letter-spacing: -0.02em;
+  }
+  .aum-panel .aum-cross {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--rule);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--mute);
+    line-height: 1.5;
+  }
+  .sanity-ribbon {
+    margin-top: 22px;
+    padding: 16px 22px;
+    border: 1px dashed var(--rule);
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .sanity-ribbon .sr-head {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .sanity-ribbon .sr-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+  }
+  .sanity-ribbon .sr-foot {
+    margin-top: 6px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--mute);
+  }
+  .sanity-ribbon .sr-foot strong { color: var(--accent); font-style: normal; font-family: var(--display); }
+
+  /* === V2: REVENUE MODEL SLIDE (scenarios + stack + valuation) === */
+  .rev-scenarios {
+    margin-top: 26px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .rev-card {
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .rev-card.base {
+    border-color: var(--accent);
+    background:
+      linear-gradient(180deg, rgba(143,112,255,0.08), transparent 60%),
+      var(--bg-2);
+  }
+  .rev-card.bull { border-color: var(--heartbeat); }
+  .rc-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .rev-card.base .rc-tag { color: var(--accent); }
+  .rev-card.bull .rc-tag { color: var(--heartbeat); }
+  .rc-num {
+    font-family: var(--display);
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  .rc-desc {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--bone-dim);
+    line-height: 1.45;
+  }
+  .rev-stack-table {
+    margin-top: 22px;
+    border: 1px solid var(--accent-dim);
+    background: var(--bg-2);
+    padding: 18px 22px;
+  }
+  .rev-stack-table .rst-head {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .rev-stack-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .rev-stack-table th {
+    text-align: left;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-weight: 500;
+  }
+  .rev-stack-table th:last-child { text-align: right; }
+  .rev-stack-table td {
+    padding: 9px 8px 9px 0;
+    border-bottom: 1px solid var(--rule);
+    color: var(--bone-dim);
+    line-height: 1.45;
+  }
+  .rev-stack-table td:first-child { color: var(--bone); font-weight: 500; }
+  .rev-stack-table td:last-child {
+    text-align: right;
+    font-family: var(--display);
+    font-weight: 700;
+    color: var(--bone);
+    letter-spacing: -0.01em;
+  }
+  .rev-stack-table tr.total td {
+    border-bottom: 0;
+    border-top: 1px solid var(--accent);
+    padding-top: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .rev-stack-table tr.total td:last-child {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+    text-transform: none;
+    letter-spacing: -0.02em;
+  }
+  .valuation-lens {
+    margin-top: 18px;
+    padding: 18px 22px;
+    border: 1px solid var(--accent);
+    background:
+      radial-gradient(500px 200px at 0% 50%, rgba(143,112,255,0.12), transparent 70%),
+      var(--bg-2);
+  }
+  .valuation-lens .vl-head {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .valuation-lens .vl-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .valuation-lens .vl-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .valuation-lens .vl-cell .lab {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .valuation-lens .vl-cell .val {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .valuation-lens .vl-cell.feat .val { color: var(--accent); }
+  .valuation-lens .vl-foot {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+  }
+
+  /* === V2: MINIMAL HERO NUMBER (market/revenue/capital slides) === */
+  .hero-num {
+    font-family: var(--display);
+    font-size: 220px;
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+    padding: 0.04em 0;
+    background: linear-gradient(180deg, var(--bone) 30%, var(--accent) 140%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero-num .small { font-size: 0.4em; font-weight: 700; letter-spacing: -0.02em; }
+  .hero-sub {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 26px;
+    color: var(--bone-dim);
+    line-height: 1.35;
+    max-width: 920px;
+    margin-top: 12px;
+  }
+
+  /* AUM stacked bar (Slide 12) */
+  .aum-bar-wrap {
+    margin-top: 56px;
+    width: 100%;
+    max-width: 1180px;
+  }
+  .aum-bar-track {
+    display: flex;
+    height: 56px;
+    width: 100%;
+    border: 1px solid var(--accent-dim);
+    overflow: hidden;
+  }
+  .aum-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--bg);
+    font-weight: 600;
+    border-right: 1px solid var(--bg);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .aum-seg:last-child { border-right: 0; }
+  .aum-seg.s-sol     { background: var(--accent); flex: 42; }
+  .aum-seg.s-stable  { background: #B8A0FF; flex: 15.7; }
+  .aum-seg.s-lst     { background: #7B5BFF; flex: 7.1; color: var(--bone); }
+  .aum-seg.s-meme    { background: var(--heartbeat); flex: 2; color: var(--bg); }
+  .aum-seg.s-rwa     { background: #5B38E8; flex: 1.5; color: var(--bone); }
+  .aum-seg.s-depin   { background: #9070FF; flex: 1.1; color: var(--bg); }
+  .aum-seg.s-wrap    { background: rgba(143,112,255,0.45); flex: 0.6; color: var(--bone); }
+  .aum-bar-legend {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--bone-dim);
+  }
+  .aum-bar-legend > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-top: 1px solid var(--rule);
+    padding-top: 8px;
+  }
+  .aum-bar-legend .v {
+    font-family: var(--display);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+  }
+  .aum-bar-legend .l {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+
+  /* Three-number strip */
+  .num-strip {
+    margin-top: 48px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .num-strip > div {
+    padding: 22px 24px;
+    border-right: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .num-strip > div:last-child { border-right: 0; }
+  .num-strip .v {
+    font-family: var(--display);
+    font-size: 56px;
+    font-weight: 800;
+    color: var(--bone);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .num-strip .v.accent { color: var(--accent); }
+  .num-strip .v.heart  { color: var(--heartbeat); }
+  .num-strip .l {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+
+  /* Scenario chips (Slide 13 minimal) */
+  .scn-row {
+    margin-top: 56px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .scn {
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .scn.base {
+    border-color: var(--accent);
+    background:
+      linear-gradient(180deg, rgba(143,112,255,0.10), transparent 70%),
+      var(--bg-2);
+  }
+  .scn .scn-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .scn.base .scn-tag { color: var(--accent); }
+  .scn .scn-num {
+    font-family: var(--display);
+    font-size: 84px;
+    font-weight: 800;
+    color: var(--bone);
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+  }
+  .scn.base .scn-num {
+    background: linear-gradient(180deg, var(--bone) 30%, var(--accent) 140%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .scn .scn-d {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--bone-dim);
+    line-height: 1.4;
+  }
+  .stream-row {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+  }
+  .stream-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .stream-cell .sn {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--bone);
+  }
+  .stream-cell .sl {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .stream-cell .sd {
+    font-size: 12px;
+    color: var(--bone-dim);
+    line-height: 1.45;
+  }
+
+  /* Capital-efficiency comparison bars (Slide 14) */
+  .ce-bars {
+    margin-top: 36px;
+    display: grid;
+    grid-template-columns: 130px 1fr 130px;
+    gap: 14px 20px;
+    align-items: center;
+    padding: 24px 28px;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+  }
+  .ce-bars .ce-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .ce-bars .ce-name.us { color: var(--accent); font-weight: 700; }
+  .ce-bars .ce-track {
+    height: 18px;
+    background: rgba(240,240,248,0.04);
+    position: relative;
+    overflow: hidden;
+  }
+  .ce-bars .ce-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, rgba(143,112,255,0.5), rgba(143,112,255,0.2));
+  }
+  .ce-bars .ce-fill.us {
+    background: linear-gradient(90deg, var(--accent), var(--heartbeat));
+  }
+  .ce-bars .ce-val {
+    font-family: var(--display);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--bone);
+    letter-spacing: -0.01em;
+    text-align: right;
+  }
+  .ce-bars .ce-val.us { color: var(--accent); }
+  .ce-bars .ce-foot {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--mute);
+    text-align: right;
+  }
+
+  /* Return profile (Slide 14) */
+  .return-row {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+  .return-cell {
+    padding: 22px 24px;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .return-cell.feat {
+    border-color: var(--accent);
+    background:
+      linear-gradient(180deg, rgba(143,112,255,0.08), transparent 60%),
+      var(--bg-2);
+  }
+  .return-cell .rk {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .return-cell.feat .rk { color: var(--accent); }
+  .return-cell .rv {
+    font-family: var(--display);
+    font-size: 38px;
+    font-weight: 800;
+    color: var(--bone);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .return-cell.feat .rv { color: var(--accent); }
+  .return-cell .rd {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--bone-dim);
+    line-height: 1.45;
+  }
+
+  /* === V2: MULTI-ASSET COVERAGE STRIP === */
+  .multi-asset-strip {
+    margin-top: 28px;
+    padding: 18px 24px;
+    border: 1px solid var(--accent-dim);
+    background:
+      linear-gradient(90deg, rgba(143,112,255,0.06), transparent 70%),
+      var(--bg-2);
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 22px;
+    align-items: center;
+  }
+  .multi-asset-strip .mas-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .multi-asset-strip .mas-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .multi-asset-strip .mas-list {
+    font-family: var(--mono);
+    font-size: 14px;
+    letter-spacing: 0.06em;
+    color: var(--bone);
+  }
+  .multi-asset-strip .mas-list .accent { color: var(--heartbeat); }
+  .multi-asset-strip .mas-note {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================== SLIDE 1 : TITLE ================== -->
+<section class="slide title-slide">
+  <span class="corner tl">Ghost Protocol</span>
+  <span class="corner tr">Solana Frontier 2026</span>
+  <div class="title-stack">
+    <img src="../Media/logo_no_bg.png" alt="Ghost Protocol" class="hero-logo">
+    <div class="eyebrow">01 — The Pitch</div>
+    <h1 class="mega">GHOST</h1>
+    <p class="tagline">Your digital afterlife on Solana.</p>
+    <p class="secondary">A smart vault that doesn't forget your family or friends.</p>
+  </div>
+  <div class="footer-line">
+    <span>ghost-protocol.rip</span>
+    <span class="dot"></span>
+    <span>@onchainlegacy</span>
+    <span class="dot"></span>
+    <span>Program · 3Es13GXc…T3sZ3</span>
+  </div>
+</section>
+
+<!-- ================== SLIDE 2 : PROBLEM ================== -->
+<section class="slide problem-slide">
+  <span class="corner tl">02 — The Problem</span>
+  <span class="corner br">Not a one-time story.</span>
+  <div class="problem-card">
+    <div class="problem-handle">
+      <div class="avatar"></div>
+      <div>
+        <div class="name">Anonymous</div>
+        <div class="handle">a recurring thread on crypto X · every month</div>
+      </div>
+    </div>
+    <p>"My dad passed away last week. He kept most of his savings in SOL on a Ledger. None of us know the seed phrase. Is there <em>anything</em> we can do?"</p>
+    <p style="margin-top: 18px; color: var(--bone-dim); font-size: 22px;">— replies: <span class="accent">1.2k</span>. None of them have a good answer.</p>
+  </div>
+  <p class="problem-caption" style="align-self: center; margin-top: 40px;">
+    This thread appears every month. There is no process that can help them.<br>
+    Centralized exchanges have support lines. Banks have probate.<br>
+    <span class="accent">Self-custody has neither.</span>
+  </p>
+</section>
+
+<!-- ================== SLIDE 3 : STAT ================== -->
+<section class="slide stat-slide">
+  <span class="corner tl">03 — Scale</span>
+  <span class="corner tr">This is not niche.</span>
+  <div class="stat-center">
+    <div class="stat-prefix"></div>
+    <div class="stat-huge" style="font-size: 200px;">9 in 10</div>
+    <p class="stat-sub">crypto holders have <span class="accent">no plan</span><br>for what happens if they die.</p>
+    <p class="stat-caption">
+      $200B+ already permanently lost. Ghost is the program that wasn't there.
+    </p>
+  </div>
+  <div class="stat-source">Sources · Cremation Institute · Chainalysis · BitGo · 2024–2025</div>
+</section>
+
+<!-- ================== SLIDE 4 : WHY NOW (NEW) ================== -->
+<section class="slide">
+  <span class="corner tl">04 — Why Now</span>
+  <span class="corner tr">Three forces converge in 2026.</span>
+  <div>
+    <div class="eyebrow">The category window is opening</div>
+    <h2 class="big">Whoever builds this primitive now<br><span class="accent">defines the category.</span></h2>
+  </div>
+  <div class="why-grid">
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">Mobile heartbeat</div>
+      <h3>Solana Mobile is shipping.</h3>
+      <p>A heartbeat is a thumbprint, not a desktop ritual.</p>
+    </div>
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">Generational handoff</div>
+      <h3>2013–2017 adopters are 50+.</h3>
+      <p>The first crypto generation is aging. There is no native answer.</p>
+    </div>
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">Regulatory window</div>
+      <h3>Case law is forming now.</h3>
+      <p>US probate + MiCA are deciding. Builders set the standard, or regulators do.</p>
+    </div>
+  </div>
+  <p class="whynow-caption">
+    18 months ahead of the regulation. 18 months behind the demand.
+  </p>
+</section>
+
+<!-- ================== SLIDE 5 : VIDEO ================== -->
+<section class="slide video-slide">
+  <span class="corner tl">05 — See it</span>
+  <span class="corner tr">60 seconds</span>
+  <div style="display:flex; flex-direction:column; align-items:center;">
+    <div class="video-frame">
+      <div class="video-fallback" aria-hidden="true">
+        <img src="../Media/logo_no_bg.png" alt="">
+        <p class="fb-line">Ghost Protocol — the full lifecycle, told without a pitch.</p>
+        <p class="fb-mono">Press play · 60 seconds</p>
+      </div>
+      <video src="../Media/ghost-protocol.mp4" controls preload="metadata" poster="../Media/logo.png" playsinline></video>
+    </div>
+    <div class="video-caption">Ghost Protocol — the full lifecycle, told without a pitch</div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 6 : WHAT IT IS ================== -->
+<section class="slide steps-slide">
+  <span class="corner tl">06 — The Protocol</span>
+  <span class="corner tr">Four actions. That's the whole thing.</span>
+  <div>
+    <div class="eyebrow">How it works</div>
+    <h2 class="big">A dead-man's switch<br>for <span class="accent">every asset</span> on Solana.</h2>
+    <div style="margin-top: 14px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.16em; color: var(--bone-dim); text-transform: uppercase;">SOL · USDC · wBTC · jitoSOL · BUIDL · xStocks</div>
+  </div>
+  <div class="steps-grid">
+    <div class="step active">
+      <div class="step-num">01 — REGISTER</div>
+      <div class="step-title">Ghost PDA + Vault PDA</div>
+      <div class="step-body">Vault is a PDA. No private key exists.</div>
+    </div>
+    <div class="step active">
+      <div class="step-num">02 — FUND</div>
+      <div class="step-title">Deposit &amp; configure</div>
+      <div class="step-body">SOL + any SPL. Up to 10 beneficiaries.</div>
+    </div>
+    <div class="step active">
+      <div class="step-num">03 — STAY ALIVE</div>
+      <div class="step-title">Ping before you expire</div>
+      <div class="step-body">1 hour to 10 years. &lt; $0.01 per ping.</div>
+    </div>
+    <div class="step active">
+      <div class="step-num">04 — EXECUTE</div>
+      <div class="step-title">Anyone can trigger</div>
+      <div class="step-body">Grace expires → vault signs to beneficiaries. No operator.</div>
+    </div>
+  </div>
+  <div class="secondary-use">
+    Digital legacy first. Also: travel, detention, seed-phrase loss, or a family slice.
+  </div>
+</section>
+
+<!-- ================== SLIDE 7 : WHY SOLANA ================== -->
+<section class="slide">
+  <span class="corner tl">07 — Why Solana</span>
+  <span class="corner tr">Not ethical decoration. Real reason.</span>
+  <div>
+    <div class="eyebrow">This product does not work on another chain</div>
+    <h2 class="big">Solana is the one chain<br>where this is actually <span class="accent">shippable.</span></h2>
+  </div>
+  <div class="why-grid">
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">PDA-owned vaults</div>
+      <h3>Keys that don't exist.</h3>
+      <p>Only program logic can move funds.</p>
+    </div>
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">Permissionless execution</div>
+      <h3>Anyone is the executor.</h3>
+      <p>If our bot dies, beneficiaries trigger themselves.</p>
+    </div>
+    <div class="why-card">
+      <div class="label" style="margin-bottom:10px;">Sub-cent heartbeats</div>
+      <h3>Cheap enough for everyone.</h3>
+      <p>&lt; $0.01 per ping. Whales-only on Ethereum.</p>
+    </div>
+  </div>
+  <div class="multi-asset-strip">
+    <div class="mas-label">Asset rail</div>
+    <div class="mas-body">
+      <div class="mas-list">SOL · USDC · wBTC · jitoSOL · BUIDL · xStocks · <span class="accent">every SPL &amp; Token-2022</span></div>
+      <div class="mas-note">Stablecoins. BUIDL. xStocks. LSTs. Whatever Solana settles next.</div>
+    </div>
+  </div>
+  <div class="gas-bars">
+    <div class="gas-label">Solana</div>
+    <div class="gas-track"><div class="gas-fill" style="width: 2%;"></div></div>
+    <div class="gas-value">$0.01</div>
+
+    <div class="gas-label">Ethereum L1</div>
+    <div class="gas-track"><div class="gas-fill muted" style="width: 100%;"></div></div>
+    <div class="gas-value dim">~$5.00</div>
+
+    <p class="gas-caption">One heartbeat per week × 52 weeks × 10,000 users · $5,200 vs $2,600,000 in network fees.</p>
+  </div>
+</section>
+
+<!-- ================== SLIDE 8 : TRUST MODEL ================== -->
+<section class="slide">
+  <span class="corner tl">08 — Trust Model</span>
+  <span class="corner tr">The slide that closes the objection.</span>
+  <div>
+    <div class="eyebrow">Who has authority over your vault</div>
+    <h2 class="big">Nobody can move your funds<br>outside the rules <span class="accent">you</span> configured.</h2>
+  </div>
+  <div class="trust-cols">
+    <div class="trust-col danger">
+      <h3>What nobody — including us — can do</h3>
+      <ul>
+        <li>Move funds out of your vault unilaterally</li>
+        <li>Awaken you while you're still pinging</li>
+        <li>Change who your beneficiaries are</li>
+        <li>Prevent beneficiaries from receiving funds</li>
+        <li>Push a malicious upgrade before a 7-day timelock</li>
+      </ul>
+    </div>
+    <div class="trust-col safe">
+      <h3>What you (and only you) can do</h3>
+      <ul>
+        <li>Ping, deposit, withdraw, reconfigure, pause</li>
+        <li>Designate up to 3 recovery wallets as emergency trustees</li>
+        <li>Cancel an awakening during the grace period</li>
+        <li>Transfer Ghost ownership to a new wallet</li>
+        <li>Decide — specifically — who inherits what, and when</li>
+      </ul>
+    </div>
+  </div>
+  <p class="trust-footer">The vault PDA's private key does not exist. The only way to move funds is through program logic you configured.</p>
+</section>
+
+<!-- ================== SLIDE 9 : LANDSCAPE (NEW) ================== -->
+<section class="slide">
+  <span class="corner tl">09 — Landscape</span>
+  <span class="corner tr">The empty quadrant.</span>
+  <div>
+    <div class="eyebrow">Where Ghost sits</div>
+    <h2 class="big">Estate-in-crypto exists today<br>as <span class="accent">three things</span>. None of them scale.</h2>
+  </div>
+  <div class="landscape-grid">
+    <div class="landscape-axis-x">
+      <span>EVM-only</span>
+      <span>Solana-native</span>
+    </div>
+    <div class="landscape-axis-y">
+      <span>Custodial</span>
+      <span>Non-custodial</span>
+    </div>
+    <div class="landscape-cell">
+      <div class="lc-tag">Custodial · EVM</div>
+      <div class="lc-names">Casa · Ledger Recover · Vault12</div>
+      <div class="lc-note">Trust an operator with your keys.</div>
+    </div>
+    <div class="landscape-cell">
+      <div class="lc-tag">Custodial · chain-agnostic</div>
+      <div class="lc-names">Coinbase · Binance estate paths</div>
+      <div class="lc-note">Off-chain only. Probate + KYC.</div>
+    </div>
+    <div class="landscape-cell">
+      <div class="lc-tag">Non-custodial · EVM</div>
+      <div class="lc-names">Sarcophagus DAO · Safe Recovery</div>
+      <div class="lc-note">$1M cap. 1,118 holders. Ethereum-priced.</div>
+    </div>
+    <div class="landscape-cell us">
+      <div class="lc-tag">Non-custodial · Solana-native</div>
+      <div class="lc-names">Ghost Protocol</div>
+      <div class="lc-note">Sub-cent. Permissionless. Multi-asset.</div>
+    </div>
+  </div>
+  <p class="landscape-caption">
+    Estate today is a help-desk ticket, a safe, or $200 of Ethereum gas. The bottom-right was empty.
+  </p>
+</section>
+
+<!-- ================== SLIDE 10 : LIVE ON MAINNET ================== -->
+<section class="slide mainnet-slide">
+  <span class="corner tl">10 — Live</span>
+  <span class="corner tr">Not a hackathon prototype.</span>
+  <div class="mainnet-body">
+    <div class="mainnet-left">
+      <div class="eyebrow">Deployed on Solana Mainnet</div>
+      <h2 class="big">1,030 lines of Anchor.<br>Shipped <span class="accent">before</span>&nbsp;the&nbsp;hackathon.</h2>
+      <p>Deployed March 2026. Public registration opens this hackathon.</p>
+      <p>Upgrade authority migrates to Squads + 7-day timelock post-audit.</p>
+      <div class="program-chip">3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3</div>
+    </div>
+    <div class="mainnet-stats">
+      <div class="stat-block">
+        <div class="n">1,030</div>
+        <div class="k">Lines of Anchor · audited-ready</div>
+      </div>
+      <div class="stat-block">
+        <div class="n">23</div>
+        <div class="k">Public instructions · one program</div>
+      </div>
+      <div class="stat-block">
+        <div class="n">2 of 2</div>
+        <div class="k">PDAs per user · state &amp; vault separated</div>
+      </div>
+      <div class="stat-block">
+        <div class="n">0</div>
+        <div class="k">Private keys custodied by the protocol</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 11 : BUSINESS MODEL (NEW) ================== -->
+<section class="slide">
+  <span class="corner tl">11 — Business Model</span>
+  <span class="corner tr">Already in the program. Already on Explorer.</span>
+  <div>
+    <div class="eyebrow">How the protocol funds itself</div>
+    <h2 class="big">We earn when the protocol <span class="accent">works.</span><br>Not when it sits idle.</h2>
+  </div>
+  <div class="biz-body">
+    <pre class="biz-code"><span class="biz-comment">// from lib v1.9.rs — on-chain, immutable</span>
+
+<span class="biz-keyword">pub const</span> <span class="biz-name">REGISTRATION_FEE_LAMPORTS</span>: u64 = <span class="biz-num">20_000_000</span>;
+<span class="biz-comment">// 0.02 SOL · paid once · funds dev + watchers</span>
+
+<span class="biz-keyword">pub const</span> <span class="biz-name">EXECUTION_FEE_BPS</span>: u64 = <span class="biz-num">50</span>;
+<span class="biz-comment">// 0.5% · charged only when a Ghost actually executes</span></pre>
+    <ul class="biz-points">
+      <li>
+        <strong>Registration fee.</strong>
+        Day 1 revenue. Paid once, on-chain.
+      </li>
+      <li>
+        <strong>Execution fee.</strong>
+        We earn only when the protocol delivers.
+      </li>
+      <li>
+        <strong>Self-funding.</strong>
+        10k Ghosts at 1% trigger covers ongoing dev.
+      </li>
+    </ul>
+    <p class="biz-caption">On-chain. Immutable. Aligned.</p>
+  </div>
+</section>
+
+<!-- ================== SLIDE 12 : MARKET & MONEY (combined, Colosseum-grade) ================== -->
+<section class="slide" style="justify-content: flex-start; padding-top: 64px;">
+  <span class="corner tl">12 — Market &amp; Money</span>
+  <span class="corner tr">How big · how it earns · what we ask</span>
+  <div>
+    <div class="eyebrow">In Solana self-custody · today</div>
+    <h2 class="big">A <span class="accent">$60B</span> universe.<br>30,000 Ghosts at Year 3 = <span class="accent">1.6%</span> of the protectable cohort.</h2>
+  </div>
+
+  <div class="aum-bar-wrap" style="margin-top: 30px;">
+    <div class="aum-bar-track">
+      <div class="aum-seg s-sol">SOL $42B</div>
+      <div class="aum-seg s-stable">Stables $15.7B</div>
+      <div class="aum-seg s-lst">LSTs $7.1B</div>
+      <div class="aum-seg s-meme">Meme $2B</div>
+      <div class="aum-seg s-rwa">RWA</div>
+      <div class="aum-seg s-depin">DePIN</div>
+      <div class="aum-seg s-wrap">w</div>
+    </div>
+    <div class="aum-bar-legend">
+      <div><span class="v">$42B</span><span class="l">Native SOL</span></div>
+      <div><span class="v">$15.7B</span><span class="l">Stablecoins</span></div>
+      <div><span class="v">$7.1B</span><span class="l">LSTs</span></div>
+      <div><span class="v">$2.0B</span><span class="l">Memecoins</span></div>
+      <div><span class="v">$1.5B</span><span class="l">RWAs</span></div>
+      <div><span class="v">$1.1B</span><span class="l">DePIN</span></div>
+      <div><span class="v">$0.6B</span><span class="l">Wrapped BTC+ETH</span></div>
+    </div>
+  </div>
+
+  <div class="num-strip" style="margin-top: 28px;">
+    <div><span class="v">9.2M</span><span class="l">Wallets holding SOL</span></div>
+    <div><span class="v accent">1.85M</span><span class="l">Wallets &gt;$1k · core market</span></div>
+    <div><span class="v heart">30,000</span><span class="l">Year-3 Ghost target</span></div>
+  </div>
+
+  <div class="stream-row" style="margin-top: 28px; border-top: 1px solid var(--accent-dim); padding-top: 22px;">
+    <div class="stream-cell">
+      <div class="sl">Registration · in code</div>
+      <div class="sn">0.02 SOL</div>
+      <div class="sd">Per Ghost. Hardcoded.</div>
+    </div>
+    <div class="stream-cell">
+      <div class="sl">Execution · in code</div>
+      <div class="sn">0.5%</div>
+      <div class="sd">Of inherited TVL on trigger.</div>
+    </div>
+    <div class="stream-cell">
+      <div class="sl">Premium tier · year 2</div>
+      <div class="sn">$99 / yr</div>
+      <div class="sd">Optional upgrade. Paid in SOL.</div>
+    </div>
+  </div>
+
+  <div style="margin-top: 22px; padding: 16px 22px; border: 1px solid var(--accent); background: linear-gradient(90deg, rgba(143,112,255,0.08), transparent 70%), var(--bg-2); display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center;">
+    <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent);">The ask</div>
+    <div style="font-family: var(--serif); font-size: 18px; color: var(--bone); line-height: 1.4;">
+      <strong style="font-family: var(--display); color: var(--accent);">$250k pre-seed</strong> → $120k audit + 12 months solo runway + community distribution. <strong style="font-family: var(--display);">Cash-flow positive at base case Year 3.</strong>
+    </div>
+    <div style="font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; color: var(--bone-dim); text-align: right;">Burn · $10k/mo</div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 13 : $GHOST TOKEN ================== -->
+<section class="slide">
+  <span class="corner tl">13 — $GHOST</span>
+  <span class="corner tr">Utility — separate from the protocol fee.</span>
+  <div>
+    <div class="eyebrow">Token &amp; incentive loop</div>
+    <h2 class="big">A token that pays <span class="accent">watchers.</span><br>Distinct from how the protocol earns.</h2>
+  </div>
+  <div class="token-body">
+    <div class="loop">
+      <div class="loop-step">01 · Register → stake $GHOST</div>
+      <div class="loop-arrow">↓</div>
+      <div class="loop-step">02 · Ping = heartbeat · silence &gt; interval = eligible</div>
+      <div class="loop-arrow">↓</div>
+      <div class="loop-step">03 · Anyone calls check_silence → 5% bounty → caller</div>
+      <div class="loop-arrow">↓</div>
+      <div class="loop-step">04 · Grace expires → execute → beneficiaries paid</div>
+    </div>
+    <div class="token-facts">
+      <ul>
+        <li><strong>Fixed supply.</strong> 1B. No team cliff.</li>
+        <li><strong>Fair launch.</strong> Pump.fun. No presale.</li>
+        <li><strong>Skin in the game.</strong> Stake at registration.</li>
+        <li><strong>Watcher bounty.</strong> 5% to whoever triggers. Bot can't be the chokepoint.</li>
+        <li><strong>Separate from protocol fee.</strong> Different jobs.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 14 : ROADMAP ================== -->
+<section class="slide roadmap-slide">
+  <span class="corner tl">14 — Roadmap</span>
+  <span class="corner tr">The path into the dark.</span>
+  <div>
+    <div class="eyebrow">Four phases, each named after the myth</div>
+    <h2 class="big">Summon. Awaken. Possess.<br><span class="accent">Eternal.</span></h2>
+  </div>
+  <div class="phases">
+    <div class="phase done">
+      <div class="phase-when">Q1 2026 · shipped</div>
+      <div class="phase-name">Summon</div>
+      <ul>
+        <li>Mainnet deploy</li>
+        <li>SOL + SPL + recovery</li>
+        <li>Fair $GHOST launch</li>
+      </ul>
+    </div>
+    <div class="phase live">
+      <div class="phase-when">Q2 2026 · in progress</div>
+      <div class="phase-name">Awaken</div>
+      <ul>
+        <li>NFT vaults + time-locks</li>
+        <li>Off-chain notifications</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="phase-when">Q3 2026</div>
+      <div class="phase-name">Possess</div>
+      <ul>
+        <li>DeFi position closing</li>
+        <li>Cross-chain bridges</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="phase-when">Q4 2026</div>
+      <div class="phase-name">Eternal</div>
+      <ul>
+        <li>Memorial layer</li>
+        <li>100k souls</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 15 : FOUNDER (NEW) ================== -->
+<section class="slide">
+  <span class="corner tl">15 — Founder</span>
+  <span class="corner tr">Solo, but not unaccompanied — I dogfood the protocol.</span>
+  <div>
+    <div class="eyebrow">Who is building this</div>
+    <h2 class="big">The entire product philosophy is that<br>one person <span class="accent">shouldn't be the chokepoint.</span></h2>
+  </div>
+  <div class="founder-body">
+    <div class="founder-portrait">
+      <img src="../Media/logo_no_bg.png" alt="">
+      <div class="fp-name">@onchainlegacy</div>
+      <div class="fp-handle">Solo founder · Solana</div>
+      <div class="fp-tag">"I built the only protocol I'd trust with my own keys — so I trusted it with mine."</div>
+    </div>
+    <ul class="founder-points">
+      <li>
+        <strong>Shipping since Q4 2025.</strong>
+        Two mainnet programs in six months — Ghost and stairz.fun.
+      </li>
+      <li>
+        <strong>Why this.</strong>
+        Saw the dad's-Ledger thread one too many times. The fix is 20 lines of Rust nobody bothered to write.
+      </li>
+      <li>
+        <strong>I dogfood the protocol.</strong>
+        My own Ghost is live with real beneficiaries. If I disappear, the program keeps running.
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================== SLIDE 16 : THE ASK ================== -->
+<section class="slide ask-slide">
+  <span class="corner tl">16 — The Ask</span>
+  <span class="corner tr">Solana Frontier 2026</span>
+  <div>
+    <div class="eyebrow">What we're asking for</div>
+    <h2 class="big">One ask. <span class="accent">Frontier accelerator seat.</span><br>One CTA. Try a 1-hour Ghost.</h2>
+  </div>
+  <div class="ask-list">
+    <div class="ask-item">
+      <div class="n">→</div>
+      <div>
+        <div class="t">Frontier accelerator seat</div>
+        <div class="d">$250k → audit + 12 months runway → wallet integrations + Squads timelock post-audit.</div>
+      </div>
+    </div>
+  </div>
+  <div class="cta-panel">
+    <img src="../Media/logo_no_bg.png" alt="" class="cta-seal">
+    <div class="cta-text">
+      Every judge gets a free registered Ghost during the hackathon.
+      <span class="cta-sub">Register with a 1-hour interval · see the full lifecycle in real time · ghost-protocol.rip</span>
+    </div>
+    <div class="cta-action">ghost-protocol.rip →</div>
+  </div>
+</section>
+
+<!-- ================== SLIDE 13 : CLOSING ================== -->
+<section class="slide closing-slide">
+  <span class="corner tl">Ghost Protocol</span>
+  <span class="corner tr">Fin.</span>
+  <div class="closing-stack">
+    <img src="../Media/logo_no_bg.png" alt="Ghost Protocol" class="closing-seal">
+    <div class="closing-eyebrow">One last question</div>
+    <h2 class="closing-question">Are you still alive?</h2>
+    <p class="closing-sub">If you are — thank you for watching. If you're not — someone you trust just inherited your SOL.</p>
+    <div class="closing-divider"></div>
+    <div class="closing-thanks">Thank you, judges</div>
+    <div class="closing-contacts">
+      <span>ghost-protocol.rip</span>
+      <span class="dot"></span>
+      <span>@onchainlegacy</span>
+      <span class="dot"></span>
+      <span>3Es13GXc…T3sZ3</span>
+    </div>
+  </div>
+</section>
+
+<!-- Overlays -->
+<div class="counter" id="counter">01 / 17</div>
+<div class="nav-hint">← → arrows · F to fullscreen · P to print/PDF</div>
+
+<script>
+  // Arrow-key navigation + slide counter
+  const slides = document.querySelectorAll('.slide');
+  const counter = document.getElementById('counter');
+  const total = slides.length;
+  let current = 0;
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function updateCounter() {
+    counter.textContent = pad(current + 1) + ' / ' + pad(total);
+  }
+
+  function scrollTo(i) {
+    if (i < 0 || i >= total) return;
+    current = i;
+    slides[i].scrollIntoView({ behavior: 'smooth', inline: 'start' });
+    updateCounter();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { scrollTo(current + 1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { scrollTo(current - 1); e.preventDefault(); }
+    else if (e.key === 'Home') { scrollTo(0); e.preventDefault(); }
+    else if (e.key === 'End') { scrollTo(total - 1); e.preventDefault(); }
+    else if (e.key.toLowerCase() === 'f') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+    else if (e.key.toLowerCase() === 'p') { window.print(); e.preventDefault(); }
+  });
+
+  // Track scroll position → counter
+  let scrollTimeout;
+  document.body.addEventListener('scroll', () => {
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+      const x = document.body.scrollLeft;
+      const w = slides[0].getBoundingClientRect().width;
+      const i = Math.round(x / w);
+      if (i !== current) { current = Math.max(0, Math.min(total - 1, i)); updateCounter(); }
+    }, 80);
+  }, { passive: true });
+
+  updateCounter();
+
+  // Auto-fit to viewport on screen (non-print). Uses CSS zoom for layout-accurate scaling.
+  function fitToViewport() {
+    if (window.matchMedia('print').matches) { document.body.style.zoom = ''; return; }
+    const targetW = 1440, targetH = 810;
+    const scale = Math.min(window.innerWidth / targetW, window.innerHeight / targetH);
+    document.body.style.zoom = scale.toFixed(4);
+  }
+  fitToViewport();
+  window.addEventListener('resize', fitToViewport);
+  window.addEventListener('beforeprint', () => { document.body.style.zoom = ''; });
+  window.addEventListener('afterprint', fitToViewport);
+</script>
+
+</body>
+</html>

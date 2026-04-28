@@ -1,0 +1,52 @@
+{
+  "name": "Ghost Beneficiary — held in trust by {{RELATION}}",
+  "symbol": "GHOST",
+  "description": "{{RELATION}} named this wallet as a beneficiary on Ghost Protocol — a trustless dead-man's-switch for digital assets on Solana. THIS IS NOT AN INSTANT PAYOUT.\n\n— WHEN YOU CAN CLAIM —\nYou can ONLY claim the assets that were set aside for you if ONE of these is true:\n  (a) {{RELATION}}'s check-in timer expires (they stopped pinging the protocol — usually because they lost their wallet, became incapacitated, or passed away), OR\n  (b) {{RELATION}} explicitly named you as a recovery wallet and triggers payout.\n\nUntil one of those happens, the assets stay with {{RELATION}}. This token is just the key — keep it safe.\n\n— STATUS —\nActive. (If {{RELATION}} ever removes you as a beneficiary, this token's metadata will be updated to show STATUS: REVOKED. Always check the on-chain status before assuming you can claim.)\n\n— HOW TO CLAIM (when the time comes) —\n1. Visit: {{CLAIM_URL}}\n2. Connect this wallet (the one holding this NFT).\n3. The dApp checks on-chain whether the conditions are met. If they are, you'll be walked through claiming.\n\n— IF THE WEBSITE IS DOWN —\nMirror: {{IPFS_MIRROR_URL}}\nGitHub: {{GITHUB_PAGES_URL}}\n\n— PASTE THIS INTO CLAUDE / CHATGPT IF YOU NEED HELP —\nI hold a Ghost Protocol Beneficiary NFT on Solana. Program ID: {{PROGRAM_ID}}. Owner wallet: {{OWNER_PUBKEY}}. My beneficiary index: {{BENEFICIARY_INDEX}}. Please fetch the program's IDL from a Solana RPC, derive the Ghost PDA from seed [\"ghost\", owner_pubkey], read the on-chain Ghost state to verify (a) my pubkey is still in the beneficiaries array, AND (b) either the check-in deadline has passed OR a recovery action was triggered. If both are true, construct the execute_legacy + execute_transfer instructions and tell me how to sign and broadcast.\n\nGhost Protocol lives on Solana mainnet — this website is not required for the protocol to function.",
+  "image": "{{IMAGE_URL}}",
+  "external_url": "{{CLAIM_URL}}",
+  "animation_url": null,
+  "attributes": [
+    { "trait_type": "Status", "value": "Active" },
+    { "trait_type": "Set by", "value": "{{RELATION}}" },
+    { "trait_type": "Beneficiary index", "value": "{{BENEFICIARY_INDEX}}" },
+    { "trait_type": "Issued", "value": "{{ISSUED_DATE}}" },
+    { "trait_type": "Network", "value": "Solana Mainnet" },
+    { "trait_type": "Program", "value": "{{PROGRAM_ID}}" },
+    { "trait_type": "Soulbound", "value": "Yes" },
+    { "trait_type": "Standard", "value": "Metaplex cNFT" },
+    { "trait_type": "Claimable now", "value": "No — only on owner timer expiry or recovery trigger" }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      { "uri": "{{IMAGE_URL}}", "type": "image/png" }
+    ],
+    "creators": [
+      { "address": "{{OWNER_PUBKEY}}", "share": 100, "verified": true }
+    ]
+  },
+  "collection": {
+    "name": "Ghost Protocol Beneficiaries",
+    "family": "Ghost Protocol"
+  },
+  "_ghost_protocol": {
+    "version": "1.9",
+    "status": "active",
+    "owner_pubkey": "{{OWNER_PUBKEY}}",
+    "ghost_pda": "{{GHOST_PDA}}",
+    "beneficiary_pubkey": "{{BENEFICIARY_PUBKEY}}",
+    "beneficiary_index": "{{BENEFICIARY_INDEX}}",
+    "issued_at_unix": "{{ISSUED_UNIX}}",
+    "revoked_at_unix": null,
+    "claim_conditions": [
+      "owner_check_in_deadline_passed",
+      "owner_recovery_action_triggered"
+    ],
+    "mirrors": {
+      "primary": "{{CLAIM_URL}}",
+      "ipfs": "{{IPFS_MIRROR_URL}}",
+      "arweave": "{{ARWEAVE_MIRROR_URL}}",
+      "github_pages": "{{GITHUB_PAGES_URL}}"
+    }
+  }
+}

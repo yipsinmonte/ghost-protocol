@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Ghost Protocol — Registration Guardrails (wireframe)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Syne:wght@500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --violet: #6E4BFF;
+    --violet-glow: #8F70FF;
+    --pink: #FF6B9D;
+    --bg: #050208;
+    --panel: #0E0820;
+    --panel-2: #14092A;
+    --line: rgba(143, 112, 255, 0.18);
+    --line-strong: rgba(143, 112, 255, 0.4);
+    --ink: #F4ECFF;
+    --ink-dim: #B0A4CC;
+    --ink-faint: #5B4F77;
+    --warn: #FFB23E;
+    --danger: #FF5470;
+    --ok: #6BFFB8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    min-height: 100vh;
+    font-family: 'Inter', sans-serif;
+    color: var(--ink);
+    padding: 64px 24px 96px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 36px;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(110, 75, 255, 0.18), transparent 60%),
+      radial-gradient(ellipse 90% 50% at 50% 100%, rgba(255, 107, 157, 0.08), transparent 70%);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .top-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.32em;
+    color: var(--ink-faint); text-transform: uppercase;
+  }
+  .hero {
+    text-align: center;
+    max-width: 720px;
+  }
+  .hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800; font-size: 56px;
+    line-height: 1; letter-spacing: -0.02em;
+    margin-bottom: 14px;
+  }
+  .hero h1 .accent {
+    background: linear-gradient(120deg, var(--pink), var(--violet-glow));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero p {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 20px; color: var(--ink-dim);
+    line-height: 1.5;
+  }
+
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 720px) minmax(0, 360px);
+    gap: 32px;
+    align-items: start;
+    max-width: 1140px;
+    width: 100%;
+  }
+
+  /* Registration panel */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 32px;
+    position: relative;
+  }
+  .panel + .panel { margin-top: 24px; }
+
+  .step-head {
+    display: flex; align-items: baseline; gap: 14px;
+    margin-bottom: 20px;
+  }
+  .step-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+  }
+  .step-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 24px;
+    letter-spacing: -0.005em;
+  }
+  .required {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--pink);
+    border: 1px solid rgba(255, 107, 157, 0.5);
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: rgba(255, 107, 157, 0.08);
+  }
+  .optional {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+  }
+
+  .helper {
+    font-size: 14px; color: var(--ink-dim);
+    line-height: 1.55;
+    margin-bottom: 18px;
+  }
+
+  /* Critical warning (recovery wallet missing) */
+  .warn-block {
+    background: linear-gradient(135deg, rgba(255, 178, 62, 0.1), rgba(255, 84, 112, 0.08));
+    border: 1px solid rgba(255, 178, 62, 0.4);
+    border-radius: 14px;
+    padding: 18px 20px;
+    display: flex;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .warn-icon {
+    flex: 0 0 auto;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 178, 62, 0.18);
+    color: var(--warn);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 18px;
+  }
+  .warn-body { flex: 1; }
+  .warn-title {
+    font-weight: 600; font-size: 15px;
+    color: var(--warn); margin-bottom: 4px;
+  }
+  .warn-text {
+    font-size: 13px; color: var(--ink-dim);
+    line-height: 1.55;
+  }
+
+  /* Wallet row */
+  .wallet-row {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 18px;
+  }
+  .wallet-row + .wallet-row { margin-top: 8px; }
+  .avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--violet), var(--pink));
+    flex: 0 0 auto;
+  }
+  .wallet-info { flex: 1; min-width: 0; }
+  .wallet-name {
+    font-weight: 500; font-size: 14px;
+    margin-bottom: 2px;
+  }
+  .wallet-addr {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--ink-faint);
+    letter-spacing: 0.04em;
+  }
+  .row-action {
+    font-size: 12px; color: var(--ink-dim);
+    background: transparent; border: none;
+    cursor: pointer; padding: 4px 8px;
+  }
+  .row-action:hover { color: var(--pink); }
+
+  .add-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    padding: 14px;
+    background: rgba(143, 112, 255, 0.08);
+    border: 1px dashed rgba(143, 112, 255, 0.4);
+    border-radius: 12px;
+    color: var(--violet-glow);
+    font-family: 'Inter', sans-serif;
+    font-weight: 500; font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 8px;
+  }
+  .add-btn:hover { background: rgba(143, 112, 255, 0.15); }
+  .add-btn .plus { font-size: 18px; line-height: 1; }
+
+  /* Beneficiary card */
+  .ben-card {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .ben-card + .ben-card { margin-top: 12px; }
+  .ben-head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 16px;
+  }
+  .ben-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(255, 107, 157, 0.15);
+    border: 1px solid rgba(255, 107, 157, 0.4);
+    color: var(--pink);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600; font-size: 12px;
+  }
+  .ben-title { font-weight: 500; font-size: 15px; }
+
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field-label {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .field-label .label-text {
+    font-family: 'Inter', sans-serif;
+    font-weight: 500; font-size: 13px;
+    color: var(--ink);
+  }
+  .field-label .label-help {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 12px; color: var(--ink-faint);
+  }
+  .field input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input:focus { border-color: var(--violet-glow); }
+  .field input.mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 120px;
+    gap: 12px;
+  }
+  .field-hint {
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+  .field-hint.pink { color: var(--pink); }
+
+  .nft-preview-pill {
+    display: inline-flex;
+    align-items: center; gap: 8px;
+    background: rgba(143, 112, 255, 0.12);
+    border: 1px solid rgba(143, 112, 255, 0.35);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    margin-top: 10px;
+  }
+  .nft-preview-pill strong {
+    color: var(--violet-glow);
+    font-weight: 600;
+  }
+
+  /* Save button */
+  .save-row {
+    margin-top: 28px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .save-btn {
+    flex: 1;
+    padding: 18px 28px;
+    border-radius: 14px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 17px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+  }
+  .save-btn.disabled {
+    background: rgba(143, 112, 255, 0.12);
+    border: 1px solid var(--line);
+    color: var(--ink-faint);
+    cursor: not-allowed;
+  }
+  .save-btn.enabled {
+    background: linear-gradient(120deg, var(--pink), var(--violet));
+    color: #fff;
+    box-shadow: 0 12px 30px rgba(255, 107, 157, 0.25);
+  }
+  .lock-reason {
+    font-size: 12px;
+    color: var(--ink-faint);
+    line-height: 1.5;
+    margin-top: 10px;
+  }
+  .lock-reason .x { color: var(--pink); }
+  .lock-reason .ok { color: var(--ok); }
+
+  /* Side preview */
+  .side {
+    position: sticky;
+    top: 32px;
+  }
+  .side-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 12px;
+    padding-left: 4px;
+  }
+  .nft-mini {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #000;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+  }
+  .nft-mini::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 38%, rgba(110, 75, 255, 0.28), transparent 70%);
+  }
+  .mini-frame {
+    position: absolute;
+    inset: 24px;
+    display: flex; flex-direction: column;
+    align-items: center; text-align: center;
+    z-index: 1;
+  }
+  .mini-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid rgba(255, 107, 157, 0.5);
+    border-radius: 999px;
+    background: rgba(255, 107, 157, 0.08);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px; letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--pink);
+  }
+  .mini-pill .dot {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--pink);
+    box-shadow: 0 0 8px var(--pink);
+  }
+  .mini-logo {
+    width: 70px; height: 70px;
+    margin: 14px 0 10px;
+    filter: drop-shadow(0 0 18px rgba(110, 75, 255, 0.6));
+  }
+  .mini-pre {
+    font-size: 9px; color: var(--ink-dim);
+  }
+  .mini-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 38px; line-height: 0.9;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #FFB7CE, var(--pink), var(--violet-glow));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-top: 6px;
+    word-break: break-word;
+  }
+  .mini-sub {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 11px; color: var(--ink);
+    margin-top: 6px;
+  }
+  .mini-foot {
+    margin-top: auto;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 8px; letter-spacing: 0.4em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+  }
+  .side-cap {
+    font-size: 12px; color: var(--ink-faint);
+    margin-top: 12px; line-height: 1.5;
+    padding-left: 4px;
+  }
+
+  /* Notes section */
+  .notes {
+    max-width: 1140px;
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 28px 32px;
+  }
+  .notes h3 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 18px;
+    letter-spacing: 0.04em;
+    margin-bottom: 14px;
+    color: var(--violet-glow);
+    text-transform: uppercase;
+  }
+  .notes ul { padding-left: 20px; }
+  .notes li {
+    font-size: 14px; color: var(--ink-dim);
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  .notes li strong { color: var(--ink); font-weight: 600; }
+  .notes code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: rgba(143, 112, 255, 0.1);
+    color: var(--violet-glow);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<span class="top-label">Ghost Protocol — Registration Guardrails Wireframe</span>
+
+<div class="hero">
+  <h1>Set up your <span class="accent">Ghost</span></h1>
+  <p>Decide who gets what — and make sure your assets are never permanently locked.</p>
+</div>
+
+<div class="stage">
+  <!-- LEFT: form -->
+  <div>
+
+    <!-- STEP 1 — Recovery wallets (REQUIRED) -->
+    <div class="panel">
+      <div class="step-head">
+        <span class="step-num">Step 1</span>
+        <span class="step-title">Recovery wallets</span>
+        <span class="required">● Required</span>
+      </div>
+      <p class="helper">
+        Recovery wallets are your safety net. If you ever lose access to this wallet, a recovery wallet can rescue your assets — without one, your assets could be <strong>permanently locked</strong> in the vault.
+      </p>
+
+      <!-- Empty state warning -->
+      <div class="warn-block" id="recovery-warn">
+        <div class="warn-icon">!</div>
+        <div class="warn-body">
+          <div class="warn-title">Add at least one recovery wallet</div>
+          <div class="warn-text">
+            Without a recovery wallet, if you lose your seed phrase or hardware wallet, no one — including you — can move the assets out of your Ghost vault. They will be locked forever.
+          </div>
+        </div>
+      </div>
+
+      <!-- One added (example state) -->
+      <div class="wallet-row">
+        <div class="avatar"></div>
+        <div class="wallet-info">
+          <div class="wallet-name">My hardware wallet (Trezor)</div>
+          <div class="wallet-addr">7gK3 ... 4nBp</div>
+        </div>
+        <button class="row-action">Remove</button>
+      </div>
+
+      <button class="add-btn"><span class="plus">+</span> Add another recovery wallet</button>
+    </div>
+
+    <!-- STEP 2 — Beneficiaries (with display name field) -->
+    <div class="panel">
+      <div class="step-head">
+        <span class="step-num">Step 2</span>
+        <span class="step-title">Beneficiaries</span>
+        <span class="optional">Optional</span>
+      </div>
+      <p class="helper">
+        People who receive your assets if your check-in timer expires. Each beneficiary gets a soulbound NFT that explains how to claim — but they can only claim if you stop checking in.
+      </p>
+
+      <div class="ben-card">
+        <div class="ben-head">
+          <div class="ben-num">1</div>
+          <div class="ben-title">Beneficiary 1</div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">
+            <span class="label-text">Display name</span>
+            <span class="label-help">— shown on their NFT, e.g. "Mom left this for you"</span>
+          </div>
+          <input type="text" id="display-name" value="Mom" placeholder="Mom, Dad, Aunt Sue, your full name…" />
+          <div class="field-hint">
+            They'll see this exact word as the headline of the NFT in their wallet. Use what they call you.
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">
+            <span class="label-text">Their wallet address</span>
+            <span class="label-help">— Solana pubkey</span>
+          </div>
+          <input type="text" class="mono" value="9zM2pK8nQ3xV7rL4fG6tH8yU1aB5cD2eF4gJ9hN6kP3" />
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <div class="field-label">
+              <span class="label-text">Asset</span>
+            </div>
+            <input type="text" value="SOL — entire vault" />
+          </div>
+          <div class="field">
+            <div class="field-label">
+              <span class="label-text">Share</span>
+            </div>
+            <input type="text" value="100%" />
+          </div>
+        </div>
+
+        <div class="nft-preview-pill">
+          ◉ Their NFT will read: <strong>"Mom set this aside for you"</strong>
+        </div>
+      </div>
+
+      <button class="add-btn"><span class="plus">+</span> Add another beneficiary</button>
+    </div>
+
+    <!-- Save button (disabled state) -->
+    <div class="save-row">
+      <button class="save-btn enabled">
+        Save Ghost on-chain
+        <span>→</span>
+      </button>
+    </div>
+    <p class="lock-reason">
+      <span class="ok">✓</span> 1 recovery wallet added &nbsp;·&nbsp;
+      <span class="ok">✓</span> 1 beneficiary added &nbsp;·&nbsp;
+      Owner pays ~0.02 SOL registration + cNFT mint cost.
+    </p>
+
+  </div>
+
+  <!-- RIGHT: live NFT preview -->
+  <div class="side">
+    <div class="side-head">◉ Live preview · Beneficiary 1's NFT</div>
+    <div class="nft-mini">
+      <div class="mini-frame">
+        <div class="mini-pill"><span class="dot"></span>Held in trust</div>
+        <img src="logo.png" alt="Ghost" class="mini-logo" />
+        <div class="mini-pre">Set aside for you by</div>
+        <div class="mini-name" id="preview-name">Mom</div>
+        <div class="mini-sub">on Ghost Protocol</div>
+        <div class="mini-foot">● Ghost Protocol ●</div>
+      </div>
+    </div>
+    <p class="side-cap">
+      Updates as you type the display name. The NFT mints to the beneficiary's wallet when you save the Ghost — the image is decorative, the actionable claim instructions live in the metadata.
+    </p>
+  </div>
+</div>
+
+<!-- Notes -->
+<div class="notes">
+  <h3>Edge cases this wireframe covers</h3>
+  <ul>
+    <li><strong>Stuck-asset prevention.</strong> The <code>Save Ghost</code> button is disabled until at least one recovery wallet is added. Empty-state warning explains why in plain English.</li>
+    <li><strong>NFT display name.</strong> Each beneficiary form has a "Display name" field that gets baked into the NFT image at mint time. Defaults to empty; placeholder suggests "Mom, Dad, Aunt Sue, your full name…".</li>
+    <li><strong>Beneficiary removed after NFT minted (open question).</strong> If the owner later removes a beneficiary, their NFT becomes a stale promise. Current plan: the owner triggers a metadata update that flips <code>attributes.Status</code> from <code>Active</code> to <code>Revoked</code>, repoints <code>image</code> to a struck-through "REVOKED" variant, and the claim page checks on-chain before letting the holder act. Captured in TODO.md.</li>
+    <li><strong>NFT copy is claim-ticket framing, not "you got it now."</strong> Pulse pill reads "Held in trust"; body explicitly says "You can claim them only if {{RELATION}} stops checking in, or names you as a recovery wallet." No instant-payout implication.</li>
+    <li><strong>Post-deposit "no beneficiaries" banner.</strong> Not in this wireframe — separate flow that fires after the vault first holds assets and beneficiary_count == 0 AND whole_vault_recipient is None.</li>
+  </ul>
+</div>
+
+<script>
+  const input = document.getElementById('display-name');
+  const preview = document.getElementById('preview-name');
+  const pill = document.querySelector('.nft-preview-pill strong');
+  input.addEventListener('input', () => {
+    const v = input.value.trim() || '—';
+    preview.textContent = v;
+    pill.textContent = `"${v} set this aside for you"`;
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Ghost Protocol — Beneficiary NFT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Syne:wght@500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --violet: #6E4BFF;
+    --violet-glow: #8F70FF;
+    --pink: #FF6B9D;
+    --bg: #050208;
+    --ink: #F4ECFF;
+    --ink-dim: #B0A4CC;
+    --ink-faint: #5B4F77;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 40px; padding: 64px 24px;
+    font-family: 'Inter', sans-serif;
+    color: var(--ink);
+  }
+  .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.32em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .row { display: flex; gap: 56px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  .card-wrap { display: flex; flex-direction: column; gap: 18px; align-items: center; }
+
+  /* ========== CARD ========== */
+  .nft {
+    width: 1024px; height: 1024px;
+    position: relative; overflow: hidden;
+    background: #000;
+    box-shadow: 0 0 0 1px rgba(143, 112, 255, 0.12), 0 60px 140px rgba(110, 75, 255, 0.2);
+  }
+  .nft::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 38%, rgba(110, 75, 255, 0.28), transparent 70%),
+      radial-gradient(ellipse 90% 60% at 50% 110%, rgba(143, 112, 255, 0.10), transparent 60%);
+    pointer-events: none;
+  }
+  .nft::after {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(143, 112, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(143, 112, 255, 0.04) 1px, transparent 1px);
+    background-size: 64px 64px;
+    pointer-events: none;
+    mask-image: radial-gradient(ellipse at 50% 50%, black 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 50%, black 30%, transparent 80%);
+  }
+
+  /* Bracket crop marks */
+  .bracket { position: absolute; width: 64px; height: 64px; border: 1px solid rgba(143, 112, 255, 0.4); }
+  .bracket.tl { top: 40px; left: 40px; border-right: none; border-bottom: none; }
+  .bracket.tr { top: 40px; right: 40px; border-left: none; border-bottom: none; }
+  .bracket.bl { bottom: 40px; left: 40px; border-right: none; border-top: none; }
+  .bracket.br { bottom: 40px; right: 40px; border-left: none; border-top: none; }
+
+  /* ONE simple top tag — wallet-marker style */
+  .top-tag {
+    position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 12px;
+    padding: 10px 22px;
+    border: 1px solid rgba(255, 107, 157, 0.55);
+    border-radius: 999px;
+    background: rgba(255, 107, 157, 0.08);
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--pink);
+  }
+  .top-tag .pulse {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--pink);
+    box-shadow: 0 0 12px var(--pink), 0 0 24px rgba(255, 107, 157, 0.6);
+  }
+
+  /* ONE simple bottom signature — brand only */
+  .bot-sig {
+    position: absolute;
+    bottom: 56px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 14px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .bot-sig .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--violet-glow); }
+
+  /* Frame — bottom inset reserves space for CTA + signature */
+  .frame {
+    position: absolute;
+    inset: 150px 96px 260px 96px;
+    display: flex; flex-direction: column;
+    align-items: center; text-align: center;
+  }
+
+  /* Logo */
+  .logo-frame {
+    position: relative;
+    width: 220px; height: 220px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 22px;
+  }
+  .logo-frame::before {
+    content: ""; position: absolute; inset: -25%;
+    background: radial-gradient(circle at 50% 50%, rgba(110, 75, 255, 0.55), transparent 60%);
+    filter: blur(20px); pointer-events: none;
+  }
+  .logo-frame img {
+    width: 100%; height: 100%; object-fit: contain;
+    position: relative;
+    filter: drop-shadow(0 0 36px rgba(110, 75, 255, 0.6));
+  }
+
+  /* Headline — plain English, big, clear */
+  .pre {
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    font-size: 22px;
+    color: var(--ink-dim);
+    letter-spacing: 0.02em;
+    margin-bottom: 14px;
+  }
+  .name-big {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 132px;
+    line-height: 0.88;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #FFB7CE 0%, var(--pink) 50%, var(--violet-glow) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .left-you {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: 36px;
+    color: var(--ink);
+    margin-top: 18px;
+    letter-spacing: -0.005em;
+  }
+
+  /* ECG */
+  .ecg { width: 70%; height: 36px; margin: 26px 0 22px; }
+  .ecg svg { width: 100%; height: 100%; display: block; }
+
+  /* Plain explanation — short + huge */
+  .explain {
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    font-size: 22px;
+    line-height: 1.5;
+    color: var(--ink-dim);
+    max-width: 620px;
+  }
+  .explain strong { color: var(--ink); font-weight: 600; }
+
+  /* Open-me CTA pinned to bottom */
+  .cta {
+    position: absolute;
+    bottom: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 14px;
+    padding: 18px 32px;
+    border-radius: 999px;
+    background: linear-gradient(120deg, var(--pink), var(--violet));
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    box-shadow: 0 12px 30px rgba(255, 107, 157, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  }
+  .cta .arrow { font-size: 22px; }
+
+  /* ========== THUMBNAIL ========== */
+  .nft.thumb { width: 256px; height: 256px; }
+  .nft.thumb .bracket { width: 18px; height: 18px; }
+  .nft.thumb .bracket.tl { top: 12px; left: 12px; }
+  .nft.thumb .bracket.tr { top: 12px; right: 12px; }
+  .nft.thumb .bracket.bl { bottom: 12px; left: 12px; }
+  .nft.thumb .bracket.br { bottom: 12px; right: 12px; }
+  .nft.thumb .top-tag {
+    top: 22px;
+    padding: 3px 8px;
+    font-size: 6px;
+    letter-spacing: 0.25em;
+    gap: 4px;
+    border-width: 1px;
+  }
+  .nft.thumb .top-tag .pulse { width: 4px; height: 4px; }
+  .nft.thumb .bot-sig {
+    bottom: 22px;
+    font-size: 6px;
+    letter-spacing: 0.3em;
+    gap: 6px;
+  }
+  .nft.thumb .bot-sig .dot { width: 2px; height: 2px; }
+  .nft.thumb .frame { inset: 50px 24px 50px 24px; }
+  .nft.thumb .logo-frame { width: 86px; height: 86px; margin-bottom: 6px; }
+  .nft.thumb .pre { display: none; }
+  .nft.thumb .name-big { font-size: 30px; }
+  .nft.thumb .left-you { font-size: 11px; margin-top: 6px; }
+  .nft.thumb .ecg, .nft.thumb .explain, .nft.thumb .cta { display: none; }
+
+  .caption {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.2em;
+    color: var(--ink-faint); text-transform: uppercase;
+  }
+  .footnote {
+    max-width: 760px; text-align: center; line-height: 1.7;
+    font-size: 12px; color: var(--ink-faint);
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.08em;
+  }
+  .footnote code { color: var(--pink); }
+</style>
+</head>
+<body>
+
+<span class="label">Ghost Protocol — Beneficiary NFT · TEMPLATE ({{RELATION}})</span>
+
+<div class="row">
+  <!-- FULL 1024 -->
+  <div class="card-wrap">
+    <div class="nft">
+      <div class="bracket tl"></div>
+      <div class="bracket tr"></div>
+      <div class="bracket bl"></div>
+      <div class="bracket br"></div>
+
+      <div class="top-tag"><span class="pulse"></span>Held in trust</div>
+
+      <div class="frame">
+        <div class="logo-frame">
+          <img src="logo.png" alt="Ghost Protocol" />
+        </div>
+
+        <div class="pre">Set aside for you by</div>
+        <div class="name-big">{{RELATION}}</div>
+        <div class="left-you">on Ghost Protocol — Solana</div>
+
+        <div class="ecg">
+          <svg viewBox="0 0 1000 36" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="ecg" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#FF6B9D" stop-opacity="0"/>
+                <stop offset="20%" stop-color="#FF6B9D" stop-opacity="1"/>
+                <stop offset="80%" stop-color="#FF6B9D" stop-opacity="1"/>
+                <stop offset="100%" stop-color="#FF6B9D" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d="M 0 18 L 200 18 L 220 18 L 240 4 L 260 32 L 280 1 L 300 35 L 320 18 L 480 18 L 500 18 L 520 8 L 540 28 L 560 18 L 720 18 L 740 18 L 760 6 L 780 30 L 800 18 L 1000 18"
+              stroke="url(#ecg)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+
+        <p class="explain">
+          Keep this token safe. It's the <strong>key</strong> to assets {{RELATION}} set aside for you. You can claim them only if {{RELATION}} stops checking in, or names you as a recovery wallet.
+        </p>
+      </div>
+
+      <div class="cta">How it works <span class="arrow">→</span></div>
+
+      <div class="bot-sig"><span class="dot"></span>Ghost Protocol<span class="dot"></span></div>
+    </div>
+    <span class="caption">1024 × 1024 · soulbound · arweave-pinned</span>
+  </div>
+
+  <!-- THUMB -->
+  <div class="card-wrap">
+    <div class="nft thumb">
+      <div class="bracket tl"></div>
+      <div class="bracket tr"></div>
+      <div class="bracket bl"></div>
+      <div class="bracket br"></div>
+
+      <div class="top-tag"><span class="pulse"></span>Held in trust</div>
+
+      <div class="frame">
+        <div class="logo-frame">
+          <img src="logo.png" alt="Ghost" />
+        </div>
+        <div class="name-big">{{RELATION}}</div>
+        <div class="left-you">set this aside for you</div>
+      </div>
+
+      <div class="bot-sig"><span class="dot"></span>Ghost<span class="dot"></span></div>
+    </div>
+    <span class="caption">Wallet thumbnail · 256 × 256</span>
+  </div>
+</div>
+
+<p class="footnote">
+  Image is decorative — actionable claim data (program ID, beneficiary index, AI prompt, mirrors) lives in the JSON metadata.
+  QR encodes <code>ghost-protocol.rip/claim?ghost=&lt;PDA&gt;&amp;i=N</code>.
+</p>
+
+</body>
+</html>
