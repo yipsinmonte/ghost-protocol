@@ -11683,33 +11683,51 @@ document.querySelectorAll('.nav-links a').forEach(a => {
 // ── GHOST COUNT GLOW on update ───────────────────────────────
 const _origFetchGhostCount = fetchGhostCount;
 
-// ── DEMO SUBDOMAIN AUTO-MODE ─────────────────────────────────
-// When served from demo.ghost-protocol.rip (or any hostname starting with "demo."),
-// auto-trigger demo mode after the page settles + show a non-intrusive banner.
-// Production domains (ghost-protocol.rip, ghost-protocol-five.vercel.app) are unaffected.
+// ── DEMO SUBDOMAIN MODE ──────────────────────────────────────
+// When served from demo.ghost-protocol.rip (or any hostname starting with "demo."):
+//   1. Add a subtle "demo" pill next to the GHOST logo in the nav (replaces banner)
+//   2. Land on the marketing page (no auto-connect — visitor sees the pitch first)
+//   3. Hijack the Connect Wallet button so clicking it routes straight into demo mode
+//      instead of opening the wallet modal. Production domains untouched.
 (function(){
   if (!/^demo\./i.test(window.location.hostname)) return;
-  function showDemoBanner() {
-    if (document.getElementById('demoBanner')) return;
-    const b = document.createElement('div');
-    b.id = 'demoBanner';
-    b.innerHTML = '<span style="font-family:Syne,sans-serif;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;font-size:11px;color:#0c0a14">DEMO MODE</span> <span style="font-family:\'Share Tech Mono\',monospace;font-size:11px;color:rgba(12,10,20,0.75);margin-left:10px">no real transactions · visit <a href="https://ghost-protocol.rip" style="color:#0c0a14;text-decoration:underline">ghost-protocol.rip</a> for the live protocol</span>';
-    Object.assign(b.style, {
-      position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
-      background: 'linear-gradient(90deg, #ffd400, #ffaa33)',
-      padding: '8px 18px', textAlign: 'center', boxShadow: '0 2px 12px rgba(0,0,0,0.4)'
+
+  function injectDemoPill() {
+    const logo = document.querySelector('.brand-logo, .nav-logo, .nav-brand');
+    let target = logo || document.querySelector('nav .nav-links') || document.querySelector('nav');
+    if (!target || document.getElementById('demoPill')) return;
+    const pill = document.createElement('span');
+    pill.id = 'demoPill';
+    pill.title = 'Demo mode — no real transactions · ghost-protocol.rip for the live protocol';
+    pill.innerHTML = 'DEMO';
+    Object.assign(pill.style, {
+      display: 'inline-block', marginLeft: '8px', padding: '2px 8px',
+      fontFamily: '"Share Tech Mono", monospace', fontSize: '9px', letterSpacing: '0.18em',
+      color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.2)',
+      borderRadius: '2px', verticalAlign: 'middle', userSelect: 'none', cursor: 'help'
     });
-    document.body.appendChild(b);
-    document.body.style.paddingTop = (b.offsetHeight + 'px');
+    if (logo && logo.parentNode) logo.parentNode.insertBefore(pill, logo.nextSibling);
+    else target.appendChild(pill);
   }
-  function start() {
-    showDemoBanner();
-    if (typeof connectWallet === 'function') {
-      try { connectWallet('demo'); } catch(e) { console.warn('[demo] auto-connect failed:', e); }
+
+  function rerouteConnect() {
+    // Replace Connect Wallet onclick + the marketing CTA buttons so they go straight to demo.
+    function go() {
+      try { if (typeof connectWallet === 'function') connectWallet('demo'); } catch(e) {}
     }
+    const wb = document.getElementById('walletBtn');
+    if (wb) { wb.onclick = go; wb.textContent = 'Enter Demo'; }
+    document.querySelectorAll('.btn-register').forEach(b => {
+      b.onclick = function(){ if (window.ghostState && ghostState.connected) openDashboard(); else go(); return false; };
+    });
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(start, 600));
-  else setTimeout(start, 600);
+
+  function start() {
+    injectDemoPill();
+    rerouteConnect();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
 </script>
 </body>
