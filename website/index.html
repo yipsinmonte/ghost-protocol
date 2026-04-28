@@ -5173,11 +5173,25 @@ async function initializeGhost() {
     ghostState.ghost.lastHeartbeat = Date.now();
     ghostState.ghost.pingCount = 0;
     ghostState.ghost.vaultBalance = 0;
+    // Persist the recovery wallet captured at signup so it shows up under
+    // Recovery → Active Wallets after the user lands on the dashboard.
+    if (ghostState._pendingRecoveryWallet) {
+      const _addr = ghostState._pendingRecoveryWallet;
+      ghostState._pendingRecoveryWallet = null;
+      if (!ghostState.recoveryMeta) ghostState.recoveryMeta = {};
+      ghostState.recoveryMeta[_addr] = { canWithdraw: true, note: '' };
+      if (!ghostState.recoveryWallets) ghostState.recoveryWallets = [];
+      if (!ghostState.recoveryWallets.find(w => w.address === _addr)) {
+        ghostState.recoveryWallets.push({ address: _addr, slotIndex: 0, canWithdraw: true, note: '' });
+      }
+      ghostState.ghost.recoveryWallet = _addr;
+    }
     showNotif('✅ Ghost initialized! [demo mode]', 'green');
     saveSession();
     updateDashboardUI();
     dbShowPage('overview', document.getElementById('nav-overview'));
     loadWalletTokens();
+    if (typeof renderRecoveryWallets === 'function') { try { renderRecoveryWallets(); } catch(e) {} }
     return;
   }
 
