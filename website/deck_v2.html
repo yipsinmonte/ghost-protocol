@@ -1329,6 +1329,70 @@
     font-weight: 700;
   }
 
+  /* Disaster recovery slide — "what if everything fails" */
+  .disaster-grid {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .disaster-image {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .disaster-image img {
+    width: 380px;
+    height: 380px;
+    object-fit: cover;
+    border: 1px solid var(--accent-dim);
+    filter: drop-shadow(0 0 60px rgba(143, 112, 255, 0.35));
+  }
+  .di-caption {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--bone-dim);
+    text-transform: uppercase;
+    text-align: center;
+    max-width: 380px;
+    line-height: 1.55;
+  }
+  .disaster-points { list-style: none; display: flex; flex-direction: column; gap: 22px; }
+  .disaster-points li {
+    padding-left: 22px;
+    border-left: 2px solid var(--accent);
+    font-size: 16px;
+    color: var(--bone-dim);
+    line-height: 1.55;
+  }
+  .disaster-points li strong {
+    display: block;
+    font-family: var(--display);
+    font-size: 19px;
+    color: var(--bone);
+    margin-bottom: 5px;
+    font-weight: 700;
+  }
+  .disaster-points li code {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    background: rgba(143, 112, 255, 0.08);
+    padding: 1px 6px;
+  }
+  .disaster-tag {
+    margin-top: 36px;
+    text-align: center;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--bone-dim);
+    line-height: 1.5;
+  }
+
   /* === V2: MARKET & REVENUE === */
   .market-body {
     margin-top: 32px;
@@ -2629,9 +2693,42 @@
   </div>
 </section>
 
-<!-- ================== SLIDE 16 : THE ASK ================== -->
+<!-- ================== SLIDE 16 : DISASTER RECOVERY ================== -->
+<section class="slide">
+  <span class="corner tl">16 — Disaster</span>
+  <span class="corner tr">When the website is gone.</span>
+  <div>
+    <div class="eyebrow">What if everything fails</div>
+    <h2 class="big">The wallet itself is<br>the <span class="accent">recovery sheet.</span></h2>
+  </div>
+  <div class="disaster-grid">
+    <div class="disaster-image">
+      <img src="../Media/beneficiary-nft-card.png" alt="Soulbound Beneficiary NFT card">
+      <div class="di-caption">Soulbound NFT minted to beneficiary at registration</div>
+    </div>
+    <ul class="disaster-points">
+      <li>
+        <strong>The protocol is on Solana mainnet, permanently.</strong>
+        Program ID <code>3Es1…sZ3</code> hosts <code>execute_transfer</code> until Solana itself shuts down. No team needed.
+      </li>
+      <li>
+        <strong>The NFT carries the recovery instructions.</strong>
+        Beneficiary opens it in Phantom, sees a pre-written prompt for Claude / ChatGPT / Cursor — paste, sign, claim. No website needed.
+      </li>
+      <li>
+        <strong>Three independent mirrors.</strong>
+        ghost-protocol.rip · IPFS · Arweave · GitHub Pages. Any one alive keeps the dApp alive.
+      </li>
+    </ul>
+  </div>
+  <p class="disaster-tag">
+    Most protocols engineer for the launch scenario.<br>We engineered for the <span class="accent">disappearance scenario.</span>
+  </p>
+</section>
+
+<!-- ================== SLIDE 17 : THE ASK ================== -->
 <section class="slide ask-slide">
-  <span class="corner tl">16 — The Ask</span>
+  <span class="corner tl">17 — The Ask</span>
   <span class="corner tr">Solana Frontier 2026</span>
   <div>
     <div class="eyebrow">What we're asking for</div>
