@@ -11682,6 +11682,35 @@ document.querySelectorAll('.nav-links a').forEach(a => {
 
 // ── GHOST COUNT GLOW on update ───────────────────────────────
 const _origFetchGhostCount = fetchGhostCount;
+
+// ── DEMO SUBDOMAIN AUTO-MODE ─────────────────────────────────
+// When served from demo.ghost-protocol.rip (or any hostname starting with "demo."),
+// auto-trigger demo mode after the page settles + show a non-intrusive banner.
+// Production domains (ghost-protocol.rip, ghost-protocol-five.vercel.app) are unaffected.
+(function(){
+  if (!/^demo\./i.test(window.location.hostname)) return;
+  function showDemoBanner() {
+    if (document.getElementById('demoBanner')) return;
+    const b = document.createElement('div');
+    b.id = 'demoBanner';
+    b.innerHTML = '<span style="font-family:Syne,sans-serif;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;font-size:11px;color:#0c0a14">DEMO MODE</span> <span style="font-family:\'Share Tech Mono\',monospace;font-size:11px;color:rgba(12,10,20,0.75);margin-left:10px">no real transactions · visit <a href="https://ghost-protocol.rip" style="color:#0c0a14;text-decoration:underline">ghost-protocol.rip</a> for the live protocol</span>';
+    Object.assign(b.style, {
+      position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
+      background: 'linear-gradient(90deg, #ffd400, #ffaa33)',
+      padding: '8px 18px', textAlign: 'center', boxShadow: '0 2px 12px rgba(0,0,0,0.4)'
+    });
+    document.body.appendChild(b);
+    document.body.style.paddingTop = (b.offsetHeight + 'px');
+  }
+  function start() {
+    showDemoBanner();
+    if (typeof connectWallet === 'function') {
+      try { connectWallet('demo'); } catch(e) { console.warn('[demo] auto-connect failed:', e); }
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(start, 600));
+  else setTimeout(start, 600);
+})();
 </script>
 </body>
 </html>

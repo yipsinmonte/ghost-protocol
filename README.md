@@ -1,257 +1,238 @@
-# 👻 Ghost Protocol
+# Ghost Protocol
 
-> **Your digital afterlife on Solana.**
-> A trustless, on-chain dead-man's switch for crypto assets. Miss your heartbeat — your ghost awakens. Stay silent — your legacy executes, permissionlessly, exactly as you wrote it.
->
-> *A smart vault that doesn't forget your family or friends.*
+> **Trustless on-chain succession for digital assets on Solana.**
+> Configure how your assets are distributed if you ever stop signing transactions. The chain is the executor.
 
-**Program ID (Solana mainnet):** [`3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3`](https://explorer.solana.com/address/3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3)
-**Status:** Live on mainnet. Opening for public registration during the Solana Frontier Hackathon.
+[![Mainnet](https://img.shields.io/badge/Solana-Mainnet-7c3aed?style=flat-square)](https://explorer.solana.com/address/3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3)
+[![Version](https://img.shields.io/badge/program-v1.10-9ca3af?style=flat-square)](program/lib.rs)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
----
-
-## The problem
-
-Self-custody is the price of sovereignty. It's also how families lose everything.
-
-There is no "contact support" when a holder dies. No password reset. No estate lawyer who can access a Ledger. Every hour, more Solana accumulates in wallets whose owners are one accident, one stroke, one forgotten seed phrase away from making those assets permanently unreachable.
-
-Centralized exchanges solve this with custody — which is the opposite of why we're here.
-
-Ghost Protocol solves it with code.
+| | |
+|---|---|
+| **Program ID** | [`3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3`](https://explorer.solana.com/address/3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3) |
+| **IDL (on-chain)** | [`Hcb9cF8RPDELJmi4hBDKkxXZoDat3pcNivryx6P4pNUy`](https://explorer.solana.com/address/Hcb9cF8RPDELJmi4hBDKkxXZoDat3pcNivryx6P4pNUy) |
+| **Website** | [ghost-protocol.rip](https://ghost-protocol.rip) |
+| **Demo (no wallet needed)** | [demo.ghost-protocol.rip](https://demo.ghost-protocol.rip) |
 
 ---
 
 ## What it is
 
-Ghost Protocol is a Solana program that implements a **configurable, trustless dead-man's switch** for any SPL token (and SOL).
+Ghost Protocol is a Solana program that implements a configurable, trustless dead-man's switch for SOL and any SPL token.
 
-You:
+You register a **Ghost** — a vault tied to your wallet, owned by a Program-Derived Address (PDA) whose private key cannot exist. You fund it. You configure who receives what. You send a `ping` transaction periodically to confirm you're alive.
 
-1. **Register** a Ghost — a PDA-owned vault tied to your wallet.
-2. **Fund** it — deposit SOL and any SPL tokens you want to pass on.
-3. **Configure** who receives what, and on what action: direct transfer, token burn, or whole-vault sweep to a single recipient.
-4. **Stay alive** — send a `ping` transaction before your configured interval expires. Costs sub-cent SOL.
-5. **Forget to ping** — after your inactivity window, anyone can call `check_silence` to start a configurable grace period. You (or a recovery wallet) can still cancel during grace.
-6. **Grace expires** — anyone can call `execute_legacy`. The program, signing as the vault PDA, distributes assets to each beneficiary exactly as you configured them. You never transfer custody. You only ever transfer *conditional release authority* to your own contract.
+If you stop pinging for longer than your configured interval, anyone can call `check_silence` to wake your Ghost. After your grace period expires, anyone can call `execute_legacy`, and the program — signing as the vault PDA — distributes assets to each beneficiary exactly as you wrote them.
 
-Beneficiaries never need to "claim" or fight a lawyer. Assets arrive in their wallet. The chain is the executor.
+You never transfer custody. You only ever transfer **conditional release authority** to your own contract.
 
----
+## Why this is non-trivial
 
-## Not just for death — for any form of disappearance
+Self-custody is the price of sovereignty. It is also how families lose everything.
 
-Ghost Protocol is a digital legacy product *first*, but the underlying mechanic — *"if I don't ping for N days, route my assets as configured"* — applies to a much broader set of real scenarios than the word "inheritance" suggests:
+There is no "contact support" when a holder dies. No password reset. No estate lawyer who can reach a Ledger. Centralized exchanges solve this with custody, which is the opposite of why most people are here. The remaining option — handing a copy of your seed phrase to a relative — leaks your full balance to that person every day you are still alive.
 
-- **Extended travel, hospitalization, or any period where you genuinely can't reach your wallet.**
-- **Seed-phrase loss** — if you lose your keys, a pre-configured recovery path is better than the asset being lost forever.
-- **Detention or legal incapacitation** — if you can't physically access your wallet for weeks or months, your family still can.
-- **A contingency slice for your family** — designate 5-10% of your stack that routes to a spouse / child / co-founder if you go quiet, without touching the rest.
+Ghost Protocol gives you a **third option**: a programmable, time-gated release authored by a contract you control while you live, that runs on its own when you stop responding.
 
-The usage cycle is months to years, not decades. Most Ghosts will be pinged regularly, cancelled, reconfigured, or executed long before their owner actually dies. Think of it as a programmable escape-valve for self-custody, not only an estate plan.
+## Not just for end-of-life
 
----
+The mechanism — *if I do not ping for N days, route my assets as configured* — applies to far more than estate planning:
+
+- **Extended travel, hospitalization, or any period without wallet access**
+- **Seed phrase loss** — pre-configured recovery path beats permanent loss
+- **Detention or legal incapacitation** — your family can still reach the assets
+- **Contingency carve-outs** — designate, say, 10% of your stack to route to a spouse if you go quiet, without touching the rest
+
+Most Ghosts are pinged regularly, cancelled, reconfigured, or executed long before the owner actually dies. Treat it as a programmable escape valve for self-custody, not only an estate plan.
 
 ## Why Solana
 
-Ghost Protocol is the rare product that is *not* easier on another chain.
+This product is genuinely easier on Solana than anywhere else.
 
-- **PDA-authored vaults**: the vault is owned by a program-derived address whose private key cannot exist. No single person — not the user, not the operator, not an attacker — can move funds. Only the program logic can.
-- **Permissionless execution**: `check_silence` and `execute_legacy` can be called by anyone. There is no trusted operator gating the afterlife.
-- **Cheap enough for ambient use**: a weekly heartbeat costs less than a cent. On a chain with $5 gas this becomes a product for whales only. On Solana it's a product for anyone with a wallet.
-- **Composable**: vaults can eventually close DeFi positions, auto-swap to stables via Jupiter, mint memorial cNFTs — all native primitives on Solana.
+- **Cheap enough for ambient use** — a weekly heartbeat costs sub-cent SOL. On a chain with $5 gas, this is a product for whales only.
+- **PDA-authored vaults** — the vault is owned by an address whose private key cannot exist. Not the user, not the operator, not an attacker can move funds. Only the program logic.
+- **Permissionless execution** — `check_silence` and `execute_legacy` are anyone-callable. There is no operator gating distribution.
+- **Composable** — vaults can eventually close DeFi positions, auto-swap to stables via Jupiter, mint memorial cNFTs — all native Solana primitives.
 
----
-
-## Architecture at a glance
+## Architecture
 
 ```
- ┌─────────────────────────┐      ping / configure      ┌──────────────────────────┐
- │        Owner Wallet     │ ─────────────────────────▶ │     Ghost PDA (state)    │
- └─────────────────────────┘                            │  - last_heartbeat        │
-            │                                           │  - interval, grace       │
-            │   deposit SOL / SPL                       │  - beneficiaries[10]     │
-            ▼                                           │  - recovery_wallets[3]   │
- ┌─────────────────────────┐                            │  - whole_vault_recipient │
- │   Vault PDA (assets)    │ ◀──── CPIs, vault-signed ──│  - awakened, executed    │
- │   SOL + any SPL tokens  │                            └──────────────────────────┘
- └─────────────────────────┘                                       ▲
-            │                                                      │
-            │  on execute:                   check_silence   ┌─────┴───────────┐
-            │  transfer / burn /        ◀──── (permissionless)─│  Anyone  /      │
-            ▼  whole-vault sweep                                │  Reference bot  │
- ┌─────────────────────────┐                                    └─────────────────┘
- │   Beneficiary Wallets   │
- └─────────────────────────┘
+ ┌──────────────────────┐    ping / configure    ┌────────────────────────────┐
+ │     Owner Wallet     │ ─────────────────────▶ │     Ghost PDA (state)      │
+ └──────────────────────┘                        │  - last_heartbeat          │
+            │                                    │  - interval, grace_period  │
+            │   deposit                          │  - beneficiaries[10]       │
+            ▼                                    │  - recovery_wallets[3]     │
+ ┌──────────────────────┐                        │  - whole_vault_recipient   │
+ │   Vault PDA (assets) │ ◀── CPI, vault-signed ─│  - awakened, executed      │
+ │   SOL + SPL tokens   │                        └────────────────────────────┘
+ └──────────────────────┘                                    ▲
+            │                                                │
+            │  on execute:               check_silence  ┌────┴───────────────┐
+            │  transfer / burn /    ◀── (permissionless)─│  Anyone /          │
+            ▼  whole-vault sweep                         │  Reference watcher │
+ ┌──────────────────────┐                                └────────────────────┘
+ │ Beneficiary wallets  │
+ └──────────────────────┘
 ```
 
 Two PDAs per user:
-- **Ghost PDA** — stores state (heartbeat, config, beneficiaries, flags).
-- **Vault PDA** — holds assets; only the program can sign for it.
+- **Ghost PDA** at `["ghost", owner_pubkey]` — stores all state.
+- **Vault PDA** at `["vault", owner_pubkey]` — holds assets; only the program can sign for it.
 
----
+Plus a third **stake vault** at `["stake_vault", owner_pubkey]` holding the user's $GHOST stake.
 
 ## Trust model
 
-Ghost Protocol is trustless in the meaningful sense: **no party — including us — can move user funds outside the rules the user configured.**
+Ghost Protocol is trustless in the meaningful sense: **no party — including the protocol authors — can move user funds outside the rules the user configured.**
 
 What the program guarantees:
-- Only the **owner** can deposit, ping, configure beneficiaries, pause, or transfer ownership.
-- **Anyone** can call `check_silence` and `execute_legacy`. The program enforces `silence > interval` and `now > awakened_at + grace_period` on-chain; no caller can bypass these checks.
-- The **vault PDA** signs every asset transfer via seeds derived from `[VAULT_SEED, owner]`. The private key does not exist — not on any server, not in any keystore.
-- **Recovery wallets** are *user-designated* emergency keys (max 3). They can cancel an awakening, clear or re-target beneficiaries before execution, or perform an emergency withdrawal. They exist because the user chose them. They are not a backdoor — they are a user-configured trust delegation, like a multisig co-signer on a traditional trust.
+- Only the **owner** can deposit, ping, configure beneficiaries, or pause.
+- **Anyone** can call `check_silence` and `execute_legacy`. The program enforces `silence > interval_seconds` and `now > awakened_at + grace_period_seconds` on-chain. No caller can bypass these checks.
+- The **vault PDA** signs every asset transfer via seeds derived from `["vault", owner_pubkey]`. The private key does not exist on any server, in any keystore, anywhere.
+- **Recovery wallets** (max 3) are user-designated emergency keys. They can cancel an awakening, clear or re-target beneficiaries before execution, or perform an emergency withdrawal. They are *user-configured trust delegations*, not a backdoor.
 
-What the reference bot does:
-- Watches for Ghosts past their inactivity window and calls `check_silence`.
-- Collects a 5% bounty (paid from the Ghost's stake) as fuel for ops costs.
-- That's it. The bot is a **convenience**, not a dependency. If our bot disappears tomorrow, any beneficiary (or any bounty hunter) can call `check_silence` and `execute_legacy` themselves.
-
----
+The reference watcher bot is a **convenience, not a dependency**. If it disappears, any beneficiary or any bounty hunter can call the lifecycle instructions themselves.
 
 ## Beneficiary model
 
 Each Ghost supports up to **10 beneficiaries** plus one optional **whole-vault recipient**.
 
-Each beneficiary has:
-- `recipient` — destination wallet
+Each beneficiary entry:
+- `recipient` — destination wallet (Pubkey, must equal the actual ATA authority at execution time)
 - `amount` — exact amount to send
-- `token_mint` — `None` for SOL, `Some(mint)` for any SPL token
+- `token_mint` — required, identifies the SPL mint
 - `action` — `0 = transfer`, `1 = burn`
 
-The whole-vault recipient catches anything left in the vault after individual beneficiaries are paid — useful for "distribute these 5 allocations, then send the rest to my spouse."
+The whole-vault recipient catches anything left in the vault after individual beneficiaries are paid — useful for "distribute these N allocations, then send the rest to my spouse."
 
-During execution, beneficiaries can be processed individually (one transaction per payout). The grace period and awakened-by-anyone design mean distribution doesn't block on any single actor.
-
----
+During execution, beneficiaries are processed individually (one transaction per payout). The grace period and the anyone-can-execute design mean distribution does not block on any single actor.
 
 ## Instruction surface
 
-| Instruction | Who can call | What it does |
+| Instruction | Caller | Purpose |
 |---|---|---|
 | `initialize_ghost` | Owner | Register, stake $GHOST, pay 0.02 SOL registration fee |
-| `deposit` / `withdraw` | Owner | Move SOL/SPL in/out of the vault |
-| `ping` | Owner | Record a heartbeat; also auto-cancels an active awakening |
-| `add_beneficiary` / `remove` / `update` | Owner | Manage the beneficiary list (only when not awakened) |
+| `deposit_to_vault` / `withdraw_from_vault` | Owner | Move SOL/SPL in/out of the vault |
+| `ping` | Owner | Record a heartbeat; auto-cancels an active awakening |
+| `add_beneficiary` / `remove_beneficiary` / `update_beneficiary` | Owner | Manage the beneficiary list (only when not awakened) |
 | `set_whole_vault_recipient` | Owner | Designate the catch-all recipient |
 | `update_interval` / `update_grace_period` / `update_interval_and_grace` | Owner | Adjust timing |
-| `update_recovery_wallet` | Owner | Add / remove / replace one of 3 recovery slots |
-| `pause_ghost` / `resume_ghost` | Owner | Emergency pause (prevents awakening during travel, illness, etc.) |
-| `transfer_ownership` / `accept_ownership` | Owner + new owner | Two-step migration to a new wallet |
+| `update_recovery_wallet` | Owner | Add / remove / replace one of 3 recovery slots (blocked when awakened) |
+| `set_ghost_profile` | Owner | Set display name + image URI |
+| `pause_ghost` / `resume_ghost` | Owner | Emergency pause for known-absent periods |
 | `check_silence` | **Anyone** | Flip a silent Ghost to awakened; pays 5% bounty to caller |
-| `cancel_awakening` | Owner or recovery | Cancel during grace window |
+| `cancel_awakening` | Owner or recovery wallet | Cancel during grace window |
 | `guardian_remove_beneficiary` / `guardian_clear_beneficiaries` / `guardian_set_whole_vault_recipient` | Recovery wallet only | Emergency edits after awakening, before execution |
-| `execute_legacy` | **Anyone** | After grace, flip executed flag; enables per-beneficiary distribution |
-| `execute_transfer` / `execute_burn` / `execute_whole_vault_transfer` / `execute_whole_vault_burn` | Anyone | Actually move / burn the assets |
+| `execute_legacy` | **Anyone** | After grace, mark executed; enables per-beneficiary distribution |
+| `execute_transfer` / `execute_burn` / `execute_whole_vault_transfer` / `execute_whole_vault_burn` | Anyone | Move / burn the assets |
 | `recovery_withdraw` | Recovery wallet | Emergency drain (pre-execution) to a recovery-designated wallet |
 | `abandon_ghost` | Owner | Voluntarily close; burns 50% of staked $GHOST as anti-spam penalty |
 | `migrate_ghost` | Owner | One-time schema realloc for pre-v1.8 accounts |
 
----
+Ghosts are **soulbound** — there is no `transfer_ownership` instruction. The PDA address is permanently tied to the original creator's pubkey. To move to a new wallet, abandon and re-register.
 
 ## $GHOST token
 
-Ghost Protocol is powered by **$GHOST**, a fixed-supply SPL token (1,000,000,000 total, no more ever).
+Ghost Protocol is powered by **$GHOST**, a fixed-supply SPL token (1,000,000,000 total, no further mints).
 
-**Purpose:**
-- **Skin-in-the-game stake** — each Ghost requires a minimum $GHOST stake at registration. This aligns the user with the protocol and funds the permissionless-bounty economy.
-- **Bounty reserve** — 5% of a Ghost's stake is released as a bounty when `check_silence` succeeds, paying the caller. This is what incentivizes anyone to be a watcher.
-- **Future governance** — parameter updates (minimum stake, fee BPS, grace minimums) will move to $GHOST holder vote post-launch.
+- **Skin-in-the-game stake** — each Ghost requires a minimum 10,000 $GHOST stake at registration. Aligns the user with the protocol and funds the permissionless-bounty economy.
+- **Bounty reserve** — 5% of a Ghost's stake is paid to whoever calls `check_silence` first. This is what incentivizes anyone to be a watcher.
+- **Future governance** — parameter updates (minimum stake, fee BPS, grace minimums) move to $GHOST holder vote post-launch.
 
-**Distribution:** fair launch, no presale, no team unlock, no private round. The supply is minted once at genesis and distributed publicly. Early registrants receive a retroactive allocation.
-
----
-
-## Quickstart — try it in 60 seconds
-
-> Live on mainnet. Public registration opens at launch.
-
-```bash
-# Clone the interface
-git clone https://github.com/<your-handle>/ghost-protocol.git
-cd ghost-protocol/website
-npx serve .
-# Open http://localhost:3000, connect Phantom, register your Ghost.
-```
-
-Or, for judges/reviewers during the hackathon: visit **[ghost-protocol.rip](https://ghost-protocol.rip)**, connect Phantom on mainnet, and register a test Ghost with a 1-hour interval to see the full lifecycle compressed.
-
----
+Distribution is fair-launch: no presale, no team unlock, no private round.
 
 ## Security
 
-- **PDA-signed CPIs** — all vault movement uses program-derived signer seeds; no off-chain key ever authorizes a transfer.
-- **Permissionless awakening & execution** — no single operator can gate or censor the afterlife flow.
-- **Two-step ownership transfer** — prevents accidental wallet migration to a typo.
-- **Emergency pause** — the owner can freeze their own Ghost during known-absent periods (long travel, hospitalization, etc.).
-- **Staking anti-spam** — registration costs 0.02 SOL + minimum $GHOST stake. Abandoning a Ghost burns 50% of staked $GHOST, preventing drive-by registration spam.
-- **Conservative math** — fee and bounty computations use `checked_mul` / `saturating_sub`; vault drains guarded by per-beneficiary `executed` flags (no double-pay).
-- **Migration path** — `migrate_ghost` lets v1.7 accounts realloc to v1.8+ schema without reinitialization.
-- **Upgrade authority** — currently held by the founder's deployer wallet. This is standard for pre-audit Solana programs; revoking or locking authority before a third-party review would be reckless, not trustworthy. The post-launch roadmap migrates upgrade authority to either a **Squads multisig** or a **timelock controller** (7-day delay) after the first independent audit, funded by prize and grant capital. Users will always have a public, pre-announced window to react before any upgrade activates.
+- **PDA-signed CPIs** — all vault movement uses program-derived signer seeds; no off-chain key authorizes a transfer.
+- **Permissionless awakening and execution** — no operator can gate or censor distribution.
+- **Recipient ATA authority enforced** — `execute_transfer` and `execute_whole_vault_transfer` constrain `recipient_token_account` by `token::authority = recipient`. A caller cannot pass a substitute ATA.
+- **Vault ATA authority enforced** — every vault token account is constrained by `token::authority = vault` (or `= ghost` for the stake vault).
+- **Soulbound by construction** — no ownership transfer instruction; state corruption from PDA-vs-stored-owner mismatch is unreachable.
+- **Conservative arithmetic** — `checked_mul` / `saturating_sub` everywhere; per-beneficiary `executed` flags prevent double-pay.
+- **Migration** — `migrate_ghost` reallocs pre-v1.8 accounts safely.
 
-**Planned:** full third-party audit during Phase I (targeting OtterSec or Neodyme, prize- and grant-funded), active bug bounty program on Immunefi.
+The full [security report](website/ghost-security-report.html) walks through the program's posture against the Helius-published Solana attack-vector checklist. v1.10 ([`program/lib.rs`](program/lib.rs)) closed four findings discovered through internal review and devnet reproduction; the audit story is in the v1.10 header at the top of `lib.rs`.
 
----
+A formal third-party audit (target: OtterSec or Neodyme) is planned post-launch alongside an Immunefi bounty program.
+
+The upgrade authority currently belongs to the founder. Migration to a Squads multisig or a 7-day timelock controller is on the roadmap once an external audit funds the operational overhead.
 
 ## Roadmap
 
 | Phase | When | What |
 |---|---|---|
-| **Summon** | March 2026 | Fair $GHOST launch, mainnet program live, dashboard, SOL + SPL support, recovery wallets, audit |
-| **Awaken** | Q2 2026 | NFT (Metaplex) vault support, time-locked transfers, Jupiter auto-swap-to-SOL, off-chain executor (post-mortem X post, email triggers), Telegram heartbeat reminders |
-| **Possess** | Q3 2026 | DeFi position closing (Jupiter / Marginfi / Drift), cross-chain bridges (Ethereum, Base) |
-| **Eternal** | Q4 2026 | Optional off-chain memorial integration (Pika Labs AI selves), 100k souls registered |
+| **Summon** | Q1 2026 | Fair $GHOST launch · mainnet program live · dashboard · SOL + SPL support · recovery wallets · v1.10 hardening |
+| **Awaken** | Q2 2026 | Soulbound beneficiary cNFT mint · NFT vault support · time-locked transfers · Jupiter auto-swap · Telegram heartbeat reminders |
+| **Possess** | Q3 2026 | DeFi position closing (Jupiter / Marginfi / Drift) · cross-chain bridges (Ethereum, Base) |
+| **Eternal** | Q4 2026 | Optional off-chain memorial integrations · 100k souls registered |
 
----
+## Quickstart
 
-## Technical stack
+### Try it without a wallet
 
-- **Program**: Anchor (Rust) — `program/lib.rs`, 1030 lines, deployed at `3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3`.
-- **Reference watcher bot**: Node.js — `watcherBot/bot.js`. Uses Helius RPC + Jupiter for fee routing.
-- **Interface**: single-page HTML/JS with `@solana/wallet-adapter`.
-- **Token standard**: Token-2022 compatible (`token_interface`) — supports current and future SPL extensions.
+Visit **[demo.ghost-protocol.rip](https://demo.ghost-protocol.rip)** — a sandboxed mode that walks the full lifecycle UI without on-chain transactions.
 
----
+### Register a real Ghost
 
-## Repository structure
+Visit **[ghost-protocol.rip](https://ghost-protocol.rip)**, connect Phantom/Solflare/Backpack, and register. Configure a short interval (1 hour) and grace period (5 min) on first run to see the full lifecycle compressed.
+
+### Build from source
+
+```bash
+git clone https://github.com/yipsinmonte/ghost-protocol.git
+cd ghost-protocol/website
+npx serve .
+# open http://localhost:3000
+```
+
+### Interact via Solana CLI
+
+The IDL is published on-chain; any Anchor client can fetch it directly:
+
+```bash
+anchor idl fetch -p 3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3
+```
+
+### Recovery without our infrastructure
+
+If `ghost-protocol.rip` and the watcher bot both disappear tomorrow, a beneficiary can still claim. The IDL is on-chain, the program is permanent, and the AI-fallback prompt embedded in the soulbound NFT description tells any LLM exactly what to do:
+
+> *"I am a beneficiary of Ghost Protocol on Solana. Program ID is `3Es13GXc4qwttE6uSgAAfi1zvBD3qzLkZpY21KfT3sZ3`. Please fetch the IDL from a Solana RPC, derive the Ghost PDA from seed `["ghost", owner_pubkey]`, and construct `execute_transfer` for my beneficiary index N. Tell me how to sign and broadcast."*
+
+This is the protocol's design: **the wallet is the recovery sheet.**
+
+## Repository layout
 
 ```
 ghost-protocol/
 ├── program/              # Anchor program (on-chain)
-│   └── lib.rs
-├── watcherBot/           # Reference executor bot (off-chain, convenience only)
+│   └── lib.rs            # Single-file program; v1.10 changelog at the top
+├── watcherBot/           # Reference executor bot (off-chain convenience)
 │   └── bot.js
-├── website/              # Marketing + dApp interface
-│   └── index.html
-├── whitepaper/           # Full technical and narrative whitepaper
-│   └── whitepaper.html
-└── README.md             # You are here
+├── website/              # dApp + supporting docs
+│   ├── index.html              # main interface
+│   ├── deck.html / deck_v2.html # pitch deck
+│   ├── ghost-whitepaper.html
+│   ├── ghost-security-report.html
+│   ├── beneficiary_nft_template.html
+│   └── beneficiary_nft_metadata_template.json
+├── docs/
+│   └── pitch/            # narrative artifacts (market sizing, research, decks)
+├── LICENSE               # MIT
+└── README.md
 ```
-
----
-
-## A note for Colosseum Frontier judges
-
-Ghost Protocol is submitted to Solana Frontier Hackathon (Spring 2026).
-
-- **90-second demo video**: [link to the emotional lifecycle video].
-- **Live on mainnet** since March 2026. Public open for the first time during this hackathon window — judges are among the first real users.
-- **What to test**: register a Ghost with a 1-hour interval and 0-second grace, let it lapse, watch `check_silence` execute and funds route to your beneficiary. The full lifecycle runs in ~1 hour.
-- **Ask us**: the protocol is built by a single founder. Feedback on trust-model clarity and onboarding friction is the most valuable thing you can give us.
-
----
 
 ## Disclaimers
 
-Ghost Protocol is software that enables conditional, self-sovereign asset transfer. It is not a legal estate instrument. Users in jurisdictions with mandatory inheritance provisions (most of the EU, for example) should combine Ghost with traditional estate planning. We provide the programmable rails; you remain responsible for how they interact with your real-world legal situation.
+Ghost Protocol is software that enables conditional, self-sovereign asset transfer. **It is not a legal estate instrument.** Users in jurisdictions with mandatory inheritance provisions (most of the EU, for example) should pair Ghost with traditional estate planning. We provide the programmable rails; you remain responsible for how they interact with your real-world legal situation.
 
 Self-custody is hard. Ghost Protocol is a tool for people who have already accepted that responsibility.
 
----
-
 ## Contact
 
-- **X**: [@onchainlegacy](https://x.com/onchainlegacy)
-- **Website**: [ghost-protocol.rip](https://ghost-protocol.rip)
+- **X** — [@onchainlegacy](https://x.com/onchainlegacy)
+- **Web** — [ghost-protocol.rip](https://ghost-protocol.rip)
 
 ---
 
